@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:webview="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="UltraLibrarianImporter.UI.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="UltraLibrarian Importer for KiCad"
+        Width="1200" Height="800"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,300">
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,5" Spacing="5">
+            <Button Content="Settings" Command="{Binding OpenSettingsCommand}" Padding="8,4"/>
+            <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="8,4"/>
+            <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="8,4"/>
+            <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="8,4"/>
+            
+            <ComboBox Margin="20,0,0,0" Width="200" SelectedIndex="3">
+                <ComboBoxItem Content="Import Symbols Only" Tag="Symbol"/>
+                <ComboBoxItem Content="Import Footprints Only" Tag="Footprint"/>
+                <ComboBoxItem Content="Import 3D Models Only" Tag="Model3D"/>
+                <ComboBoxItem Content="Import All" Tag="All"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- WebView Container -->
+        <Border Grid.Row="1" Grid.Column="0" BorderThickness="1" BorderBrush="Gray" Margin="10,0,5,10">
+            <Panel Name="WebViewContainer" Background="White">
+                <!-- OutSystems WebView control with correct namespace -->
+                <webview:WebView Name="OSWebView" Address="{Binding WebviewUrl}" Focusable="True" />
+                <TextBlock Text="Loading UltraLibrarian website..." 
+                           VerticalAlignment="Center" 
+                           HorizontalAlignment="Center"
+                           IsVisible="{Binding !WebViewLoaded}"/>
+            </Panel>
+        </Border>
+
+        <!-- Right Panel (Import Log) -->
+        <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*" Margin="5,0,10,10">
+            <TextBlock Grid.Row="0" Text="Import Log" FontWeight="Bold" Margin="0,0,0,5"/>
+            <Border Grid.Row="1" BorderThickness="1" BorderBrush="Gray">
+                <ListBox ItemsSource="{Binding ImportMessages}" Background="#f5f5f5" />
+            </Border>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="#f0f0f0" >
+            <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,5"/>
+            <ProgressBar Grid.Column="1" Width="200" Height="15" IsVisible="{Binding IsProgressVisible}" 
+                         Value="{Binding ProgressValue}" Margin="10,0,0,0"/>
+        </Grid>
+    </Grid>
+</Window>

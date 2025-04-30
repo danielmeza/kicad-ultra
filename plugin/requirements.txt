@@ -1,0 +1,4 @@
+requests>=2.25.1
+wxPython>=4.2.0
+watchdog>=3.0.0
+# wxWebView is part of wxPython

@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="350"
+        x:Class="UltraLibrarianImporter.UI.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="UltraLibrarian Importer Settings"
+        Width="450" Height="350"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+        <!-- KiCad IPC Settings -->
+        <TextBlock Grid.Row="0" Text="KiCad IPC Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,0,0,15">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="IPC Endpoint:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding IpcEndpoint}" Margin="0,0,0,5"/>
+            
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="IPC Token:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding IpcToken}"/>
+        </Grid>
+        
+        <!-- Download Settings -->
+        <TextBlock Grid.Row="2" Text="Download Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,15">
+            <TextBlock Grid.Column="0" Text="Download Directory:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" Text="{Binding DownloadDirectory}"/>
+            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="5,0,0,0"/>
+        </Grid>
+        
+        <!-- Import Settings -->
+        <TextBlock Grid.Row="4" Text="Import Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <StackPanel Grid.Row="5" Orientation="Vertical" Spacing="5">
+            <CheckBox Content="Add to global library" IsChecked="{Binding AddToGlobalLibrary}"/>
+            <CheckBox Content="Clean up downloaded files after import" IsChecked="{Binding CleanupAfterImport}"/>
+        </StackPanel>
+        
+        <!-- Buttons -->
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+            <Button Content="Save" Command="{Binding SaveCommand}" Width="80"/>
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80"/>
+        </StackPanel>
+    </Grid>
+</Window>

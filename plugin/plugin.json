@@ -1,0 +1,22 @@
+{
+  "$schema": "https://gitlab.com/kicad/code/kicad/-/raw/master/api/schemas/api.v1.schema.json",
+  "name": "KiCad UltraLibrarian Importer",
+  "description": "Import schematic symbols, footprints, and 3D models from UltraLibrarian directly into KiCad",
+  "identifier": "com.github.danielmeza.kicad-ultralibrarian-importer",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.6"
+  },
+  "actions": [
+    {
+      "identifier": "kicad-ultralibrarian-importer.import",
+      "entrypoint": "importer_launcher.py",
+      "icons-dark": ["resources/icon-dark.png"],
+      "name": "Import from UltraLibrarian",
+      "description": "Browse and import components from UltraLibrarian",
+      "icons-light": ["resources/icon-light.png"],
+      "show-button": true,
+      "scopes": ["footprint", "symbol", "pcb", "schematic", "project_manager"]
+    }
+  ]
+}

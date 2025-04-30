@@ -1,0 +1,389 @@
+[0430/051741.264:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051741.265:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051741.289:VERBOSE1:pref_proxy_config_tracker_impl.cc(191)] 0000455400021000: set chrome proxy config service to 0000455400118900
+[0430/051741.294:VERBOSE1:webrtc_internals.cc(123)] Could not get the download directory.
+[0430/051741.294:VERBOSE1:media_stream_manager.cc(1410)] MSM::InitializeMaybeAsync([this=00004554000B6200])
+[0430/051741.294:VERBOSE1:media_stream_manager.cc(1410)] MDM::MediaDevicesManager()
+[0430/051741.294:VERBOSE1:media_stream_manager.cc(1410)] MSM::MediaStreamManager([this=00004554000B6200]))
+[0430/051741.298:VERBOSE1:device_event_log_impl.cc(194)] [05:17:41.297] Display: EVENT: screen_win.cc:828 Displays updated, count: 2
+[0430/051741.298:VERBOSE1:device_event_log_impl.cc(194)] [05:17:41.298] Display: EVENT: screen_win.cc:830 Display[2528732444] bounds=[0,0 3440x1440], workarea=[0,0 3440x1392], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/051741.298:VERBOSE1:device_event_log_impl.cc(194)] [05:17:41.298] Display: EVENT: screen_win.cc:830 Display[2779098405] bounds=[3440,0 1920x1080], workarea=[3440,0 1920x1032], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/051741.299:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.299:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.300:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.340:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.341:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.343:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.343:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.343:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.344:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051741.354:VERBOSE1:component_installer.cc(428)] StartRegistration for Widevine Content Decryption Module
+[0430/051741.355:VERBOSE1:component_installer.cc(499)] FinishRegistration for Widevine Content Decryption Module
+[0430/051741.355:VERBOSE1:component_updater_service.cc(151)] CrxUpdateService starting up. First update attempt will take place in 60 s seconds. Next update attempt will take place in 18000 s seconds. 
+[0430/051741.579:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051741.580:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051741.727:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051741.727:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051741.744:VERBOSE1:configured_proxy_resolution_service.cc(1096)] Failed configuring with PAC script, falling-back to manual proxy servers.
+[0430/051746.752:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051746.756:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/051747.622:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/051747.669:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051747.827:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051747.838:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051747.839:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051747.839:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051747.841:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051747.841:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/051753.231:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051753.231:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051753.256:VERBOSE1:pref_proxy_config_tracker_impl.cc(191)] 000055A400041000: set chrome proxy config service to 000055A400118900
+[0430/051753.261:VERBOSE1:webrtc_internals.cc(123)] Could not get the download directory.
+[0430/051753.261:VERBOSE1:media_stream_manager.cc(1410)] MSM::InitializeMaybeAsync([this=000055A4000B6200])
+[0430/051753.261:VERBOSE1:media_stream_manager.cc(1410)] MDM::MediaDevicesManager()
+[0430/051753.261:VERBOSE1:media_stream_manager.cc(1410)] MSM::MediaStreamManager([this=000055A4000B6200]))
+[0430/051753.265:VERBOSE1:device_event_log_impl.cc(194)] [05:17:53.264] Display: EVENT: screen_win.cc:828 Displays updated, count: 2
+[0430/051753.265:VERBOSE1:device_event_log_impl.cc(194)] [05:17:53.265] Display: EVENT: screen_win.cc:830 Display[2528732444] bounds=[0,0 3440x1440], workarea=[0,0 3440x1392], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/051753.265:VERBOSE1:device_event_log_impl.cc(194)] [05:17:53.265] Display: EVENT: screen_win.cc:830 Display[2779098405] bounds=[3440,0 1920x1080], workarea=[3440,0 1920x1032], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/051753.265:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.266:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051753.273:VERBOSE1:component_installer.cc(428)] StartRegistration for Widevine Content Decryption Module
+[0430/051753.273:VERBOSE1:component_installer.cc(499)] FinishRegistration for Widevine Content Decryption Module
+[0430/051753.273:VERBOSE1:component_updater_service.cc(151)] CrxUpdateService starting up. First update attempt will take place in 60 s seconds. Next update attempt will take place in 18000 s seconds. 
+[0430/051753.313:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051753.313:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051753.427:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051753.428:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051753.445:VERBOSE1:configured_proxy_resolution_service.cc(1096)] Failed configuring with PAC script, falling-back to manual proxy servers.
+[0430/051758.449:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051758.450:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/051758.539:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051758.550:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051758.551:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051758.551:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051758.552:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051758.552:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/051759.397:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051853.291:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://update.googleapis.com/service/update2/json?cup2key=13:gqEvFAOmwjnftObBHas4rPYGcT61npO3NEvZ-46EhPs&cup2hreq=01051f566ca7e4af4fad0aa573ab75c4e86975299c61fcd285a6e3a556a29d38
+[0430/051853.291:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAHAABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051853.292:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAAQABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051853.292:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAQQABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/051853.292:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051853.317:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051853.367:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051853.367:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051853.367:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/051853.826:VERBOSE1:request_sender.cc(181)] Request completed from url: https://update.googleapis.com/service/update2/json?cup2key=13:gqEvFAOmwjnftObBHas4rPYGcT61npO3NEvZ-46EhPs&cup2hreq=01051f566ca7e4af4fad0aa573ab75c4e86975299c61fcd285a6e3a556a29d38
+[0430/051853.837:VERBOSE1:background_downloader_win.cc(475)] Starting BITS download for: http://edgedl.me.gvt1.com/edgedl/release2/chrome_component/acccxbt6wwsvpxzpob4hojndwkqq_4.10.2830.0/oimompecagnajdejgnnjijobebaeigek_4.10.2830.0_win64_dldxogwi36sxwpr57ta4lg57z4.crx3
+[0430/051917.924:VERBOSE1:puffin_component_unpacker.cc(71)] Verifying component: C:\Users\danie\AppData\Local\Temp\chrome_BITS_60648_1227876789\oimompecagnajdejgnnjijobebaeigek_4.10.2830.0_win64_dldxogwi36sxwpr57ta4lg57z4.crx3
+[0430/051917.959:VERBOSE1:puffin_component_unpacker.cc(100)] Unpacking in: C:\Users\danie\AppData\Local\Temp\chrome_PuffinComponentUnpacker_BeginUnzipping60648_1082582386
+[0430/051917.959:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/051917.959:ERROR:alloy_content_client.cc(110)] No localized string available for id 37223
+[0430/051918.016:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051918.016:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/051918.062:VERBOSE1:statistics_recorder.cc(647)] Collections of all histograms
+Histogram: Memory.PartitionAlloc.PartitionRoot.ExtrasSize recorded 1 samples, mean = 4.0 (flags = 0x1)
+0  ... 
+4  -O                                                                        (1 = 100.0%) {0.0%}
+5  ... 
+
+Histogram: UMA.ChildProcess.Ping.SharedMemorySetUp recorded 1 samples, mean = 1.0 (flags = 0x1)
+0  O                                                                         (0 = 0.0%)
+1  -O                                                                        (1 = 100.0%) {0.0%}
+2  ... 
+
+Histogram: UMA.LocalHistogram recorded 1 samples, mean = 1.0
+0  O                                                                         (0 = 0.0%)
+1  -O                                                                        (1 = 100.0%) {0.0%}
+2  O                                                                         (0 = 0.0%) {100.0%}
+
+Histogram: V8.Initializer.OpenV8File.Result recorded 1 samples, mean = 0.0 (flags = 0x1)
+0  -O                                                                        (1 = 100.0%)
+1  ... 
+
+Histogram: Variations.Limits.VariationKeySize.Default recorded 1 samples, mean = 0.0 (flags = 0x1)
+0  -O                                                                        (1 = 100.0%)
+1  ... 
+
+
+[0430/051918.066:VERBOSE1:component_installer.cc(133)] Install: version=4.10.2830.0 current version=0.0.0.0
+[0430/051918.067:VERBOSE1:component_installer.cc(149)] unpack_path=C:\Users\danie\AppData\Local\Temp\chrome_PuffinComponentUnpacker_BeginUnzipping60648_1082582386 install_path=C:\Users\danie\AppData\Local\Temp\WebViewcfa1e711b90646498900ca32ba7361e7638816050731238553\WidevineCdm\4.10.2830.0
+[0430/051918.070:VERBOSE1:component_installer.cc(536)] Component ready, version 4.10.2830.0 in C:\Users\danie\AppData\Local\Temp\WebViewcfa1e711b90646498900ca32ba7361e7638816050731238553\WidevineCdm\4.10.2830.0
+[0430/051918.071:VERBOSE1:widevine_cdm_component_installer.cc(98)] Registering Widevine CDM 4.10.2830.0 with Chrome
+[0430/051918.072:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://update.googleapis.com/service/update2/json
+[0430/051918.072:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051918.098:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051918.145:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051918.145:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051918.146:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/051918.146:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/051918.151:VERBOSE1:request_sender.cc(181)] Request completed from url: https://update.googleapis.com/service/update2/json
+[0430/051918.153:VERBOSE1:component_updater_service.cc(451)] Update completed with error 0
+[0430/051953.318:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/051953.318:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/054038.566:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/054038.566:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/054038.592:VERBOSE1:pref_proxy_config_tracker_impl.cc(191)] 000025E00001D000: set chrome proxy config service to 000025E000110900
+[0430/054038.596:VERBOSE1:webrtc_internals.cc(123)] Could not get the download directory.
+[0430/054038.596:VERBOSE1:media_stream_manager.cc(1410)] MSM::InitializeMaybeAsync([this=000025E0000C6200])
+[0430/054038.597:VERBOSE1:media_stream_manager.cc(1410)] MDM::MediaDevicesManager()
+[0430/054038.597:VERBOSE1:media_stream_manager.cc(1410)] MSM::MediaStreamManager([this=000025E0000C6200]))
+[0430/054038.601:VERBOSE1:device_event_log_impl.cc(194)] [05:40:38.601] Display: EVENT: screen_win.cc:828 Displays updated, count: 2
+[0430/054038.601:VERBOSE1:device_event_log_impl.cc(194)] [05:40:38.601] Display: EVENT: screen_win.cc:830 Display[2528732444] bounds=[0,0 3440x1440], workarea=[0,0 3440x1392], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/054038.601:VERBOSE1:device_event_log_impl.cc(194)] [05:40:38.601] Display: EVENT: screen_win.cc:830 Display[2779098405] bounds=[3440,0 1920x1080], workarea=[3440,0 1920x1032], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.602:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.603:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054038.609:VERBOSE1:component_installer.cc(428)] StartRegistration for Widevine Content Decryption Module
+[0430/054038.610:VERBOSE1:component_installer.cc(499)] FinishRegistration for Widevine Content Decryption Module
+[0430/054038.610:VERBOSE1:component_updater_service.cc(151)] CrxUpdateService starting up. First update attempt will take place in 60 s seconds. Next update attempt will take place in 18000 s seconds. 
+[0430/054038.647:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/054038.647:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/054038.749:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/054038.749:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/054038.764:VERBOSE1:configured_proxy_resolution_service.cc(1096)] Failed configuring with PAC script, falling-back to manual proxy servers.
+[0430/054043.765:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/054043.766:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/054044.589:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/054044.745:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/054044.837:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054044.848:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054044.849:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054044.849:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054044.850:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054044.851:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/054138.614:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://update.googleapis.com/service/update2/json?cup2key=13:9LL3OLb4cSSN4iApCQxa8F2GFghQ-QLA4QrOemxu8hM&cup2hreq=b3b5150290c88255edcc1b1809559425686eb79371206e4b0cfc39e847c3c278
+[0430/054138.615:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAHAABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/054138.615:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAAQABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/054138.615:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABBnVwZGF0ZQpnb29nbGVhcGlzA2NvbQAAQQABAAApEAAAAAAAAE4ADABKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/054138.615:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054138.640:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054138.688:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054138.688:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054138.688:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/054138.879:VERBOSE1:request_sender.cc(181)] Request completed from url: https://update.googleapis.com/service/update2/json?cup2key=13:9LL3OLb4cSSN4iApCQxa8F2GFghQ-QLA4QrOemxu8hM&cup2hreq=b3b5150290c88255edcc1b1809559425686eb79371206e4b0cfc39e847c3c278
+[0430/054138.888:VERBOSE1:background_downloader_win.cc(475)] Starting BITS download for: http://edgedl.me.gvt1.com/edgedl/release2/chrome_component/acccxbt6wwsvpxzpob4hojndwkqq_4.10.2830.0/oimompecagnajdejgnnjijobebaeigek_4.10.2830.0_win64_dldxogwi36sxwpr57ta4lg57z4.crx3
+[0430/054142.906:VERBOSE1:puffin_component_unpacker.cc(71)] Verifying component: C:\Users\danie\AppData\Local\Temp\chrome_BITS_11424_1491914708\oimompecagnajdejgnnjijobebaeigek_4.10.2830.0_win64_dldxogwi36sxwpr57ta4lg57z4.crx3
+[0430/054142.939:VERBOSE1:puffin_component_unpacker.cc(100)] Unpacking in: C:\Users\danie\AppData\Local\Temp\chrome_PuffinComponentUnpacker_BeginUnzipping11424_360044838
+[0430/054142.939:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/054142.939:ERROR:alloy_content_client.cc(110)] No localized string available for id 37223
+[0430/054142.984:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/054142.984:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/054143.026:VERBOSE1:statistics_recorder.cc(647)] Collections of all histograms
+Histogram: Memory.PartitionAlloc.PartitionRoot.ExtrasSize recorded 1 samples, mean = 4.0 (flags = 0x1)
+0  ... 
+4  -O                                                                        (1 = 100.0%) {0.0%}
+5  ... 
+
+Histogram: UMA.ChildProcess.Ping.SharedMemorySetUp recorded 1 samples, mean = 1.0 (flags = 0x1)
+0  O                                                                         (0 = 0.0%)
+1  -O                                                                        (1 = 100.0%) {0.0%}
+2  ... 
+
+Histogram: UMA.LocalHistogram recorded 1 samples, mean = 1.0
+0  O                                                                         (0 = 0.0%)
+1  -O                                                                        (1 = 100.0%) {0.0%}
+2  O                                                                         (0 = 0.0%) {100.0%}
+
+Histogram: V8.Initializer.OpenV8File.Result recorded 1 samples, mean = 0.0 (flags = 0x1)
+0  -O                                                                        (1 = 100.0%)
+1  ... 
+
+Histogram: Variations.Limits.VariationKeySize.Default recorded 1 samples, mean = 0.0 (flags = 0x1)
+0  -O                                                                        (1 = 100.0%)
+1  ... 
+
+
+[0430/054143.026:VERBOSE1:component_installer.cc(133)] Install: version=4.10.2830.0 current version=0.0.0.0
+[0430/054143.027:VERBOSE1:component_installer.cc(149)] unpack_path=C:\Users\danie\AppData\Local\Temp\chrome_PuffinComponentUnpacker_BeginUnzipping11424_360044838 install_path=C:\Users\danie\OneDrive\Documentos\UltraLibrarianDownloads\.cache\WidevineCdm\4.10.2830.0
+[0430/054143.028:VERBOSE1:component_installer.cc(536)] Component ready, version 4.10.2830.0 in C:\Users\danie\OneDrive\Documentos\UltraLibrarianDownloads\.cache\WidevineCdm\4.10.2830.0
+[0430/054143.028:VERBOSE1:widevine_cdm_component_installer.cc(98)] Registering Widevine CDM 4.10.2830.0 with Chrome
+[0430/054143.028:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://update.googleapis.com/service/update2/json
+[0430/054143.029:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054143.055:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054143.106:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054143.106:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054143.106:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/054143.106:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
+[0430/054143.110:VERBOSE1:request_sender.cc(181)] Request completed from url: https://update.googleapis.com/service/update2/json
+[0430/054143.110:VERBOSE1:component_updater_service.cc(451)] Update completed with error 0
+[0430/090600.873:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/090600.873:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/090600.896:VERBOSE1:pref_proxy_config_tracker_impl.cc(191)] 00003BC40001D000: set chrome proxy config service to 00003BC400108900
+[0430/090600.900:VERBOSE1:webrtc_internals.cc(123)] Could not get the download directory.
+[0430/090600.900:VERBOSE1:media_stream_manager.cc(1410)] MSM::InitializeMaybeAsync([this=00003BC4000C6200])
+[0430/090600.900:VERBOSE1:media_stream_manager.cc(1410)] MDM::MediaDevicesManager()
+[0430/090600.900:VERBOSE1:media_stream_manager.cc(1410)] MSM::MediaStreamManager([this=00003BC4000C6200]))
+[0430/090600.904:VERBOSE1:device_event_log_impl.cc(194)] [09:06:00.905] Display: EVENT: screen_win.cc:828 Displays updated, count: 2
+[0430/090600.904:VERBOSE1:device_event_log_impl.cc(194)] [09:06:00.906] Display: EVENT: screen_win.cc:830 Display[2528732444] bounds=[0,0 3440x1440], workarea=[0,0 3440x1392], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/090600.904:VERBOSE1:device_event_log_impl.cc(194)] [09:06:00.906] Display: EVENT: screen_win.cc:830 Display[2779098405] bounds=[3440,0 1920x1080], workarea=[3440,0 1920x1032], scale=1, rotation=0, panel_rotation=0 external detected
+[0430/090600.904:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.907:WARNING:resource_bundle.cc(1199)] locale resources are not loaded
+[0430/090600.914:VERBOSE1:component_installer.cc(428)] StartRegistration for Widevine Content Decryption Module
+[0430/090600.917:VERBOSE1:component_installer.cc(499)] FinishRegistration for Widevine Content Decryption Module
+[0430/090600.917:VERBOSE1:component_updater_service.cc(151)] CrxUpdateService starting up. First update attempt will take place in 60 s seconds. Next update attempt will take place in 18000 s seconds. 
+[0430/090600.917:VERBOSE1:component_installer.cc(536)] Component ready, version 4.10.2830.0 in C:\Users\danie\AppData\Roaming\KicadUltraLibrarianImporter\WidevineCdm\4.10.2830.0
+[0430/090600.917:VERBOSE1:widevine_cdm_component_installer.cc(98)] Registering Widevine CDM 4.10.2830.0 with Chrome
+[0430/090600.980:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/090600.980:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/090601.098:WARNING:resource_bundle.cc(464)] locale_file_path.empty() for locale 
+[0430/090601.098:ERROR:alloy_main_delegate.cc(716)] Could not load locale pak for en-US
+[0430/090601.108:VERBOSE1:configured_proxy_resolution_service.cc(1096)] Failed configuring with PAC script, falling-back to manual proxy servers.
+[0430/090606.114:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/090606.114:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/090606.964:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://chrome.cloudflare-dns.com/dns-query
+[0430/090607.074:VERBOSE1:network_delegate.cc(35)] NetworkDelegate::NotifyBeforeURLRequest: https://dns.google/dns-query?dns=AAABAAABAAAAAAABA3d3dwdnc3RhdGljA2NvbQAAAQABAAApEAAAAAAAAFQADABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0430/090607.184:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/090607.195:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/090607.195:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/090607.195:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/090607.197:VERBOSE1:tls_handshaker.cc(100)] TlsClient: Continuing handshake
+[0430/090607.197:VERBOSE1:tls_client_handshaker.cc(516)] Client: handshake finished
