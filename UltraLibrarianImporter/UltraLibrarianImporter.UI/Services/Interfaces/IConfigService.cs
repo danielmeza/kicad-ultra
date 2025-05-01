@@ -9,16 +9,6 @@ namespace UltraLibrarianImporter.UI.Services.Interfaces
     public interface IConfigService
     {
         /// <summary>
-        /// Gets the configured IPC endpoint for KiCad
-        /// </summary>
-        string IpcEndpoint { get; set; }
-        
-        /// <summary>
-        /// Gets the authentication token for IPC communication
-        /// </summary>
-        string IpcToken { get; set; }
-        
-        /// <summary>
         /// Gets the configured download directory
         /// </summary>
         string DownloadDirectory { get; set; }

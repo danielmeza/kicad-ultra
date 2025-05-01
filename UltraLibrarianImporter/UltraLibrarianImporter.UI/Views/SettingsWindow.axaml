@@ -16,12 +16,15 @@
         <!-- KiCad IPC Settings -->
         <TextBlock Grid.Row="0" Text="KiCad IPC Settings" FontWeight="Bold" Margin="0,0,0,10"/>
         
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,0,0,15">
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="IPC Endpoint:" VerticalAlignment="Center" Margin="0,0,10,5"/>
-            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding IpcEndpoint}" Margin="0,0,0,5"/>
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,15">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Named Pipe:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding PipeName}" Margin="0,0,0,5"/>
             
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="IPC Token:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding IpcToken}"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="API Token:" VerticalAlignment="Center" Margin="0,0,10,5"/>
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Token}" Margin="0,0,0,5"/>
+            
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Client Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ClientName}"/>
         </Grid>
         
         <!-- Download Settings -->

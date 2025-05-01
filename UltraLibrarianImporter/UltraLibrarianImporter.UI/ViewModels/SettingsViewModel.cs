@@ -1,10 +1,9 @@
 using System;
-using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-
 using Microsoft.Extensions.Logging;
-
+using Microsoft.Extensions.Options;
+using UltraLibrarianImporter.KiCadBindings;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.ViewModels
@@ -13,12 +12,17 @@ namespace UltraLibrarianImporter.UI.ViewModels
     {
         private readonly IConfigService _configService;
         private readonly ILogger<SettingsViewModel> _logger;
+        private readonly IOptionsMonitor<KiCadClientSettings> _kicadSettings;
+        private KiCadClientSettings _originalSettings;
 
         [ObservableProperty]
-        private string _ipcEndpoint = string.Empty;
+        private string _pipeName = string.Empty;
 
         [ObservableProperty]
-        private string _ipcToken = string.Empty;
+        private string _token = string.Empty;
+
+        [ObservableProperty]
+        private string _clientName = string.Empty;
 
         [ObservableProperty]
         private string _downloadDirectory = string.Empty;
@@ -33,27 +37,50 @@ namespace UltraLibrarianImporter.UI.ViewModels
         public event EventHandler<EventArgs>? BrowseForFolderRequested;
 
         // Events for dialog closing
-        public event EventHandler<EventArgs>? SaveRequested;
-        public event EventHandler<EventArgs>? CancelRequested;
+        public event EventHandler<bool>? SettingsSaved;
 
         /// <summary>
         /// Creates a new instance of the settings view model
         /// </summary>
         /// <param name="configService">Configuration service</param>
         /// <param name="logger">Logger for recording operations</param>
-        public SettingsViewModel(IConfigService configService, ILogger<SettingsViewModel> logger)
+        /// <param name="kicadSettings">KiCad client settings</param>
+        public SettingsViewModel(
+            IConfigService configService, 
+            ILogger<SettingsViewModel> logger,
+            IOptionsMonitor<KiCadClientSettings> kicadSettings)
         {
             _configService = configService;
             _logger = logger;
+            _kicadSettings = kicadSettings;
+            
+            // Store original settings for comparison on save
+            _originalSettings = new KiCadClientSettings
+            {
+                PipeName = _kicadSettings.CurrentValue.PipeName,
+                Token = _kicadSettings.CurrentValue.Token,
+            };
 
-            // Initialize properties from config
-            _ipcEndpoint = configService.IpcEndpoint;
-            _ipcToken = configService.IpcToken;
-            _downloadDirectory = configService.DownloadDirectory;
-            _addToGlobalLibrary = configService.AddToGlobalLibrary;
-            _cleanupAfterImport = configService.CleanupAfterImport;
+            // Initialize properties from settings
+            InitializeSettings();
             
             _logger.LogInformation("SettingsViewModel initialized");
+        }
+        
+        private void InitializeSettings()
+        {
+            // Initialize KiCad client settings
+            PipeName = _kicadSettings.CurrentValue.PipeName ?? 
+                      KiCadEnvironment.GetDefaultSocketPath();
+            Token = _kicadSettings.CurrentValue.Token ?? 
+                   KiCadEnvironment.GetApiToken() ?? string.Empty;
+            ClientName = _kicadSettings.CurrentValue.ClientName ?? 
+                        KiCadEnvironment.GenerateRandomClientName();
+            
+            // Initialize app configuration settings
+            DownloadDirectory = _configService.DownloadDirectory;
+            AddToGlobalLibrary = _configService.AddToGlobalLibrary;
+            CleanupAfterImport = _configService.CleanupAfterImport;
         }
 
         [RelayCommand]
@@ -61,9 +88,12 @@ namespace UltraLibrarianImporter.UI.ViewModels
         {
             try
             {
-                // Update config with new values
-                _configService.IpcEndpoint = IpcEndpoint;
-                _configService.IpcToken = IpcToken;
+                // Update KiCad client settings
+                var currentSettings = _kicadSettings.CurrentValue;
+                currentSettings.PipeName = PipeName;
+                currentSettings.Token = Token;
+                
+                // Update app configuration
                 _configService.DownloadDirectory = DownloadDirectory;
                 _configService.AddToGlobalLibrary = AddToGlobalLibrary;
                 _configService.CleanupAfterImport = CleanupAfterImport;
@@ -75,7 +105,7 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 _logger.LogInformation("Settings saved");
                 
                 // Trigger dialog close with success
-                SaveRequested?.Invoke(this, EventArgs.Empty);
+                SettingsSaved?.Invoke(this, true);
             }
             catch (Exception ex)
             {
@@ -93,8 +123,13 @@ namespace UltraLibrarianImporter.UI.ViewModels
         [RelayCommand]
         private void Cancel()
         {
+            // Revert any changes to KiCad settings
+            var currentSettings = _kicadSettings.CurrentValue;
+            currentSettings.PipeName = _originalSettings.PipeName;
+            currentSettings.Token = _originalSettings.Token;
+            
             // Trigger dialog close without saving
-            CancelRequested?.Invoke(this, EventArgs.Empty);
+            SettingsSaved?.Invoke(this, false);
         }
     }
 }

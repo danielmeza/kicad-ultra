@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using UltraLibrarianImporter.KiCadBindings;
 using UltraLibrarianImporter.UI.Services.Interfaces;
@@ -23,7 +24,7 @@ namespace UltraLibrarianImporter.UI.ViewModels
         private readonly ILogger<MainWindowViewModel> _logger;
         private readonly IConfigService _configService;
         private readonly KiCad _kiCad;
-        private UltraLibrarianImporter.KiCadBindings.UltraLibrarianImporter? _importer;
+        private KiCadBindings.UltraLibrarianImporter? _importer;
 
         // Use [ObservableProperty] for properties that need to notify changes
         [ObservableProperty]
@@ -68,7 +69,7 @@ namespace UltraLibrarianImporter.UI.ViewModels
             _logger.LogInformation($"MainWindowViewModel initialized, watching for downloads in {_configService.DownloadDirectory}");
         }
 
-        public string WebviewUrl => "https://www.ultralibrarian.com";
+        public string WebviewUrl => "https://app.ultralibrarian.com/Account/Login?returnUrl=%252fsearch";
 
         // Method to update the WebView loaded status from MainWindow
         public void SetWebViewLoaded(bool isLoaded)
@@ -131,12 +132,13 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 {
                     // Use DI to get a properly configured SettingsViewModel
                     var viewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
-                    settingsWindow = new SettingsWindow(_configService, _logger) { DataContext = viewModel };
+                    var options = serviceProvider.GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
+                    settingsWindow = new SettingsWindow(_configService, _logger, options) { DataContext = viewModel };
                 }
                 else
                 {
                     // Fallback to direct creation when DI is not available
-                    settingsWindow = new SettingsWindow(_configService, _logger);
+                    settingsWindow = new SettingsWindow();
                 }
                 
                 // Show the dialog and wait for the result
@@ -266,8 +268,8 @@ namespace UltraLibrarianImporter.UI.ViewModels
             {
                 _logger.LogInformation("Showing about dialog");
                 
-                // Create the about window
-                AboutWindow aboutWindow = new AboutWindow(_logger);
+                // Create the about window with the KiCad instance
+                AboutWindow aboutWindow = new AboutWindow(_logger, _kiCad);
                 
                 // Show the dialog
                 aboutWindow.ShowDialog(App.MainWindow);

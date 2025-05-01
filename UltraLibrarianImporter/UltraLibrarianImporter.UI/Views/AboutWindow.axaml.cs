@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.Logging;
+using UltraLibrarianImporter.KiCadBindings;
 using UltraLibrarianImporter.UI.ViewModels;
 
 namespace UltraLibrarianImporter.UI.Views
@@ -21,7 +22,7 @@ namespace UltraLibrarianImporter.UI.Views
 #endif
         }
 
-        public AboutWindow(ILogger logger)
+        public AboutWindow(ILogger logger, KiCad? kiCad = null)
         {
             InitializeComponent();
 #if DEBUG
@@ -33,10 +34,11 @@ namespace UltraLibrarianImporter.UI.Views
                      LoggerFactory.Create(builder => builder.AddConsole())
                      .CreateLogger<AboutWindow>();
             
-            // Create the view model with a typed logger
+            // Create the view model with a typed logger and KiCad instance
             _viewModel = new AboutViewModel(
                 LoggerFactory.Create(builder => builder.AddConsole())
-                .CreateLogger<AboutViewModel>());
+                .CreateLogger<AboutViewModel>(),
+                kiCad);
                 
             DataContext = _viewModel;
             

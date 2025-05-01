@@ -6,6 +6,8 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using UltraLibrarianImporter.KiCadBindings;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 
@@ -15,6 +17,7 @@ namespace UltraLibrarianImporter.UI.Views
     {
         private readonly SettingsViewModel _viewModel;
         private readonly ILogger<SettingsWindow> _logger;
+        private TaskCompletionSource<bool> _resultCompletionSource;
 
         public SettingsWindow()
         {
@@ -22,33 +25,37 @@ namespace UltraLibrarianImporter.UI.Views
 #if DEBUG
             this.AttachDevTools();
 #endif
+            _resultCompletionSource = new TaskCompletionSource<bool>();
         }
 
-        public SettingsWindow(IConfigService configService, ILogger logger)
+        public SettingsWindow(IConfigService configService, ILogger logger, IOptionsMonitor<KiCadClientSettings> kicadSettings)
         {
             InitializeComponent();
 #if DEBUG
             this.AttachDevTools();
 #endif
             
+            // Set up the task completion source for the dialog result
+            _resultCompletionSource = new TaskCompletionSource<bool>();
+            
             // Convert the generic logger to a typed logger
             _logger = logger as ILogger<SettingsWindow> ?? 
                      LoggerFactory.Create(builder => builder.AddConsole())
                      .CreateLogger<SettingsWindow>();
             
-            // Create the view model with a typed logger
-            _viewModel = new SettingsViewModel(configService, 
-                LoggerFactory.Create(builder => builder.AddConsole())
-                .CreateLogger<SettingsViewModel>());
+            // Create the view model with dependencies
+            _viewModel = new SettingsViewModel(
+                configService,
+                LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsViewModel>(),
+                kicadSettings);
                 
             DataContext = _viewModel;
             
             // Subscribe to the browse folder event
             _viewModel.BrowseForFolderRequested += OnBrowseForFolderRequested;
             
-            // Subscribe to save and cancel events for dialog closing
-            _viewModel.SaveRequested += OnSaveRequested;
-            _viewModel.CancelRequested += OnCancelRequested;
+            // Subscribe to settings saved event (handles both save and cancel)
+            _viewModel.SettingsSaved += OnSettingsSaved;
             
             _logger.LogInformation("Settings window initialized");
         }
@@ -57,7 +64,7 @@ namespace UltraLibrarianImporter.UI.Views
         {
             try
             {
-                // Use newer StorageProvider API instead of obsolete OpenFolderDialog
+                // Use StorageProvider API to open folder picker
                 var folderDialog = await StorageProvider.OpenFolderPickerAsync(new Avalonia.Platform.Storage.FolderPickerOpenOptions
                 {
                     Title = "Select Download Directory",
@@ -76,18 +83,23 @@ namespace UltraLibrarianImporter.UI.Views
             }
         }
 
-        private void OnSaveRequested(object? sender, EventArgs e)
+        private void OnSettingsSaved(object? sender, bool result)
         {
-            // Close dialog with success
-            _logger.LogInformation("Settings saved");
-            Close(true);
+            // Close dialog with the result (true for save, false for cancel)
+            _logger.LogInformation(result ? "Settings saved" : "Settings canceled");
+            _resultCompletionSource.SetResult(result);
+            Close(result);
         }
-
-        private void OnCancelRequested(object? sender, EventArgs e)
+        
+        /// <summary>
+        /// Shows the dialog and returns a Task that completes when the dialog is closed
+        /// </summary>
+        /// <param name="owner">The owner window</param>
+        /// <returns>A Task that completes with the dialog result (true for save, false for cancel)</returns>
+        public new Task<bool> ShowDialog(Window owner)
         {
-            // Close dialog without saving
-            _logger.LogInformation("Settings canceled");
-            Close(false);
+            base.ShowDialog(owner);
+            return _resultCompletionSource.Task;
         }
 
         private void InitializeComponent()

@@ -14,6 +14,8 @@
     <AvaloniaXaml Remove="ViewModels\NewFolder\**" />
     <Compile Remove="ViewModels\NewFolder\**" />
     <EmbeddedResource Remove="ViewModels\NewFolder\**" />
+    <Folder Include="NewFolder\" />
+    <Folder Include="Services\NewFolder\" />
     <None Remove="ViewModels\NewFolder\**" />
   </ItemGroup>
 

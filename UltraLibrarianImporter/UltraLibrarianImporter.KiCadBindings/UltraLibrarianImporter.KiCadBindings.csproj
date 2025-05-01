@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Protobuf  Include="$(ProjectDir)obj\proto\**\*.proto" ProtoRoot="$(ProjectDir)obj\proto\"  GrpcServices="None"  />
+    <Protobuf Include="$(ProjectDir)obj\proto\**\*.proto" ProtoRoot="$(ProjectDir)obj\proto\" GrpcServices="None" />
   </ItemGroup>
   
   <ItemGroup>
@@ -17,12 +17,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
+    <PackageReference Include="Rebus.nng" Version="8.6.1" />
   </ItemGroup>
   
-  <ItemGroup>
-    <Folder Include="obj\" />
-  </ItemGroup>
-
   
   <Target Name="CopyProtoFiles" BeforeTargets="Build">
     <ItemGroup>

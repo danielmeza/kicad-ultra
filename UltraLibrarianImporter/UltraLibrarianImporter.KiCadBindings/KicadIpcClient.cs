@@ -1,14 +1,11 @@
-﻿using System.Buffers;
-using System.IO.Pipes;
-
-using Google.Protobuf;
+﻿using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 
 using Kiapi.Common;
 
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
+using nng;
 namespace UltraLibrarianImporter.KiCadBindings
 {
 
@@ -18,59 +15,55 @@ namespace UltraLibrarianImporter.KiCadBindings
 
         public string? Token { get; set; }
 
-        public string? ClientName { get; set; }
+        public string? ClientName { get; internal set; }
+
+        public const string DefaultClientName = "kicad.client";
 
     }
     public class KiCadIPCClient : IDisposable
     {
-        private NamedPipeClientStream _client;
         private readonly ILogger<KiCadIPCClient> _logger;
+        private readonly IAPIFactory<INngMsg> _messageFactory;
         private KiCadClientSettings _settings;
+        private EventWaitHandle sync = new EventWaitHandle(false, EventResetMode.ManualReset);
 
-        CancellationTokenSource _connectionCancellationSource;
-
-        public KiCadIPCClient(IOptionsMonitor<KiCadClientSettings> settingsMonitor, ILogger<KiCadIPCClient> logger)
+        private IReqSocket _socket;
+        private CancellationTokenSource _connectionCancellationSource;
+        public KiCadIPCClient(IAPIFactory<INngMsg> messageFactory, KiCadClientSettings settings, ILogger<KiCadIPCClient> logger)
         {
-            settingsMonitor.OnChange(SettingsChanged);
-            _settings = settingsMonitor.CurrentValue;
+            _messageFactory = messageFactory;
+            _settings = settings;
             _logger = logger;
             _connectionCancellationSource = new CancellationTokenSource();
         }
 
-        private void SettingsChanged(KiCadClientSettings settings, string arg2)
+        public bool IsConnected
         {
-            _settings = settings;
-            if (_client?.IsConnected == true)
+            get; private set;
+
+        }
+        public ValueTask Connect(CancellationToken cancellationToken = default)
+        {
+
+            if (IsConnected)
             {
                 Disconnect();
             }
-        }
 
-        public bool IsConnected => _client.IsConnected;
-
-        private string GetDefaultPipeName()
-        {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Local/Temp/kicad/api.sock");
-        }
-
-        public async ValueTask Connect(CancellationToken cancellationToken = default)
-        {
-
-            if (_client?.IsConnected == true)
+            if (string.IsNullOrWhiteSpace(_settings.PipeName))
             {
-                return;
+                throw new KiCadConnectionException("Pipename not provided");
             }
 
-            _client = new NamedPipeClientStream(string.IsNullOrWhiteSpace(_settings.PipeName) ? _settings.PipeName : GetDefaultPipeName());
-            await _client.ConnectAsync(cancellationToken);
+            _socket = _messageFactory.RequesterOpen()
+                .ThenDial(_settings.PipeName, nng.Native.Defines.NngFlag.NNG_FLAG_ALLOC)
+                .Unwrap();
+
             _connectionCancellationSource = new CancellationTokenSource();
+            IsConnected = true;
+            return ValueTask.CompletedTask;
         }
 
-        public void Disconnect()
-        {
-            _connectionCancellationSource.Cancel();
-            _client?.Dispose();
-        }
 
         public async ValueTask<TResult> Send<TResult>(IMessage command, CancellationToken cancellationToken = default)
             where TResult : IMessage, new()
@@ -89,27 +82,29 @@ namespace UltraLibrarianImporter.KiCadBindings
 
             var envelope = new ApiRequest();
             envelope.Message = Any.Pack(command);
-            envelope.Header.KicadToken = _settings.Token;
-            envelope.Header.ClientName = _settings.PipeName;
+            envelope.Header = new ApiRequestHeader()
+            {
+                KicadToken = _settings.Token,
+                ClientName = _settings.PipeName,
+            };
+
+
             try
             {
-                var data = envelope.ToByteArray().AsMemory();
-                await _client.WriteAsync(data, token);
+                var request = _messageFactory.CreateMessage();
+                request.Append(envelope.ToByteArray());
+                _socket.SendMsg(request).Unwrap();
             }
             catch (Exception ex)
             {
                 throw new KiCadConnectionException($"Failed to send command to KiCad: {ex.Message}", ex);
             }
 
-            ApiResponse? reply = null;
-
+            ApiResponse? reply;
             try
             {
-                using var owner = MemoryPool<byte>.Shared.Rent(4 * 1000 * 1024);
-                var readBytes = await _client.ReadAsync(owner.Memory, token);
-                reply = ApiResponse.Parser.ParseFrom(owner.Memory.Span);
-
-
+                var response = _socket.RecvMsg().Unwrap();
+                reply = ApiResponse.Parser.ParseFrom(response.AsSpan());
             }
             catch (Exception ex)
             {
@@ -136,6 +131,13 @@ namespace UltraLibrarianImporter.KiCadBindings
         public async ValueTask Send(IMessage command, CancellationToken cancellationToken = default)
         {
             await Send<Empty>(command, cancellationToken);
+        }
+
+        public void Disconnect()
+        {
+            _connectionCancellationSource.Cancel();
+            IsConnected = false;
+            _socket?.Dispose();
         }
 
         public void Dispose()

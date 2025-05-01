@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Runtime.Versioning;
 
 using Avalonia;
@@ -36,9 +37,8 @@ sealed class Program
             // Create the host
             using IHost host = CreateApplicationBuilder(args).Build();
 
-
             host.RunAvaloniauiApplication(args);
-    
+
         }
         catch (Exception ex)
         {
@@ -88,10 +88,7 @@ sealed class Program
         services.AddSingleton<IConfigService, ConfigService>();
 
         //Register KiCad
-        services.AddKiCadServices((settings) =>
-        {
-            settings.ClientName = "ultralibrarian-importer";
-        });
+        services.AddUltraLibrarianKiCadServices();
 
         services.AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
     }

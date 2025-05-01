@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
@@ -16,12 +17,25 @@ using UltraLibrarianImporter.UI.Views;
 
 using WebViewControl;
 
+using Xilium.CefGlue;
+using Xilium.CefGlue.Common;
+using Xilium.CefGlue.Common.Shared;
+
 namespace UltraLibrarianImporter.UI;
 
 public partial class App : Application
 {
     public readonly IServiceProvider _serviceProvider;
     private readonly ILogger<App> _logger;
+
+    private static string[] CustomSchemes { get; } = new string[5]
+    {
+            "local",
+            "embedded",
+            "custom",
+            Uri.UriSchemeHttp,
+            Uri.UriSchemeHttps
+    };
 
     public App(IServiceProvider serviceProvider = null)
     {
@@ -47,15 +61,57 @@ public partial class App : Application
 
             if (_serviceProvider != null)
             {
+                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad");
+                var browserPath = Path.Combine(directory, "browser");
+                var cachePath = Path.Combine(browserPath, "cache");
+                var cacheRootPath = Path.Combine(browserPath, "root");
+                var resourcesPath = Path.Combine(browserPath, "resources");
+
+
+                if (!CefRuntimeLoader.IsLoaded)
+                {
+
+                    Directory.CreateDirectory(cachePath);
+                    Directory.CreateDirectory(cacheRootPath);
+                    Directory.CreateDirectory(resourcesPath);
+                    CefSettings settings2 = new CefSettings
+                    {
+                        LogSeverity = CefLogSeverity.Disable,
+                        UncaughtExceptionStackSize = 100,
+                        CachePath = cachePath,
+                        PersistSessionCookies = true,
+                        PersistUserPreferences = true,
+                        CookieableSchemesList = string.Join(",", CustomSchemes),
+                        LogFile = "browser.txt",
+                    };
+                    CustomScheme[] customSchemes = CustomSchemes.Select((string s) => new CustomScheme
+                    {
+                        SchemeName = s,
+                        SchemeHandlerFactory = new SchemeHandlerFactory()
+                    }).ToArray();
+
+                    GlobalSettings settings = new()
+                    {
+                        CachePath = cachePath,
+                        PersistCache = true,
+                    };
+
+
+                    settings.AddCommandLineSwitch("enable-experimental-web-platform-features", null);
+                    CefRuntimeLoader.Initialize(settings2, settings.CommandLineSwitches.ToArray(), customSchemes);
+
+                    AppDomain.CurrentDomain.ProcessExit += delegate
+                    {
+                        Cleanup();
+                    };
+                }
+
                 // Use dependency injection to create the main window and view model
                 var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel>();
                 var configService = _serviceProvider.GetRequiredService<IConfigService>();
                 // Configure WebView settings before loading XAML
-                //WebView.Settings.LogFile = "ceflog.txt";
-                WebView.Settings.LogFile = "ceflog.txt";
-                // Configure WebView settings before loading XAML
-                WebView.Settings.CachePath = Path.Combine(configService.DownloadDirectory, ".cache");
-                WebView.Settings.AddCommandLineSwitch("download.default_directory", configService.DownloadDirectory);
+                WebView.Settings.PersistCache = true;
+                WebView.Settings.CachePath = cachePath;
 
                 MainWindow = new MainWindow() { DataContext = viewModel };
 
@@ -63,6 +119,8 @@ public partial class App : Application
 
                 configService.EnsureDownloadDirectoryExists();
                 _logger.LogInformation("Main window created and configured");
+
+
             }
             else
             {
@@ -87,6 +145,20 @@ public partial class App : Application
         foreach (var plugin in dataValidationPluginsToRemove)
         {
             BindingPlugins.DataValidators.Remove(plugin);
+        }
+    }
+
+    [DebuggerNonUserCode]
+    public static void Cleanup()
+    {
+        CefRuntime.Shutdown();
+    }
+
+    internal class SchemeHandlerFactory : CefSchemeHandlerFactory
+    {
+        protected override CefResourceHandler Create(CefBrowser browser, CefFrame frame, string schemeName, CefRequest request)
+        {
+            return null;
         }
     }
 }

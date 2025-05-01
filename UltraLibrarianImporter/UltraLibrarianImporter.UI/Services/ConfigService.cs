@@ -1,7 +1,9 @@
-using Microsoft.Extensions.Logging;
 using System;
 using System.IO;
 using System.Text.Json;
+
+using Microsoft.Extensions.Logging;
+
 using UltraLibrarianImporter.KiCadBindings;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
@@ -16,13 +18,9 @@ namespace UltraLibrarianImporter.UI.Services
         private readonly string _configFilePath;
 
         // Default values
-        private const string DEFAULT_IPC_ENDPOINT = "http://localhost:22000";
         private const string DEFAULT_DOWNLOAD_DIR = "";
-        private const string DEFAULT_IPC_TOKEN = "";
 
         // Configuration properties
-        public string IpcEndpoint { get; set; } = DEFAULT_IPC_ENDPOINT;
-        public string IpcToken { get; set; } = DEFAULT_IPC_TOKEN;
         public string DownloadDirectory { get; set; } = DEFAULT_DOWNLOAD_DIR;
         public bool AddToGlobalLibrary { get; set; } = true;
         public bool CleanupAfterImport { get; set; } = true;
@@ -32,25 +30,17 @@ namespace UltraLibrarianImporter.UI.Services
         /// </summary>
         /// <param name="logger">Logger for recording operations</param>
         /// <param name="configFilePath">Path to the configuration file (optional)</param>
-        public ConfigService(ILogger<ConfigService> logger, string? configFilePath = null)
+        public ConfigService(ILogger<ConfigService> logger)
         {
             _logger = logger;
 
-            // If config file path is not specified, create one in the app data directory
-            if (string.IsNullOrEmpty(configFilePath))
-            {
-                string appDataDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "UltraLibrarianImporter");
-                
-                Directory.CreateDirectory(appDataDir);
-                _configFilePath = Path.Combine(appDataDir, "config.json");
-            }
-            else
-            {
-                _configFilePath = configFilePath;
-                Directory.CreateDirectory(Path.GetDirectoryName(_configFilePath) ?? ".");
-            }
+
+            string appDataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "UltraLibrarianImporter");
+
+            Directory.CreateDirectory(appDataDir);
+            _configFilePath = Path.Combine(appDataDir, "config.json");
 
             // Set default download directory if not specified
             if (string.IsNullOrEmpty(DownloadDirectory))
@@ -78,8 +68,6 @@ namespace UltraLibrarianImporter.UI.Services
 
                     if (config != null)
                     {
-                        IpcEndpoint = config.IpcEndpoint;
-                        IpcToken = config.IpcToken;
                         DownloadDirectory = config.DownloadDirectory;
                         AddToGlobalLibrary = config.AddToGlobalLibrary;
                         CleanupAfterImport = config.CleanupAfterImport;
