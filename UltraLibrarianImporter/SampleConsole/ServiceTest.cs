@@ -29,7 +29,6 @@ internal class ServiceTest : BackgroundService
         //}
 
         var project = board.GetProject();
-        var test = board.
         var variables = await project.GetTextVariables();
         var documents = kicad.GetOpenDocuments(Kiapi.Common.Types.DocumentType.DoctypeUnknown);
         var kiCadvariables = await kicad.GetTextVariables();
