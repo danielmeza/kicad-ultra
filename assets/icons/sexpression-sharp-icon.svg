@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Simple, clean design for SExpressionSharp -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#68217A;stop-opacity:1" /> <!-- VS C# purple -->
+      <stop offset="100%" style="stop-color:#3572B0;stop-opacity:1" /> <!-- Complementary blue -->
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="128" height="128" rx="22" fill="url(#bg)"/>
+  
+  <!-- Code sample representation - subtle background element -->
+  <g opacity="0.1" fill="white">
+    <rect x="24" y="32" width="80" height="64" rx="4"/>
+    <rect x="28" y="40" width="72" height="4" rx="1"/>
+    <rect x="28" y="48" width="40" height="4" rx="1"/>
+    <rect x="28" y="56" width="60" height="4" rx="1"/>
+    <rect x="28" y="64" width="36" height="4" rx="1"/>
+    <rect x="28" y="72" width="48" height="4" rx="1"/>
+    <rect x="28" y="80" width="56" height="4" rx="1"/>
+  </g>
+    <!-- The iconic S-Expression parentheses -->
+  <g>
+    <!-- Left parenthesis -->
+    <path d="M38,24 C20,50 20,78 38,104" 
+          stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/>
+    
+    <!-- Right parenthesis -->
+    <path d="M90,24 C108,50 108,78 90,104" 
+          stroke="white" stroke-width="12" stroke-linecap="round" fill="none"/>
+  </g>
+  
+  <!-- Central content -->
+  <g>
+    <!-- Stylized S -->
+    <path d="M48,54 
+             C48,44 56,38 64,38 
+             C72,38 80,44 80,54 
+             C80,64 48,70 48,84 
+             C48,94 56,100 64,100 
+             C72,100 80,94 80,84" 
+          stroke="white" stroke-width="10" stroke-linecap="round" fill="none"/>
+    
+    <!-- C# sharp symbol -->
+    <g transform="translate(64, 70) scale(0.8)">
+      <circle cx="0" cy="0" r="20" fill="#9CDCFE" stroke="white" stroke-width="3"/> <!-- Light blue from VS theme -->
+      <text x="0" y="8" font-family="Consolas, monospace" font-size="24" font-weight="bold" fill="#1E1E1E" text-anchor="middle">#</text>
+    </g>
+  </g>
+</svg>

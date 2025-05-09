@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="350"
+        x:Class="UltraLibrarianImporter.UI.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="UltraLibrarian Importer Settings"
+        Width="450" Height="350"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+        <!-- KiCad IPC Settings removed as they shouldn't be manually configurable -->
+        
+        <!-- Download Settings -->
+        <TextBlock Grid.Row="0" Text="Download Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,15">
+            <TextBlock Grid.Column="0" Text="Download Directory:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" Text="{Binding DownloadDirectory}"/>
+            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="5,0,0,0"/>
+        </Grid>
+        
+        <!-- Import Settings -->
+        <TextBlock Grid.Row="2" Text="Import Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <StackPanel Grid.Row="3" Orientation="Vertical" Spacing="10">
+            <!-- Library Name Setting -->
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Custom library name (leave empty for default)"/>
+            </Grid>
+            
+            <CheckBox Content="Add to global library" IsChecked="{Binding AddToGlobalLibrary}"/>
+            <CheckBox Content="Clean up downloaded files after import" IsChecked="{Binding CleanupAfterImport}"/>
+            <CheckBox Content="Automatically import library when downloaded" IsChecked="{Binding AutoImportWhenDownloaded}"/>
+            
+            <!-- Target Path Settings -->
+            <CheckBox Content="Use project path for libraries (recommended)" 
+                      IsChecked="{Binding UseProjectPath}" 
+                      Name="UseProjectPathCheckbox"/>
+            
+            <Grid ColumnDefinitions="Auto,*,Auto" 
+                  IsEnabled="{Binding !UseProjectPath}" 
+                  Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
+                <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library location..."/>
+                <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="5,0,0,0"/>
+            </Grid>
+        </StackPanel>
+        
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+            <Button Content="Save" Command="{Binding SaveCommand}" Width="80"/>
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80"/>
+        </StackPanel>
+    </Grid>
+</Window>
