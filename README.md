@@ -96,10 +96,7 @@ is settled: it grants push rights for a workflow file that no longer pushes anyt
 
 ## The UltraLibrarian importer plugin
 
-Two parts: a Python launcher (`plugin/`) and an Avalonia UI application (`src/importer/`). The NUKE
-build under `build/` that used to package it has not compiled since Nuke 8 removed `Nuke.Common.IO.FileSystemTasks`, and it still
-points at a `UltraLibrarianImporter/` directory that no longer exists; it is excluded from the
-solutions and from CI until it is repaired.
+Two parts: a Python launcher (`plugin/`) and an Avalonia UI application (`src/importer/`).
 
 ## License
 
