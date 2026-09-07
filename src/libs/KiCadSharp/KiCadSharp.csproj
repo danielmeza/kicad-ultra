@@ -1,9 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>KiCadSharp</PackageId>
+    <Description>A .NET client for KiCad. Talks to a running KiCad over its nng IPC API to read and edit
+boards, schematics and project settings, and reads the on-disk s-expression formats (symbol and
+footprint libraries, design rules) through SExpressionSharp.</Description>
+    <PackageTags>kicad;eda;pcb;schematic;footprint;symbol;ipc;nng</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,16 +20,11 @@
     <ProjectReference Include="..\SExpressionSharp\SExpressionSharp.csproj" />
   </ItemGroup>
 
-
   <ItemGroup>
-   
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.4" />
     <PackageReference Include="Rebus.nng" Version="8.6.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\SExpressionSharp\SExpressionSharp.csproj" />
-  </ItemGroup>
 </Project>

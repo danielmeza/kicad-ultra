@@ -27,7 +27,7 @@ namespace KiCadSharp
         private KiCadClientSettings _settings;
         private EventWaitHandle sync = new EventWaitHandle(false, EventResetMode.ManualReset);
 
-        private IReqSocket _socket;
+        private IReqSocket? _socket;
         private CancellationTokenSource _connectionCancellationSource;
         public KiCadIPCClient(IAPIFactory<INngMsg> messageFactory, KiCadClientSettings settings, ILogger<KiCadIPCClient> logger)
         {
@@ -89,11 +89,13 @@ namespace KiCadSharp
             };
 
 
+            var socket = _socket ?? throw new KiCadConnectionException("Not connected to KiCad: the request socket has not been opened.");
+
             try
             {
                 var request = _messageFactory.CreateMessage();
                 request.Append(envelope.ToByteArray());
-                _socket.SendMsg(request).Unwrap();
+                socket.SendMsg(request).Unwrap();
             }
             catch (Exception ex)
             {
@@ -103,7 +105,7 @@ namespace KiCadSharp
             ApiResponse? reply;
             try
             {
-                var response = _socket.RecvMsg().Unwrap();
+                var response = socket.RecvMsg().Unwrap();
                 reply = ApiResponse.Parser.ParseFrom(response.AsSpan());
             }
             catch (Exception ex)

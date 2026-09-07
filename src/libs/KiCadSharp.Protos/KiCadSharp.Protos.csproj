@@ -1,16 +1,42 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>KiCadSharp</RootNamespace>
+    <!-- Generated protobuf code is not ours to keep warning-clean. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>KiCadSharp.Protos</PackageId>
+    <Description>Generated C# message types for KiCad's IPC API, compiled from the .proto definitions in
+the KiCad source tree (the Kiapi.* namespaces). Shipped as its own package because these types appear
+in KiCadSharp's public surface, so consumers have to be able to name them.</Description>
+    <PackageTags>kicad;protobuf;ipc;eda;pcb;kiapi</PackageTags>
+  </PropertyGroup>
+
+  <!-- The .proto sources come from the `submodules/kicad` git submodule and are compiled in place.
+       An earlier version copied them into obj/proto from a BeforeTargets="Build" target and globbed
+       obj/proto in an ItemGroup; MSBuild evaluates items before any target runs, so the first build
+       of a fresh clone always produced an empty assembly and every Kiapi.* type failed to resolve.
+       Globbing the submodule directly removes that two-pass requirement. -->
+  <PropertyGroup>
+    <KiCadProtoRoot>$(MSBuildThisFileDirectory)../../../submodules/kicad/api/proto/</KiCadProtoRoot>
   </PropertyGroup>
 
   <ItemGroup>
-    <Protobuf Include="$(ProjectDir)obj\proto\**\*.proto" ProtoRoot="$(ProjectDir)obj\proto\" GrpcServices="None" />
+    <Protobuf Include="$(KiCadProtoRoot)**/*.proto" ProtoRoot="$(KiCadProtoRoot)" GrpcServices="None" />
   </ItemGroup>
-  
+
+  <!-- Fail loudly rather than silently emitting an empty assembly when the submodule is absent. -->
+  <Target Name="EnsureKiCadProtoSubmodule" BeforeTargets="Protobuf_BeforeCompile;CoreCompile">
+    <Error Condition="'@(Protobuf)' == ''"
+           Text="No .proto files found under $(KiCadProtoRoot). Run: git submodule update --init --depth 1 submodules/kicad" />
+  </Target>
+
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.30.2" />
     <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
@@ -20,13 +46,5 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
-
-  
-  <Target Name="CopyProtoFiles" BeforeTargets="Build">
-    <ItemGroup>
-      <ProtoFiles Include="..\..\..\submodules\kicad\api\proto\**\*.proto" />
-    </ItemGroup>
-    <Copy SourceFiles="@(ProtoFiles)" DestinationFiles="@(ProtoFiles->'$(ProjectDir)obj\proto\%(RecursiveDir)\%(Filename)%(Extension)')" />
-  </Target>
 
 </Project>
