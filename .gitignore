@@ -427,3 +427,7 @@ FodyWeavers.xsd
 # source directory does not exist. An empty one is fine and simply contributes no packages.
 local-packages/*
 !local-packages/.gitkeep
+
+# CEF writes this next to the executable when the embedded browser starts. One was committed
+# by accident; keep it out rather than rely on noticing it in a diff.
+ceflog.txt
