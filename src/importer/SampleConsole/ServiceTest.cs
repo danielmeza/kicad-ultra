@@ -2,7 +2,7 @@
 
 using Microsoft.Extensions.Hosting;
 
-using UltraLibrarianImporter.KiCadBindings;
+using KiCadSharp;
 
 internal class ServiceTest : BackgroundService
 {

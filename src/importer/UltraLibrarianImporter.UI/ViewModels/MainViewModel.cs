@@ -150,8 +150,13 @@ namespace UltraLibrarianImporter.UI.ViewModels
                     settingsWindow = new SettingsWindow();
                 }
 
-                // Show the dialog and wait for the result
-                var result = await settingsWindow.ShowDialog<bool>(App.MainWindow);
+                // Show the dialog and wait for the result. App.MainWindow is null until the
+                // framework has finished initialising; a dialog cannot be owned by nothing, so say
+                // so rather than passing null into Avalonia.
+                var owner = App.MainWindow
+                    ?? throw new InvalidOperationException(
+                        "Cannot open the settings dialog before the main window exists.");
+                var result = await settingsWindow.ShowDialog<bool>(owner);
 
                 if (result)
                 {
@@ -272,7 +277,10 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 AboutWindow aboutWindow = new AboutWindow(_logger, _kiCad);
 
                 // Show the dialog
-                aboutWindow.ShowDialog(App.MainWindow);
+                var aboutOwner = App.MainWindow
+                    ?? throw new InvalidOperationException(
+                        "Cannot open the about dialog before the main window exists.");
+                aboutWindow.ShowDialog(aboutOwner);
             }
             catch (Exception ex)
             {

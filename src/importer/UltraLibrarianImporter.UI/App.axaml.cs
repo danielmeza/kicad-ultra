@@ -37,10 +37,16 @@ public partial class App : Application
             Uri.UriSchemeHttps
     };
 
-    public App(IServiceProvider serviceProvider = null)
+    public App(IServiceProvider? serviceProvider = null)
     {
-        _serviceProvider = serviceProvider;
-        _logger = serviceProvider.GetRequiredService<ILogger<App>>();
+        // The optional parameter exists so the Avalonia XAML designer can construct App with no DI
+        // container. Every real code path supplies one, and the previous body dereferenced it
+        // unconditionally, so a null already crashed here - with a NullReferenceException that named
+        // nothing. Fail explicitly instead.
+        _serviceProvider = serviceProvider
+            ?? throw new ArgumentNullException(nameof(serviceProvider),
+                "App requires the dependency-injection container built in Program.Main.");
+        _logger = _serviceProvider.GetRequiredService<ILogger<App>>();
         _logger.LogInformation("Application starting up");
     }
 
@@ -49,7 +55,11 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public static MainWindow MainWindow { get; private set; }
+    /// <summary>
+    /// The application's main window. Null until <see cref="OnFrameworkInitializationCompleted"/>
+    /// has run, which is why it is declared nullable rather than silenced with <c>null!</c>.
+    /// </summary>
+    public static MainWindow? MainWindow { get; private set; }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -156,8 +166,10 @@ public partial class App : Application
 
     internal class SchemeHandlerFactory : CefSchemeHandlerFactory
     {
-        protected override CefResourceHandler Create(CefBrowser browser, CefFrame frame, string schemeName, CefRequest request)
+        protected override CefResourceHandler? Create(CefBrowser browser, CefFrame frame, string schemeName, CefRequest request)
         {
+            // Returning null is CEF's documented way of saying "no custom handler for this scheme";
+            // the signature is widened to match rather than returning a dummy handler.
             return null;
         }
     }

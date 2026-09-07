@@ -10,8 +10,10 @@ using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
+using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 
@@ -23,14 +25,33 @@ namespace UltraLibrarianImporter.UI.Views
         private readonly ILogger<SettingsWindow> _logger;
         private TaskCompletionSource<bool> _resultCompletionSource;
 
+        /// <summary>
+        /// Fallback constructor used when no dependency-injection container is available (and by the
+        /// Avalonia XAML designer).
+        /// </summary>
+        /// <remarks>
+        /// The previous body only created the completion source, leaving <c>_viewModel</c> and
+        /// <c>_logger</c> null: the window opened, but the first Browse or Save raised a
+        /// NullReferenceException. It now chains to the real constructor with default settings and a
+        /// no-op logger, so the fallback window is genuinely usable instead of merely constructible.
+        /// </remarks>
         public SettingsWindow()
+            : this(new ConfigService(NullLogger<ConfigService>.Instance),
+                   NullLogger<SettingsWindow>.Instance,
+                   DefaultSettingsMonitor())
         {
-            InitializeComponent();
-#if DEBUG
-            this.AttachDevTools();
-#endif
-            _resultCompletionSource = new TaskCompletionSource<bool>();
         }
+
+        /// <summary>
+        /// Builds an <see cref="IOptionsMonitor{TOptions}"/> carrying default
+        /// <see cref="KiCadClientSettings"/>, for the fallback path above.
+        /// </summary>
+        private static IOptionsMonitor<KiCadClientSettings> DefaultSettingsMonitor() =>
+            new ServiceCollection()
+                .AddOptions()
+                .Configure<KiCadClientSettings>(_ => { })
+                .BuildServiceProvider()
+                .GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
 
         public SettingsWindow(IConfigService configService, ILogger logger, IOptionsMonitor<KiCadClientSettings> kicadSettings)
         {

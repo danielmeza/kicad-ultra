@@ -7,8 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace UltraLibrarianImporter.UI.ViewModels
 {
-    [ObservableObject]
-    public partial class ViewModelBase : IDisposable
+    public partial class ViewModelBase : ObservableObject, IDisposable
     {
 
         protected void RunOnUIThread(Action action)

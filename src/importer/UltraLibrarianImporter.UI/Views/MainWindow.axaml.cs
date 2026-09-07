@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Net.Mime;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -26,7 +27,10 @@ namespace UltraLibrarianImporter.UI.Views
 {
     public partial class MainWindow : Window
     {
-        private MainViewModel ViewModel => (MainViewModel)DataContext;
+        private MainViewModel ViewModel =>
+            DataContext as MainViewModel
+            ?? throw new InvalidOperationException(
+                "MainWindow was used before its MainViewModel DataContext was assigned.");
 
         public MainWindow()
         {
@@ -86,7 +90,11 @@ namespace UltraLibrarianImporter.UI.Views
             protected override void OnBeforeDownload(CefBrowser browser, CefDownloadItem downloadItem, string suggestedName, CefBeforeDownloadCallback callback)
             {
                 var header = new ContentDisposition(downloadItem.ContentDisposition);
-                var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad", header.FileName);
+                // FileName is null when the server sends a Content-Disposition without a filename
+                // parameter; fall back to the name CEF already suggested rather than crashing the
+                // download inside Path.Combine.
+                var fileName = string.IsNullOrEmpty(header.FileName) ? suggestedName : header.FileName;
+                var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad", fileName);
                 callback.Continue(filePath, false);
                 _mainWindow.AsyncExecuteInUI(() => _mainWindow.DownloadStarted(filePath));
             }
@@ -305,6 +313,11 @@ namespace UltraLibrarianImporter.UI.Views
     {
         private const string AccessControlAllowOriginHeaderKey = "Access-Control-Allow-Origin";
 
+        // A single client for every proxied request. HttpClient is intended to be long-lived; a new
+        // one per request leaks sockets in TIME_WAIT, which is exactly the failure mode the obsolete
+        // HttpWebRequest API used to hide.
+        private static readonly HttpClient SharedHttpClient = new HttpClient();
+
         internal static readonly CefResourceType[] AcceptedResources = new CefResourceType[3]
         {
         CefResourceType.SubFrame,
@@ -318,20 +331,38 @@ namespace UltraLibrarianImporter.UI.Views
             {
                 try
                 {
-                    HttpWebRequest httpWebRequest = WebRequest.CreateHttp(request.Url);
+                    using var httpRequest = new HttpRequestMessage(HttpMethod.Get, request.Url);
                     NameValueCollection headerMap = request.GetHeaderMap();
-                    string[] allKeys = headerMap.AllKeys;
-                    foreach (string name in allKeys)
+                    // AllKeys is string?[]: a NameValueCollection may hold one null-keyed entry.
+                    foreach (string? name in headerMap.AllKeys)
                     {
-                        httpWebRequest.Headers.Add(name, headerMap[name]);
+                        if (name is null)
+                        {
+                            continue;
+                        }
+
+                        httpRequest.Headers.TryAddWithoutValidation(name, headerMap[name]);
                     }
 
-                    HttpWebResponse httpWebResponse = (HttpWebResponse)(await httpWebRequest.GetResponseAsync());
-                    base.Response = httpWebResponse.GetResponseStream();
-                    base.Headers = httpWebResponse.Headers;
-                    base.MimeType = httpWebResponse.ContentType;
-                    base.Status = (int)httpWebResponse.StatusCode;
-                    base.StatusText = httpWebResponse.StatusDescription;
+                    HttpResponseMessage httpResponse = await SharedHttpClient.SendAsync(
+                        httpRequest, HttpCompletionOption.ResponseHeadersRead);
+
+                    var responseHeaders = new WebHeaderCollection();
+                    foreach (var pair in httpResponse.Headers)
+                    {
+                        responseHeaders.Add(pair.Key, string.Join(", ", pair.Value));
+                    }
+
+                    foreach (var pair in httpResponse.Content.Headers)
+                    {
+                        responseHeaders.Add(pair.Key, string.Join(", ", pair.Value));
+                    }
+
+                    base.Response = await httpResponse.Content.ReadAsStreamAsync();
+                    base.Headers = responseHeaders;
+                    base.MimeType = httpResponse.Content.Headers.ContentType?.MediaType;
+                    base.Status = (int)httpResponse.StatusCode;
+                    base.StatusText = httpResponse.ReasonPhrase;
                     base.Headers.Remove("Access-Control-Allow-Origin");
                     base.Headers.Add("Access-Control-Allow-Origin", "*");
                 }

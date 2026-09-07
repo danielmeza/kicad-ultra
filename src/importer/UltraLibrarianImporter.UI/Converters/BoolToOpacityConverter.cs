@@ -12,7 +12,7 @@ namespace UltraLibrarianImporter.UI.Converters
         /// <summary>
         /// Converts a boolean to an opacity value
         /// </summary>
-        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             if (value is bool boolValue)
             {
@@ -24,7 +24,7 @@ namespace UltraLibrarianImporter.UI.Converters
         /// <summary>
         /// Not implemented
         /// </summary>
-        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
             throw new NotImplementedException();
         }

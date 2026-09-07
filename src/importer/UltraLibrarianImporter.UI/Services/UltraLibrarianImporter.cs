@@ -97,11 +97,29 @@ namespace UltraLibrarianImporter.UI.Services
     /// </summary>
     public class UltraLibrarianImporter
     {
+
+        /// <summary>
+        /// Returns the directory that contains <paramref name="path"/>.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Path.GetDirectoryName(string)"/> is declared as returning <c>string?</c>: it yields
+        /// <c>null</c> only when the path is a filesystem root or has no directory component. Every call
+        /// site here has already checked that the source path is non-empty, and a library can never live
+        /// directly in a root, so a <c>null</c> means the configured path is unusable. Failing here names
+        /// the offending path instead of letting <see cref="Path.Combine(string, string)"/> throw a bare
+        /// <see cref="ArgumentNullException"/> that says nothing about which setting was wrong.
+        /// </remarks>
+        private static string DirectoryOf(string path) =>
+            Path.GetDirectoryName(path)
+                ?? throw new InvalidOperationException(
+                    $"'{path}' has no parent directory, so it cannot be used as a library location. " +
+                    "Expected a path inside a project folder.");
+
         private readonly KiCad _kicad;
         private readonly ILogger _logger;
         private readonly ImportOptions _options;
-        private string _projectPath;
-        private string _projectName;
+        private string _projectPath = string.Empty;
+        private string _projectName = string.Empty;
 
         /// <summary>
         /// Creates a new instance of the UltraLibrarian Importer
@@ -264,7 +282,7 @@ namespace UltraLibrarianImporter.UI.Services
             // Make sure the target directory exists
             if (!string.IsNullOrEmpty(_projectPath))
             {
-                string targetDir = Path.GetDirectoryName(_projectPath);
+                string? targetDir = Path.GetDirectoryName(_projectPath);
                 if (!string.IsNullOrEmpty(targetDir) && !Directory.Exists(targetDir))
                 {
                     try
@@ -321,13 +339,13 @@ namespace UltraLibrarianImporter.UI.Services
                 if (!string.IsNullOrEmpty(_projectPath))
                 {
                     // Create/use a project-specific library in the project directory
-                    symbolLibPath = Path.Combine(Path.GetDirectoryName(_projectPath), $"{libraryBaseName}.kicad_sym");
+                    symbolLibPath = Path.Combine(DirectoryOf(_projectPath), $"{libraryBaseName}.kicad_sym");
                 }
                 else
                 {
                     // If no project is open, use global library path
                     var libraryTable = await GetSymbolLibraryPath();
-                    symbolLibPath = Path.Combine(Path.GetDirectoryName(libraryTable), $"{libraryBaseName}.kicad_sym");
+                    symbolLibPath = Path.Combine(DirectoryOf(libraryTable), $"{libraryBaseName}.kicad_sym");
                 }
 
                 // Create a new library or load existing
@@ -477,13 +495,13 @@ namespace UltraLibrarianImporter.UI.Services
                 if (!string.IsNullOrEmpty(_projectPath))
                 {
                     // Create/use a project-specific library in the project directory
-                    footprintLibPath = Path.Combine(Path.GetDirectoryName(_projectPath), $"{libraryBaseName}.pretty");
+                    footprintLibPath = Path.Combine(DirectoryOf(_projectPath), $"{libraryBaseName}.pretty");
                 }
                 else
                 {
                     // If no project is open, use global library path
                     var libraryTable = await GetFootprintLibraryPath();
-                    footprintLibPath = Path.Combine(Path.GetDirectoryName(libraryTable), $"{libraryBaseName}.pretty");
+                    footprintLibPath = Path.Combine(DirectoryOf(libraryTable), $"{libraryBaseName}.pretty");
                 }
 
                 // Create the .pretty directory if it doesn't exist
@@ -712,7 +730,7 @@ namespace UltraLibrarianImporter.UI.Services
                 {
                     // Create a project-specific 3D models folder
                     modelDir = Path.Combine(
-                        Path.GetDirectoryName(_projectPath),
+                        DirectoryOf(_projectPath),
                         "3d_models",
                         "UltraLibrarian");
                 }
@@ -804,7 +822,7 @@ namespace UltraLibrarianImporter.UI.Services
             // First try to get project-specific paths
             if (!string.IsNullOrEmpty(_projectPath))
             {
-                string projectDir = Path.GetDirectoryName(_projectPath);
+                string projectDir = DirectoryOf(_projectPath);
                 string symLibTable = Path.Combine(projectDir, "sym-lib-table");
                 if (File.Exists(symLibTable))
                 {
@@ -826,7 +844,7 @@ namespace UltraLibrarianImporter.UI.Services
 
             // If all else fails, use the project directory or temp directory
             return !string.IsNullOrEmpty(_projectPath)
-                ? Path.Combine(Path.GetDirectoryName(_projectPath), "symbols")
+                ? Path.Combine(DirectoryOf(_projectPath), "symbols")
                 : Path.Combine(Path.GetTempPath(), "kicad_symbols");
         }
 
@@ -838,7 +856,7 @@ namespace UltraLibrarianImporter.UI.Services
             // First try to get project-specific paths
             if (!string.IsNullOrEmpty(_projectPath))
             {
-                string projectDir = Path.GetDirectoryName(_projectPath);
+                string projectDir = DirectoryOf(_projectPath);
                 string fpLibTable = Path.Combine(projectDir, "fp-lib-table");
                 if (File.Exists(fpLibTable))
                 {
@@ -860,7 +878,7 @@ namespace UltraLibrarianImporter.UI.Services
 
             // If all else fails, use the project directory or temp directory
             return !string.IsNullOrEmpty(_projectPath)
-                ? Path.Combine(Path.GetDirectoryName(_projectPath), "footprints")
+                ? Path.Combine(DirectoryOf(_projectPath), "footprints")
                 : Path.Combine(Path.GetTempPath(), "kicad_footprints");
         }
 
@@ -870,7 +888,7 @@ namespace UltraLibrarianImporter.UI.Services
         private async Task<string> Get3DModelPath()
         {
             // First try KiCad's environment variables
-            string kicadEnv = Environment.GetEnvironmentVariable("KICAD7_3DMODEL_DIR");
+            string? kicadEnv = Environment.GetEnvironmentVariable("KICAD7_3DMODEL_DIR");
             if (!string.IsNullOrEmpty(kicadEnv) && Directory.Exists(kicadEnv))
             {
                 return kicadEnv;
@@ -879,7 +897,7 @@ namespace UltraLibrarianImporter.UI.Services
             // Try to use a project-specific path
             if (!string.IsNullOrEmpty(_projectPath))
             {
-                string projectDir = Path.GetDirectoryName(_projectPath);
+                string projectDir = DirectoryOf(_projectPath);
                 string modelDir = Path.Combine(projectDir, "3d_models");
                 Directory.CreateDirectory(modelDir);
                 return modelDir;
@@ -914,7 +932,7 @@ namespace UltraLibrarianImporter.UI.Services
 
             // If all else fails, use the project directory or temp directory
             return !string.IsNullOrEmpty(_projectPath)
-                ? Path.Combine(Path.GetDirectoryName(_projectPath), "3d_models")
+                ? Path.Combine(DirectoryOf(_projectPath), "3d_models")
                 : Path.Combine(Path.GetTempPath(), "kicad_3dmodels");
         }
     }

@@ -5,15 +5,17 @@ using Microsoft.Extensions.Logging.Console;
 
 using SampleConsole;
 
-using UltraLibrarianImporter.KiCadBindings;
+using KiCadSharp;
 
-// Check for command line arguments
-//if (args.Length > 0 && args[0] == "--test-parser")
-//{
+// Check for command line arguments. The guard below had been commented out, which made the parser
+// test run unconditionally and left the entire host bootstrap underneath it unreachable (CS0162).
+// Restoring it puts the test back behind its opt-in flag and makes the default path run the host.
+if (args.Length > 0 && args[0] == "--test-parser")
+{
     Console.WriteLine("Running KiCad Document Parser tests...");
     KiCadTest.TestKiCadParser();
     return;
-//}
+}
 
 var host = Host
     .CreateDefaultBuilder(args)
