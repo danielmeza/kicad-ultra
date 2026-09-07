@@ -1,53 +1,154 @@
-# =============================================================================================
-# OPEN DECISION - this workflow currently publishes nothing. Read before re-enabling it.
-#
-# Until the split, this repository packed and pushed SExpressionSharp, KiCadSharp,
-# KiCadSharp.Protos and KiCadSharp.Cli to nuget.org from a `v*` tag, using Trusted Publishing
-# (OIDC) through the `release` environment. All four have moved:
-#
-#     SExpressions                              -> github.com/danielmeza/sexpressions
-#     KiCadSharp, .Protos, .Cli                 -> github.com/danielmeza/kicad-sharp
-#
-# and each of those repositories now carries its own copy of this workflow and needs its own
-# nuget.org Trusted Publishing policy. There is nothing left here that is a NuGet package.
-#
-# So the publish jobs are removed rather than left pointed at a solution that no longer exists,
-# and the `v*` tag trigger is removed with them, so a stray tag cannot fire a half-defined
-# release. What this repository should release instead is the owner's call. The candidates:
-#
-#   1. The Avalonia importer as a downloadable app - `dotnet publish` per RID
-#      (win-x64 / linux-x64 / osx-arm64), attached to a GitHub Release. Most useful to users,
-#      most work: needs self-contained publish settings and probably code signing on Windows.
-#   2. The KiCad plugin bundle - zip `plugin/` in the layout KiCad's Plugin and Content Manager
-#      expects, attached to a GitHub Release, and eventually a PCM repository entry.
-#      Smallest change, and arguably the actual product of this repository.
-#   3. Nothing. Delete this file, keep ci.yml, and let people build from source.
-#
-# Recommendation: (2) now, (1) when the importer is ready to be handed to non-developers.
-# They are not exclusive - one release can carry both.
-#
-# Whichever is chosen, the stale nuget.org Trusted Publishing policy for danielmeza/kicad-ultra
-# should be deleted: it grants push rights for a workflow file that no longer pushes anything.
-# =============================================================================================
-
 name: Release
 
+# Builds the KiCad plugin bundle and attaches it to a GitHub Release.
+#
+# This replaces the NuGet publishing that used to live here. SExpressions, KiCadSharp,
+# KiCadSharp.Protos and KiCadSharp.Cli have moved to danielmeza/sexpressions and
+# danielmeza/kicad-sharp, each of which now publishes itself; there is nothing left in this
+# repository that is a NuGet package.
+#
+# Of the three candidates written at the top of the previous version of this file, this implements
+# (2), the KiCad plugin bundle:
+#
+#   (1) The Avalonia importer as a per-RID downloadable app was NOT taken. The importer only
+#       started compiling in the change that ported it to KiCadSharp, it has no smoke test, and
+#       shipping self-contained binaries to end users would need code signing on Windows to avoid
+#       SmartScreen. That is a release to make once the app has been exercised, not before.
+#   (3) Deleting this file and letting people build from source was NOT taken, because the plugin
+#       is the thing users actually install, and asking them to build a KiCad plugin by hand is
+#       what the Plugin and Content Manager exists to avoid.
+#
+# The two are not exclusive: when the importer is ready to hand to non-developers, add a publish
+# job here and one release can carry both.
+
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build (no artifacts published yet - see the note at the top of this file)
+  bundle:
+    name: Build plugin bundle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          VER=0.0.0
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Build
-        run: dotnet build UltraLibrarianImporter.sln -c Release
+      # PCM expects an archive whose root holds metadata.json plus the content directories.
+      # An API plugin's plugin.json and entrypoint live under plugins/; the PCM icon is
+      # resources/icon.png, which must be exactly 64x64 - hence icon-pcm-64.png rather than the 48x48
+      # icon-light.png the plugin itself uses in the KiCad toolbar.
+      - name: Stage the PCM layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staging/plugins staging/resources
+          cp plugin/plugin.json plugin/importer_launcher.py plugin/__init__.py \
+             plugin/requirements.txt plugin/LICENSE plugin/README.md staging/plugins/
+          cp -r plugin/resources staging/plugins/
+          cp plugin/resources/icon-pcm-64.png staging/resources/icon.png
+
+      - name: Write metadata.json
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          cat > staging/metadata.json <<JSON
+          {
+            "\$schema": "https://go.kicad.org/pcm/schemas/v1",
+            "name": "KiCad UltraLibrarian Importer",
+            "description": "Import schematic symbols, footprints and 3D models from UltraLibrarian into KiCad",
+            "description_full": "Browse UltraLibrarian and import the schematic symbol, footprint and 3D model for a part straight into the open KiCad project, without leaving KiCad.",
+            "identifier": "com.github.danielmeza.kicad-ultralibrarian-importer",
+            "type": "plugin",
+            "author": { "name": "Daniel Meza", "contact": { "web": "https://github.com/danielmeza" } },
+            "license": "MIT",
+            "resources": { "homepage": "https://github.com/danielmeza/kicad-ultra" },
+            "versions": [
+              { "version": "${VERSION}", "status": "stable", "kicad_version": "9.0" }
+            ]
+          }
+          JSON
+          python3 -m json.tool staging/metadata.json > /dev/null
+
+      - name: Create the archive
+        id: pack
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ARCHIVE="dist/kicad-ultralibrarian-importer-${VERSION}.zip"
+          (cd staging && zip -qr "../${ARCHIVE}" .)
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "${ARCHIVE}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "${ARCHIVE}")" >> "$GITHUB_OUTPUT"
+          echo "install_size=$(du -sb staging | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      # The entry a PCM repository's packages.json needs. Emitted as a release asset so adding this
+      # plugin to a repository later is copy-and-paste rather than hand-computing hashes.
+      - name: Write the PCM repository entry
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA: ${{ steps.pack.outputs.sha256 }}
+          SIZE: ${{ steps.pack.outputs.size }}
+          INSTALL_SIZE: ${{ steps.pack.outputs.install_size }}
+        run: |
+          set -euo pipefail
+          ARCHIVE_NAME="kicad-ultralibrarian-importer-${VERSION}.zip"
+          python3 - <<'PY' > dist/pcm-entry.json
+          import json, os
+          version = os.environ["VERSION"]
+          entry = json.load(open("staging/metadata.json"))
+          entry["versions"][0].update({
+              "download_sha256": os.environ["SHA"],
+              "download_size": int(os.environ["SIZE"]),
+              "install_size": int(os.environ["INSTALL_SIZE"]),
+              "download_url": (
+                  "https://github.com/danielmeza/kicad-ultra/releases/download/"
+                  f"v{version}/kicad-ultralibrarian-importer-{version}.zip"
+              ),
+          })
+          print(json.dumps(entry, indent=2))
+          PY
+          python3 -m json.tool dist/pcm-entry.json > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kicad-plugin-bundle
+          path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: bundle
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kicad-plugin-bundle
+          path: dist
+
+      - name: List artifacts
+        run: find dist -type f
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
