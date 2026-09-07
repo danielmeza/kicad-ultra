@@ -4,7 +4,7 @@ using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
 
-using UltraLibrarianImporter.KiCadBindings;
+using KiCadSharp;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.Services

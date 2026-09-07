@@ -7,6 +7,7 @@ using Avalonia.Markup.Xaml;
 using KiCadSharp;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using UltraLibrarianImporter.UI.ViewModels;
 
@@ -17,12 +18,14 @@ namespace UltraLibrarianImporter.UI.Views
         private readonly AboutViewModel _viewModel;
         private readonly ILogger<AboutWindow> _logger;
 
+        /// <summary>
+        /// Parameterless constructor for the Avalonia XAML designer. It chains to the real
+        /// constructor with a no-op logger so that every construction path leaves
+        /// <c>_logger</c> and <c>_viewModel</c> assigned; the previous body left both null.
+        /// </summary>
         public AboutWindow()
+            : this(NullLogger.Instance)
         {
-            InitializeComponent();
-#if DEBUG
-            this.AttachDevTools();
-#endif
         }
 
         public AboutWindow(ILogger logger, KiCad? kiCad = null)

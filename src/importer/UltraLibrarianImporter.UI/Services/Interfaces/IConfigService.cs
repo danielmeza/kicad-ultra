@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using UltraLibrarianImporter.KiCadBindings;
+using KiCadSharp;
 
 namespace UltraLibrarianImporter.UI.Services.Interfaces
 {

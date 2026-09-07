@@ -24,30 +24,13 @@ jobs:
       - name: Restore
         run: dotnet restore UltraLibrarianImporter.sln
 
-      # ---------------------------------------------------------------------------------------
-      # `dotnet build` is NOT run here, and that is a statement about this repository's state
-      # rather than a workaround for the split.
-      #
-      # The Avalonia importer has not compiled since before the libraries moved out. On master, at
-      # the commit this branch came from, `dotnet build UltraLibrarianImporter.sln` fails with the
-      # same 10 errors it fails with here - byte-for-byte the same set, verified by building both:
-      #
-      #   6x CS0234  namespace 'UltraLibrarianImporter.KiCadBindings' does not exist
-      #              (Program.cs, ConfigService.cs, IConfigService.cs) - a project that is not in
-      #              the tree and never was in this history; the app needs porting to KiCadSharp
-      #   2x CS0246  'UltraLibrarianImporter' / 'IKiCadFactory' not found in SampleConsole
-      #   4x CS8767  nullability mismatch in BoolToOpacityConverter
-      #   1x CS8625  null literal to non-nullable in App.axaml.cs
-      #
-      # CI previously built `KiCadSharp.slnx` - the libraries - which is why this was never
-      # visible: the one solution that compiled is exactly the part that has now moved out.
-      #
-      # Re-enable the two steps below in the same change that ports the importer to KiCadSharp.
-      # Leaving them on now would only produce a permanently red CI that tells nobody anything.
-      #
-      # - name: Build
-      #   run: dotnet build UltraLibrarianImporter.sln -c Release --no-restore
-      #
-      # - name: Test
-      #   run: dotnet test UltraLibrarianImporter.sln -c Release --no-build
-      # ---------------------------------------------------------------------------------------
+      # The importer now compiles: the five files that still imported the pre-rename
+      # `UltraLibrarianImporter.KiCadBindings` namespace were repointed at KiCadSharp, and the
+      # nullable/analyzer diagnostics that `TreatWarningsAsErrors` promotes were fixed at source.
+      # This step is what keeps it that way.
+      - name: Build
+        run: dotnet build UltraLibrarianImporter.sln -c Release --no-restore
+
+      # No `dotnet test` step: UltraLibrarianImporter.sln contains only the Avalonia app and the
+      # SampleConsole harness, and neither is a test project. Add one here with the first test
+      # project rather than running `dotnet test` over a solution that has nothing to run.

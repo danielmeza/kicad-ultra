@@ -12,7 +12,7 @@ using Microsoft.Extensions.Hosting;
 
 using NLog;
 
-using UltraLibrarianImporter.KiCadBindings;
+using KiCadSharp;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
