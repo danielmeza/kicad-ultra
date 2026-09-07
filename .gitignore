@@ -421,5 +421,9 @@ FodyWeavers.xsd
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
 
 
-# Local package feed used by scripts/use-local-libs.sh
-local-packages/
+# Local package feed used by scripts/use-local-libs.sh.
+# The folder itself is tracked (via .gitkeep) and only its contents are ignored: NuGet.config
+# registers it as a package source, and NuGet fails restore with NU1301 when a configured local
+# source directory does not exist. An empty one is fine and simply contributes no packages.
+local-packages/*
+!local-packages/.gitkeep
