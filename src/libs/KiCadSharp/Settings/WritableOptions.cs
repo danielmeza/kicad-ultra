@@ -48,11 +48,14 @@ namespace KiCadSharp.Settings
         {
             var fileProvider = _environment.ContentRootFileProvider;
             var fileInfo = fileProvider.GetFileInfo(_file);
-            var physicalPath = fileInfo.PhysicalPath;
+            var physicalPath = fileInfo.PhysicalPath
+                ?? throw new InvalidOperationException($"Settings file '{_file}' has no physical path; a non-physical file provider cannot be written back to.");
 
-            var jObject = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(physicalPath));
-            var sectionObject = jObject.TryGetValue(_section, out JToken section) ?
-                JsonConvert.DeserializeObject<T>(section.ToString()) : Value ?? new T();
+            var jObject = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(physicalPath))
+                ?? throw new InvalidOperationException($"Settings file '{physicalPath}' does not contain a JSON object.");
+            var sectionObject = jObject.TryGetValue(_section, out JToken? section) && section is not null
+                ? JsonConvert.DeserializeObject<T>(section.ToString()) ?? new T()
+                : Value ?? new T();
 
             applyChanges(sectionObject);
 

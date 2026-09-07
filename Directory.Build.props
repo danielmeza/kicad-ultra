@@ -1,0 +1,43 @@
+<Project>
+
+  <!-- Shared build settings for every project in the repository. Individual projects override the
+       target framework or packaging flags as needed. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- The libraries use explicit usings; keep implicit usings off to match. -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Security-audit findings (vulnerable packages) must fail the build/CI, not just warn. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- Libraries and the CLI opt into packaging individually; apps and samples stay false. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- NuGet package metadata, applied to the projects that set IsPackable=true.
+       Per-package PackageId/Description/PackageTags live in each packable project. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Daniel Meza</Authors>
+    <!-- Packages are published to the Gasoleo Technology organization on nuget.org. -->
+    <Company>Gasoleo Technology</Company>
+    <Product>KiCadSharp</Product>
+    <Copyright>Copyright (c) 2026 Daniel Meza / Gasoleo Technology</Copyright>
+    <PackageProjectUrl>https://github.com/danielmeza/kicad-ultra</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/danielmeza/kicad-ultra</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- SPDX license expression; needs no packed license file. -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!-- Source Link: embed repo/commit info and untracked sources so consumers can step into the code.
+         The GitHub Source Link provider ships in the .NET SDK, so no extra package reference is needed. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <!-- Deterministic, CI-stamped builds when running on GitHub Actions. -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

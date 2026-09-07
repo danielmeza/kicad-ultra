@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -37,6 +37,9 @@
     </PackageReference>
     <PackageReference Include="Avalonia.Xaml.Interactions" Version="11.3.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <!-- Pins the transitive Tmds.DBus.Protocol that Avalonia 11.3.0 brings in on Linux past
+         GHSA-xrw6-gwf8-vvr9 (high, fixed in 0.21.3). NuGetAuditMode=all fails the build on it. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
