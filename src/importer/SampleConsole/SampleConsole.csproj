@@ -12,8 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\libs\KiCadSharp\KiCadSharp.csproj" />
-    <ProjectReference Include="..\..\libs\SExpressionSharp\SExpressionSharp.csproj" />
+    <!-- Both libraries moved to their own repositories and ship from nuget.org:
+         danielmeza/kicad-sharp and danielmeza/sexpressions. -->
+    <PackageReference Include="KiCadSharp" Version="$(KiCadSharpVersion)" />
+    <PackageReference Include="SExpressions" Version="$(SExpressionsVersion)" />
   </ItemGroup>
 
 </Project>

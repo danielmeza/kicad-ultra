@@ -49,6 +49,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\libs\KiCadSharp\KiCadSharp.csproj" />
+    <!-- KiCadSharp moved to its own repository (danielmeza/kicad-sharp) and ships from nuget.org.
+         $(KiCadSharpVersion) selects the version; see README, "Developing against local library
+         sources", for the local folder feed that builds this against an unreleased checkout. -->
+    <PackageReference Include="KiCadSharp" Version="$(KiCadSharpVersion)" />
   </ItemGroup>
 </Project>

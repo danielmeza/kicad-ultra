@@ -4,7 +4,7 @@ using System.IO;
 using KiCadSharp;
 using KiCadSharp.Documents;
 
-using SExpressionSharp;
+using SExpressions;
 
 namespace SampleConsole
 {

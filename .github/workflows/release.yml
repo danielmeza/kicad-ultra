@@ -1,109 +1,53 @@
+# =============================================================================================
+# OPEN DECISION - this workflow currently publishes nothing. Read before re-enabling it.
+#
+# Until the split, this repository packed and pushed SExpressionSharp, KiCadSharp,
+# KiCadSharp.Protos and KiCadSharp.Cli to nuget.org from a `v*` tag, using Trusted Publishing
+# (OIDC) through the `release` environment. All four have moved:
+#
+#     SExpressions                              -> github.com/danielmeza/sexpressions
+#     KiCadSharp, .Protos, .Cli                 -> github.com/danielmeza/kicad-sharp
+#
+# and each of those repositories now carries its own copy of this workflow and needs its own
+# nuget.org Trusted Publishing policy. There is nothing left here that is a NuGet package.
+#
+# So the publish jobs are removed rather than left pointed at a solution that no longer exists,
+# and the `v*` tag trigger is removed with them, so a stray tag cannot fire a half-defined
+# release. What this repository should release instead is the owner's call. The candidates:
+#
+#   1. The Avalonia importer as a downloadable app - `dotnet publish` per RID
+#      (win-x64 / linux-x64 / osx-arm64), attached to a GitHub Release. Most useful to users,
+#      most work: needs self-contained publish settings and probably code signing on Windows.
+#   2. The KiCad plugin bundle - zip `plugin/` in the layout KiCad's Plugin and Content Manager
+#      expects, attached to a GitHub Release, and eventually a PCM repository entry.
+#      Smallest change, and arguably the actual product of this repository.
+#   3. Nothing. Delete this file, keep ci.yml, and let people build from source.
+#
+# Recommendation: (2) now, (1) when the importer is ready to be handed to non-developers.
+# They are not exclusive - one release can carry both.
+#
+# Whichever is chosen, the stale nuget.org Trusted Publishing policy for danielmeza/kicad-ultra
+# should be deleted: it grants push rights for a workflow file that no longer pushes anything.
+# =============================================================================================
+
 name: Release
 
-# Packs the NuGet libraries and the dotnet tool, publishes them to nuget.org with Trusted Publishing
-# (OIDC, no stored API key) and creates a GitHub Release. Trigger by pushing a tag like `v1.2.3`, or
-# run manually (workflow_dispatch) to build the packages without publishing anything.
-
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  pack:
-    name: Pack
+  build:
+    name: Build (no artifacts published yet - see the note at the top of this file)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
 
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      - name: Determine version
-        id: ver
-        shell: bash
-        run: |
-          VER=0.1.0
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; fi
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Pack
-        run: dotnet pack KiCadSharp.slnx -c Release -p:Version=${{ steps.ver.outputs.version }} -o packages
-
-      - name: List packages
-        run: ls -l packages
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nupkg
-          path: |
-            packages/*.nupkg
-            packages/*.snupkg
-
-  publish-nuget:
-    name: Publish to NuGet.org
-    needs: pack
-    runs-on: ubuntu-latest
-    # Only publish for real version tags (v*), never on a manual workflow_dispatch dry run.
-    if: startsWith(github.ref, 'refs/tags/')
-    # Scopes the OIDC token to this environment; also lets you add a manual approval gate in
-    # Settings -> Environments -> release before anything reaches nuget.org.
-    environment: release
-    permissions:
-      id-token: write   # required: mints the GitHub OIDC token for NuGet Trusted Publishing
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: nupkg
-          path: packages
-
-      # Exchanges the GitHub OIDC token for a short-lived (1 h) nuget.org API key. No stored key.
-      # NUGET_USER is your nuget.org profile name (NOT your email); set it as a repo/environment secret.
-      - name: NuGet login (OIDC -> short-lived API key)
-        id: login
-        uses: NuGet/login@v1
-        with:
-          user: ${{ secrets.NUGET_USER }}
-
-      # Pushing *.nupkg also pushes each matching *.snupkg symbol package automatically.
-      - name: Push packages
-        run: >
-          dotnet nuget push "packages/*.nupkg"
-          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
-
-  release:
-    name: Create GitHub Release
-    needs: pack
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: nupkg
-          path: artifacts
-
-      - name: List artifacts
-        run: find artifacts -type f
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          generate_release_notes: true
-          fail_on_unmatched_files: false
+      - name: Build
+        run: dotnet build UltraLibrarianImporter.sln -c Release
