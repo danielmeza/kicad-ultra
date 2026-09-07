@@ -5,8 +5,6 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UltraLibrarianImporter.UI", "src\importer\UltraLibrarianImporter.UI\UltraLibrarianImporter.UI.csproj", "{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "_build", "build\_build.csproj", "{303528CA-C5F0-40FB-A7C6-C1844A311CD2}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleConsole", "src\importer\SampleConsole\SampleConsole.csproj", "{538FBF22-642B-49E6-B1AC-85E901B8916D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "importer", "importer", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
@@ -20,6 +18,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KiCadSharp.Protos", "src\libs\KiCadSharp.Protos\KiCadSharp.Protos.csproj", "{305BB739-E0D0-46D8-96FF-EE4419495AC4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SExpressionSharp.Tests", "src\libs\SExpressionSharp.Tests\SExpressionSharp.Tests.csproj", "{B4D636C4-28AA-30CF-D0C9-7910CCB11D51}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KiCadSharp.Cli", "src\tools\KiCadSharp.Cli\KiCadSharp.Cli.csproj", "{78623C0F-33BD-4925-9233-85C855FD683B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -43,16 +45,6 @@ Global
 		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x64.Build.0 = Release|Any CPU
 		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x86.ActiveCfg = Release|Any CPU
 		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x86.Build.0 = Release|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Debug|x64.Build.0 = Debug|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Debug|x86.Build.0 = Debug|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Release|x64.ActiveCfg = Release|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Release|x64.Build.0 = Release|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Release|x86.ActiveCfg = Release|Any CPU
-		{303528CA-C5F0-40FB-A7C6-C1844A311CD2}.Release|x86.Build.0 = Release|Any CPU
 		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -113,6 +105,18 @@ Global
 		{B4D636C4-28AA-30CF-D0C9-7910CCB11D51}.Release|x64.Build.0 = Release|Any CPU
 		{B4D636C4-28AA-30CF-D0C9-7910CCB11D51}.Release|x86.ActiveCfg = Release|Any CPU
 		{B4D636C4-28AA-30CF-D0C9-7910CCB11D51}.Release|x86.Build.0 = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|x64.Build.0 = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Debug|x86.Build.0 = Debug|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|x64.ActiveCfg = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|x64.Build.0 = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|x86.ActiveCfg = Release|Any CPU
+		{78623C0F-33BD-4925-9233-85C855FD683B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -124,6 +128,7 @@ Global
 		{4ABA8AA9-BCBD-4EFC-9E6A-3180B8FD4D53} = {4E8D7693-C0B7-4EC3-B83B-B1424713DB9C}
 		{305BB739-E0D0-46D8-96FF-EE4419495AC4} = {4E8D7693-C0B7-4EC3-B83B-B1424713DB9C}
 		{B4D636C4-28AA-30CF-D0C9-7910CCB11D51} = {4E8D7693-C0B7-4EC3-B83B-B1424713DB9C}
+		{78623C0F-33BD-4925-9233-85C855FD683B} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {4A522EBE-2E12-4056-B039-9782CB594289}
