@@ -10,7 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.11.4" />
+    <PackageReference Include="Microsoft.Build.Tasks.Core" Version="17.8.43" />
+    <PackageReference Include="NuGet.Common" Version="5.11.5" />
     <PackageReference Include="Nuke.Common" Version="7.0.5" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
   </ItemGroup>
 
 </Project>
