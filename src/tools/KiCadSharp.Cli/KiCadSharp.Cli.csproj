@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>KiCadSharp.Cli</RootNamespace>
+    <AssemblyName>kicadsharp</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <!-- PackAsTool already stamps the package type NuGet and `dotnet tool install` look for
+         (DotnetTool). An extra explicit <PackageType>Tool</PackageType> would add the legacy
+         NuGet 3.x tools type alongside it, which nothing reads. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>kicadsharp</ToolCommandName>
+    <PackageId>KiCadSharp.Cli</PackageId>
+    <Description>A dotnet tool for working with KiCad's s-expression files from the command line:
+summarise a file's structure, reformat it through a lossless parse/write round trip, read a value by
+path, and validate that a file parses. Installs as `kicadsharp`.</Description>
+    <PackageTags>kicad;cli;dotnet-tool;s-expression;sexpr;eda;pcb;schematic</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\libs\SExpressionSharp\SExpressionSharp.csproj" />
+  </ItemGroup>
+
+</Project>
