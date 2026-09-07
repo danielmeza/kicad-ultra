@@ -178,9 +178,16 @@ public static class Corpus
         return (dstDir, target);
     }
 
-    /// <summary>Strips the two lines a netlist export stamps with the source path and the run date.</summary>
-    public static string NormalizeNetlist(string netlist)
+    /// <summary>
+    /// Strips the lines a netlist export stamps with the source path, the run date and the tool
+    /// version, and rewrites the staging directory out of the "Sheetfile" property KiCad emits as a
+    /// path relative to the working directory.
+    /// </summary>
+    public static string NormalizeNetlist(string netlist, string stagingDir)
     {
+        netlist = netlist.Replace(stagingDir, "<staged>", StringComparison.Ordinal)
+                         .Replace(Path.GetFileName(stagingDir), "<staged>", StringComparison.Ordinal);
+
         var lines = netlist.Replace("\r\n", "\n").Split('\n');
         return string.Join('\n', lines.Where(l =>
         {

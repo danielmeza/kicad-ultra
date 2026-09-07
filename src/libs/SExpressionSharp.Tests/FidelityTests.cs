@@ -59,9 +59,13 @@ public class FidelityTests
     [Fact]
     public void Quoting_IsPreservedExactly_ByTheCanonicalWriter()
     {
+        if (Corpus.Missing)
+        {
+            return;
+        }
+
         var src = Corpus.Read("templates/orbion-esp32s3/orbion-esp32s3.kicad_sch");
-        var root = new SExpressionParser().Parse(src);
-        var written = new SExpressionWriter().Write(root);
+        var written = RoundTripCanonical(src);
 
         // Every one of these is quoted in the source; KiCad refuses the file when they are not.
         Assert.Contains("(generator \"eeschema\")", written, StringComparison.Ordinal);
@@ -74,7 +78,7 @@ public class FidelityTests
     [Fact]
     public void ValuesAndChildren_KeepTheirSourceOrder()
     {
-        var root = new SExpressionParser().Parse("(a 1 (b) 2 (c) 3)");
+        var root = new SExpressionParser(new SExpressionParserOptions { TrackSource = false }).Parse("(a 1 (b) 2 (c) 3)");
         var written = new SExpressionWriter().Write(root).Replace("\r\n", "\n");
         var flat = string.Join(' ', written.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()));
         Assert.Equal("(a 1 (b) 2 (c) 3 )", flat);
@@ -85,12 +89,24 @@ public class FidelityTests
     [Fact]
     public void Parse_OnAMultiFormDocument_ReturnsOnlyTheFirstForm()
     {
+        if (Corpus.Missing)
+        {
+            return;
+        }
+
         // This is the compat contract, and the reason ParseAll has to exist: a .kicad_dru is a
         // *sequence* of top-level forms, and Parse() by design yields the first one only.
         var src = Corpus.Read("config/design-rules/jlcpcb-4layer.kicad_dru");
         var first = new SExpressionParser().Parse(src);
         Assert.Equal("version", first.Token);
         Assert.True(src.Length > 20_000, "corpus file unexpectedly small");
+
+        // ParseAll is the fix: every top-level form, in order, with the comments between them.
+        var document = SDocument.Parse(src);
+        Assert.True(document.Count > 20, $"expected many rules, found {document.Count}");
+        Assert.Equal("version", document[0].Token);
+        Assert.All(document.Skip(1), form => Assert.Equal("rule", form.Token));
+        Assert.NotEmpty(document.Comments);
     }
 
     // ------------------------------------------------------------ acceptance 2: bytes
@@ -130,8 +146,8 @@ public class FidelityTests
         var candidate = Corpus.Stage(relative, written);
         try
         {
-            var a = ExportNetlist(baseline.File);
-            var b = ExportNetlist(candidate.File);
+            var a = ExportNetlist(baseline.File, baseline.Dir);
+            var b = ExportNetlist(candidate.File, candidate.Dir);
             Assert.Equal(a, b);
         }
         finally
@@ -153,9 +169,15 @@ public class FidelityTests
         var src = Corpus.Read(relative);
         var written = RoundTripPreserving(src);
         var expected = src.Split('\n').Count(l => l.TrimStart().StartsWith('#'));
-        var actual = written.Split('\n').Count(l => l.TrimStart().StartsWith('#'));
-        Assert.Equal(expected, actual);
         Assert.True(expected > 100, $"expected a comment-heavy file, found {expected} comment lines");
+        Assert.Equal(expected, written.Split('\n').Count(l => l.TrimStart().StartsWith('#')));
+
+        // The canonical writer throws the layout away but must still keep every comment.
+        var canonical = RoundTripCanonical(src);
+        Assert.Equal(expected, canonical.Split('\n').Count(l => l.TrimStart().StartsWith('#')));
+
+        // ...and the same number of rules.
+        Assert.Equal(SDocument.Parse(src).Count, SDocument.Parse(canonical).Count);
     }
 
     // ------------------------------------------------- acceptance 3: token preservation
@@ -203,9 +225,12 @@ public class FidelityTests
 
     // ------------------------------------------------------------------------- helpers
 
-    private static string RoundTripPreserving(string src) => new SExpressionWriter().Write(new SExpressionParser().Parse(src));
+    /// <summary>Parse the whole file and write it back, keeping whatever layout the source had.</summary>
+    private static string RoundTripPreserving(string src) => SDocument.Parse(src).ToText();
 
-    private static string RoundTripCanonical(string src) => new SExpressionWriter().Write(new SExpressionParser().Parse(src));
+    /// <summary>Parse the whole file and re-format it from the tree, keeping nothing but the data.</summary>
+    private static string RoundTripCanonical(string src) =>
+        SDocument.Parse(src).ToText(new SExpressionWriterOptions { Format = SExpressionFormat.Canonical });
 
     private static int CountTokenInDocument(string text, string token) => CountToken(new SExpressionParser().Parse(text), token);
 
@@ -220,12 +245,12 @@ public class FidelityTests
         return n;
     }
 
-    private static string ExportNetlist(string schematic)
+    private static string ExportNetlist(string schematic, string stagingDir)
     {
         var outFile = Path.Combine(Path.GetDirectoryName(schematic)!, "netlist.net");
         var r = Corpus.RunCli("sch", "export", "netlist", "--format", "kicadsexpr", "-o", outFile, schematic);
         Assert.True(File.Exists(outFile), $"kicad-cli did not produce a netlist (exit {r.ExitCode}): {r.All}");
-        return Corpus.NormalizeNetlist(File.ReadAllText(outFile));
+        return Corpus.NormalizeNetlist(File.ReadAllText(outFile), stagingDir);
     }
 
     private static string FirstDifference(string a, string b)
