@@ -1,16 +1,33 @@
 # kicad-ultra
 
-.NET libraries and tooling for KiCad, plus a KiCad plugin that imports components from
-UltraLibrarian.
+A KiCad plugin that imports components from UltraLibrarian, in two parts: a Python launcher
+(`plugin/`) and an Avalonia UI application (`src/importer/`).
 
-| Package | What it is |
+## The libraries moved out
+
+The .NET libraries and the `kicadsharp` tool that used to live here now have their own repositories
+and their own packages. This repository consumes them from nuget.org like any other dependency.
+
+| Package | Repository |
 |---|---|
-| [`SExpressionSharp`](https://www.nuget.org/packages/SExpressionSharp) | A small, dependency-free s-expression parser and writer. Nothing KiCad-specific. |
-| [`KiCadSharp.Protos`](https://www.nuget.org/packages/KiCadSharp.Protos) | The generated `Kiapi.*` protobuf message types for KiCad's IPC API. |
-| [`KiCadSharp`](https://www.nuget.org/packages/KiCadSharp) | The KiCad layer: talks to a running KiCad over its nng IPC API, and reads the on-disk s-expression formats. |
-| [`KiCadSharp.Cli`](https://www.nuget.org/packages/KiCadSharp.Cli) | A `dotnet tool` (`kicadsharp`) for inspecting, reformatting, querying and validating KiCad files. |
+| [`SExpressions`](https://www.nuget.org/packages/SExpressions) (was `SExpressionSharp`) | [danielmeza/sexpressions](https://github.com/danielmeza/sexpressions) |
+| [`KiCadSharp`](https://www.nuget.org/packages/KiCadSharp) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
+| [`KiCadSharp.Protos`](https://www.nuget.org/packages/KiCadSharp.Protos) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
+| [`KiCadSharp.Cli`](https://www.nuget.org/packages/KiCadSharp.Cli) (`kicadsharp`) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
+
+Their history moved with them - `git log` in either repository goes back to the commits made here.
+`SExpressionSharp` was renamed to `SExpressions` on the way out, before its first push to nuget.org,
+because a package ID is permanent afterwards; `KiCadSharp` kept its name on purpose. Each repository's
+README explains which and why.
+
+The `submodules/kicad` submodule is gone with them. It existed only so `KiCadSharp.Protos` could
+compile KiCad's `.proto` files, and cost a 1.4 GB checkout of the entire KiCad source tree per clone;
+`kicad-sharp` vendors those 12 files (128 KB) pinned to a KiCad release tag instead.
 
 ## The CLI
+
+Built and released from [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp), and
+useful alongside this repository:
 
 ```bash
 dotnet tool install --global KiCadSharp.Cli
@@ -38,46 +55,49 @@ kicadsharp query sheet.kicad_sch kicad_sch/symbol/lib_id --all
 
 ## Building
 
-The KiCad `.proto` definitions come from the `submodules/kicad` git submodule, so clone with
-submodules (a shallow, blobless checkout is enough):
+No submodules, and nothing to pack:
 
 ```bash
-git clone --recurse-submodules https://github.com/danielmeza/kicad-ultra
-# or, in an existing clone:
-git submodule update --init --depth 1 --filter=blob:none submodules/kicad
+dotnet build UltraLibrarianImporter.sln -c Release
+dotnet test  UltraLibrarianImporter.sln -c Release
 ```
 
-Then:
+### Developing against local library sources
+
+`SExpressions` and `KiCadSharp` arrive as `PackageReference`, not project references or submodules.
+To build against unreleased local checkouts of them:
 
 ```bash
-dotnet build KiCadSharp.slnx -c Release
-dotnet test  KiCadSharp.slnx -c Release
-dotnet pack  KiCadSharp.slnx -c Release -o artifacts/packages
+scripts/use-local-libs.sh ../sexpressions ../kicad-sharp
+dotnet build UltraLibrarianImporter.sln -c Release \
+    -p:SExpressionsVersion=0.1.0-local.<stamp> \
+    -p:KiCadSharpVersion=0.1.0-local.<stamp>
 ```
 
-`KiCadSharp.slnx` is the shipping product — the libraries, the CLI and the tests. It is what CI
-builds. `UltraLibrarianImporter.sln` additionally carries the Avalonia importer app; that app still
-references an `UltraLibrarianImporter.KiCadBindings` project that no longer exists in the tree and
-does not compile until it is ported to `KiCadSharp`.
+The script packs each library at a distinct `-local.<timestamp>` version into `local-packages/`, a
+git-ignored folder registered as a package source in `NuGet.config`. The distinct version is the
+point: restore can never silently fall back to, or prefer, the published package. Omit the properties
+to go back to the released ones.
+
+There is deliberately no "swap to `ProjectReference`" switch. Consuming the real `.nupkg` is what
+proves the packages work, and the packages are what actually break.
 
 ## Releasing
 
-Packages are published from GitHub Actions on a version tag, using NuGet Trusted Publishing (OIDC) —
-there is no API key stored in the repository.
+**Open decision.** This repository no longer publishes anything: the four packages it used to push to
+nuget.org moved out, and each new repository publishes its own. `release.yml` has had its publish jobs
+and its `v*` tag trigger removed rather than being left pointed at a solution that no longer exists.
+What it should release instead - the importer as a downloadable app, the KiCad plugin bundle, or
+nothing at all - is written up at the top of
+[`.github/workflows/release.yml`](.github/workflows/release.yml) and is the owner's call.
 
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-The workflow derives the package version from the tag (`v0.1.0` → `0.1.0`), packs, publishes to
-nuget.org and creates a GitHub Release. It needs one repository secret, `NUGET_USER` (the nuget.org
-*profile name*, not an email), and a `release` environment on the repository.
+The stale nuget.org Trusted Publishing policy for `danielmeza/kicad-ultra` should be deleted once that
+is settled: it grants push rights for a workflow file that no longer pushes anything.
 
 ## The UltraLibrarian importer plugin
 
-A KiCad plugin that imports components from UltraLibrarian, in two parts: a Python launcher
-(`plugin/`) and an Avalonia UI application (`src/importer/`). The NUKE build under `build/` that used
-to package it has not compiled since Nuke 8 removed `Nuke.Common.IO.FileSystemTasks`, and it still
+Two parts: a Python launcher (`plugin/`) and an Avalonia UI application (`src/importer/`). The NUKE
+build under `build/` that used to package it has not compiled since Nuke 8 removed `Nuke.Common.IO.FileSystemTasks`, and it still
 points at a `UltraLibrarianImporter/` directory that no longer exists; it is excluded from the
 solutions and from CI until it is repaired.
 
