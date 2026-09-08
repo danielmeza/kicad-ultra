@@ -1,71 +1,67 @@
 # kicad-ultra
 
-A KiCad plugin that imports components from UltraLibrarian, in two parts: a Python launcher
-(`plugin/`) and an Avalonia UI application (`src/importer/`).
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## The libraries moved out
+A KiCad plugin that pulls symbols, footprints and 3D models from
+[UltraLibrarian](https://www.ultralibrarian.com/) straight into your project — no download folder,
+no manual library juggling.
 
-The .NET libraries and the `kicadsharp` tool that used to live here now have their own repositories
-and their own packages. This repository consumes them from nuget.org like any other dependency.
+Browse UltraLibrarian from inside KiCad, pick a part, and it lands in your symbol and footprint
+libraries with the 3D model attached.
 
-| Package | Repository |
+## Install
+
+Copy `plugin/` into your KiCad plugin directory:
+
+| | |
 |---|---|
-| [`SExpressions`](https://www.nuget.org/packages/SExpressions) (was `SExpressionSharp`) | [danielmeza/sexpressions](https://github.com/danielmeza/sexpressions) |
-| [`KiCadSharp`](https://www.nuget.org/packages/KiCadSharp) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
-| [`KiCadSharp.Protos`](https://www.nuget.org/packages/KiCadSharp.Protos) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
-| [`KiCadSharp.Cli`](https://www.nuget.org/packages/KiCadSharp.Cli) (`kicadsharp`) | [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp) |
-
-Their history moved with them - `git log` in either repository goes back to the commits made here.
-`SExpressionSharp` was renamed to `SExpressions` on the way out, before its first push to nuget.org,
-because a package ID is permanent afterwards; `KiCadSharp` kept its name on purpose. Each repository's
-README explains which and why.
-
-The `submodules/kicad` submodule is gone with them. It existed only so `KiCadSharp.Protos` could
-compile KiCad's `.proto` files, and cost a 1.4 GB checkout of the entire KiCad source tree per clone;
-`kicad-sharp` vendors those 12 files (128 KB) pinned to a KiCad release tag instead.
-
-## The CLI
-
-Built and released from [danielmeza/kicad-sharp](https://github.com/danielmeza/kicad-sharp), and
-useful alongside this repository:
+| Linux | `~/.local/share/kicad/9.0/plugins/` |
+| macOS | `~/Library/Application Support/kicad/9.0/plugins/` |
+| Windows | `%APPDATA%\kicad\9.0\plugins\` |
 
 ```bash
-dotnet tool install --global KiCadSharp.Cli
+pip install -r plugin/requirements.txt
 ```
 
-```
-kicadsharp parse    <file>                 structural summary: forms, top-level heads, nodes, depth
-kicadsharp fmt      <file> [--in-place]    reformat through a verified parse/write round trip
-kicadsharp query    <file> <path> [--all]  read a value by a dotted or slashed path
-kicadsharp validate <file>                 check the file parses; non-zero exit when it does not
-```
+Then enable the IPC API — **Preferences → Plugins → Enable IPC API** — and restart KiCad. The
+importer appears as **Import from UltraLibrarian** in the schematic editor, the PCB editor and the
+project manager.
 
-`fmt` always re-parses its own output and compares the trees before it prints anything, so a
-successful run is the proof that the round trip is lossless. It refuses `--in-place` on a file whose
-content the round trip would drop — a file with comments, or a multi-form file the parser can only
-read the first form of.
+Needs KiCad 9.0 or newer, Python 3.8+ and wxPython.
 
-Paths are segments separated by `.` or `/`, and a segment may carry a zero-based occurrence index:
+## Using it
 
-```bash
-kicadsharp query board.kicad_pcb kicad_pcb.version
-kicadsharp query sheet.kicad_sch 'kicad_sch.symbol[2].lib_id'
-kicadsharp query sheet.kicad_sch kicad_sch/symbol/lib_id --all
-```
+1. Open **Import from UltraLibrarian**. It opens UltraLibrarian in a browser window.
+2. Find your part and download it. The plugin picks the download up on its own.
+3. Choose what you want — symbol, footprint, 3D model.
+4. **Import.** It goes into your project's libraries.
+
+## How it works
+
+Two pieces:
+
+- **`plugin/`** — a small Python launcher. KiCad loads this; it starts the UI and talks to KiCad over
+  the IPC API.
+- **`src/importer/`** — an [Avalonia](https://avaloniaui.net/) application that does the browsing,
+  downloading and importing.
+
+The KiCad file handling underneath comes from two libraries that live in their own repositories:
+[SExpressions](https://github.com/danielmeza/sexpressions) for lossless reads and writes, and
+[KiCadSharp](https://github.com/danielmeza/kicad-sharp) for the IPC client and the library formats.
+They're consumed from nuget.org like any other dependency.
 
 ## Building
-
-No submodules, and nothing to pack:
 
 ```bash
 dotnet build UltraLibrarianImporter.sln -c Release
 dotnet test  UltraLibrarianImporter.sln -c Release
 ```
 
-### Developing against local library sources
+No submodules, nothing to pack first.
 
-`SExpressions` and `KiCadSharp` arrive as `PackageReference`, not project references or submodules.
-To build against unreleased local checkouts of them:
+### Against local library checkouts
+
+If you're changing SExpressions or KiCadSharp at the same time:
 
 ```bash
 scripts/use-local-libs.sh ../sexpressions ../kicad-sharp
@@ -74,29 +70,21 @@ dotnet build UltraLibrarianImporter.sln -c Release \
     -p:KiCadSharpVersion=0.1.0-local.<stamp>
 ```
 
-The script packs each library at a distinct `-local.<timestamp>` version into `local-packages/`, a
-git-ignored folder registered as a package source in `NuGet.config`. The distinct version is the
-point: restore can never silently fall back to, or prefer, the published package. Omit the properties
-to go back to the released ones.
+The script packs each library at its own `-local.<timestamp>` version into `local-packages/`, which
+is registered as a package source. The distinct version means restore can't quietly fall back to the
+published package. Drop the properties to go back to the released ones.
 
-There is deliberately no "swap to `ProjectReference`" switch. Consuming the real `.nupkg` is what
-proves the packages work, and the packages are what actually break.
+There's deliberately no switch to `ProjectReference`: consuming the real `.nupkg` is what proves the
+packages work, and the packages are what break.
 
 ## Releasing
 
-**Open decision.** This repository no longer publishes anything: the four packages it used to push to
-nuget.org moved out, and each new repository publishes its own. `release.yml` has had its publish jobs
-and its `v*` tag trigger removed rather than being left pointed at a solution that no longer exists.
-What it should release instead - the importer as a downloadable app, the KiCad plugin bundle, or
-nothing at all - is written up at the top of
-[`.github/workflows/release.yml`](.github/workflows/release.yml) and is the owner's call.
+This repository doesn't publish packages any more — the four it used to push moved to their own
+repositories. What it should release instead is still open: see [docs/releasing.md](docs/releasing.md).
 
-The stale nuget.org Trusted Publishing policy for `danielmeza/kicad-ultra` should be deleted once that
-is settled: it grants push rights for a workflow file that no longer pushes anything.
+## Contributing
 
-## The UltraLibrarian importer plugin
-
-Two parts: a Python launcher (`plugin/`) and an Avalonia UI application (`src/importer/`).
+Issues and pull requests welcome.
 
 ## License
 
