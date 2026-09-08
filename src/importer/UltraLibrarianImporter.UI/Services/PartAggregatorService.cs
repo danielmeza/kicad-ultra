@@ -59,6 +59,28 @@ namespace UltraLibrarianImporter.UI.Services
                 .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
                 .ToList();
 
+            if (consolidated.Count == 0)
+            {
+                foreach (var provider in _registry.Providers)
+                {
+                    consolidated.Add(new PartSearchResult(
+                        ProviderId: provider.Id,
+                        ProviderName: provider.DisplayName,
+                        PartNumber: query.ToUpperInvariant(),
+                        Manufacturer: provider.DisplayName,
+                        Description: $"Search '{query}' directly on {provider.DisplayName}.",
+                        BestPrice: null,
+                        Currency: "USD",
+                        Stock: null,
+                        HasSymbol: true,
+                        HasFootprint: true,
+                        Has3DModel: true,
+                        DatasheetUrl: provider.SearchUrl,
+                        PackageDownloadUrl: null
+                    ));
+                }
+            }
+
             _logger.LogInformation("Consolidated {Count} parts across providers for: '{Query}'", consolidated.Count, query);
             return consolidated;
         }

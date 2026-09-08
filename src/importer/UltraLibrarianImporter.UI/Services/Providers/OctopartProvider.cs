@@ -36,22 +36,6 @@ namespace UltraLibrarianImporter.UI.Services.Providers
             string token = _configService.OctopartApiToken?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(token))
             {
-                // Return a friendly prompt item directing user to configure token
-                results.Add(new PartSearchResult(
-                    ProviderId: Id,
-                    ProviderName: DisplayName,
-                    PartNumber: query.ToUpperInvariant(),
-                    Manufacturer: "Nexar / Octopart",
-                    Description: "API token not set. Configure your Nexar API token in Settings to fetch real-time distributor pricing & stock.",
-                    BestPrice: null,
-                    Currency: "USD",
-                    Stock: null,
-                    HasSymbol: false,
-                    HasFootprint: false,
-                    Has3DModel: false,
-                    DatasheetUrl: $"https://octopart.com/search?q={Uri.EscapeDataString(query)}",
-                    PackageDownloadUrl: null
-                ));
                 return results;
             }
 
@@ -176,22 +160,7 @@ namespace UltraLibrarianImporter.UI.Services.Providers
             }
             catch (Exception)
             {
-                // Fallback to web search item on network or authentication error
-                results.Add(new PartSearchResult(
-                    ProviderId: Id,
-                    ProviderName: DisplayName,
-                    PartNumber: query.ToUpperInvariant(),
-                    Manufacturer: "Octopart / Nexar",
-                    Description: "Direct search link (verify Nexar token if API was expected).",
-                    BestPrice: null,
-                    Currency: "USD",
-                    Stock: null,
-                    HasSymbol: false,
-                    HasFootprint: false,
-                    Has3DModel: false,
-                    DatasheetUrl: $"https://octopart.com/search?q={Uri.EscapeDataString(query)}",
-                    PackageDownloadUrl: null
-                ));
+                // Network or authentication error - return whatever results were parsed or empty
             }
 
             return results;

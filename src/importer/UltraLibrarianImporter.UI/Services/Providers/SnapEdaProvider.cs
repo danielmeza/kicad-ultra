@@ -29,16 +29,17 @@ namespace UltraLibrarianImporter.UI.Services.Providers
             var results = new List<PartSearchResult>();
 
             string apiKey = _configService.SnapEdaApiKey?.Trim() ?? string.Empty;
-            string description = string.IsNullOrEmpty(apiKey)
-                ? "API key not configured in Settings. Click to search directly on SnapMagic for verified KiCad CAD models."
-                : "SnapMagic CAD provider (API key configured).";
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
+            }
 
             results.Add(new PartSearchResult(
                 ProviderId: Id,
                 ProviderName: DisplayName,
                 PartNumber: query.ToUpperInvariant(),
                 Manufacturer: "SnapMagic / SnapEDA",
-                Description: description,
+                Description: "SnapMagic CAD provider (API key configured).",
                 BestPrice: null,
                 Currency: "USD",
                 Stock: null,

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -11,7 +12,15 @@ namespace UltraLibrarianImporter.UI.Services.Providers
 {
     public sealed class EasyEdaProvider : BaseArchiveComponentProvider
     {
-        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        private static readonly HttpClient _httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
+        static EasyEdaProvider()
+        {
+            _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        }
 
         public override string Id => "easyeda";
         public override string DisplayName => "EasyEDA / LCSC";
@@ -27,8 +36,8 @@ namespace UltraLibrarianImporter.UI.Services.Providers
 
             try
             {
-                // EasyEDA / LCSC public component search endpoint
-                string url = $"https://easyeda.com/api/components/search?q={Uri.EscapeDataString(query)}&doctype=1";
+                // JLCPCB / LCSC in-stock parts API (tscircuit jlcsearch index)
+                string url = $"https://jlcsearch.tscircuit.com/components/list.json?search={Uri.EscapeDataString(query)}&limit=25";
                 using var response = await _httpClient.GetAsync(url, cancellationToken);
 
                 if (response.IsSuccessStatusCode)
@@ -36,49 +45,77 @@ namespace UltraLibrarianImporter.UI.Services.Providers
                     var json = await response.Content.ReadAsStringAsync(cancellationToken);
                     using var doc = JsonDocument.Parse(json);
 
-                    if (doc.RootElement.TryGetProperty("result", out var resultObj) &&
-                        resultObj.TryGetProperty("lists", out var lists))
+                    JsonElement componentsArray;
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
                     {
-                        foreach (var item in lists.EnumerateArray())
+                        componentsArray = doc.RootElement;
+                    }
+                    else if (doc.RootElement.TryGetProperty("components", out var comps) && comps.ValueKind == JsonValueKind.Array)
+                    {
+                        componentsArray = comps;
+                    }
+                    else
+                    {
+                        componentsArray = default;
+                    }
+
+                    if (componentsArray.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in componentsArray.EnumerateArray())
                         {
-                            string title = item.TryGetProperty("title", out var t) ? t.GetString() ?? query : query;
+                            string mpn = item.TryGetProperty("mfr", out var m) ? m.GetString() ?? query : query;
                             string desc = item.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
-                            string mfg = item.TryGetProperty("manufacturer", out var m) ? m.GetString() ?? "LCSC" : "LCSC";
                             string? pkg = item.TryGetProperty("package", out var p) ? p.GetString() : null;
+                            string? subcat = item.TryGetProperty("subcategory", out var sc) ? sc.GetString() : null;
+                            string? cat = item.TryGetProperty("category", out var c) ? c.GetString() : null;
 
-                            // EasyEDA components typically provide schematic symbols and footprints
-                            bool hasSymbol = true;
-                            bool hasFootprint = !string.IsNullOrEmpty(pkg);
-                            bool has3D = item.TryGetProperty("has_model3d", out var h3d) && h3d.GetInt32() == 1;
+                            // Determine manufacturer or category label
+                            string mfg = !string.IsNullOrWhiteSpace(subcat) 
+                                ? subcat 
+                                : (!string.IsNullOrWhiteSpace(cat) ? cat : "LCSC / JLCPCB");
 
-                            decimal? price = null;
-                            if (item.TryGetProperty("price", out var pr) && pr.TryGetDecimal(out decimal priceVal))
-                            {
-                                price = priceVal;
-                            }
-
+                            // Stock count
                             int? stock = null;
                             if (item.TryGetProperty("stock", out var st) && st.TryGetInt32(out int stockVal))
                             {
                                 stock = stockVal;
                             }
 
-                            string? uuid = item.TryGetProperty("uuid", out var u) ? u.GetString() : null;
-                            string? packageUrl = uuid != null ? $"https://easyeda.com/component/{uuid}" : null;
+                            // Price tiers
+                            string? priceStr = item.TryGetProperty("price", out var pr) ? pr.GetString() : null;
+                            decimal? bestPrice = ParseBestPrice(priceStr);
+
+                            // LCSC code for direct component page
+                            long lcscCode = 0;
+                            if (item.TryGetProperty("lcsc", out var lc))
+                            {
+                                if (lc.ValueKind == JsonValueKind.Number)
+                                {
+                                    lc.TryGetInt64(out lcscCode);
+                                }
+                                else if (lc.ValueKind == JsonValueKind.String && long.TryParse(lc.GetString(), out long parsedCode))
+                                {
+                                    lcscCode = parsedCode;
+                                }
+                            }
+
+                            string datasheetUrl = lcscCode > 0
+                                ? $"https://jlcpcb.com/parts/componentSearch?searchTxt=C{lcscCode}"
+                                : $"https://jlcpcb.com/parts/componentSearch?searchTxt={Uri.EscapeDataString(mpn)}";
 
                             results.Add(new PartSearchResult(
                                 ProviderId: Id,
                                 ProviderName: DisplayName,
-                                PartNumber: title,
+                                PartNumber: mpn,
                                 Manufacturer: mfg,
-                                Description: desc,
-                                BestPrice: price,
+                                Description: !string.IsNullOrEmpty(pkg) && !desc.Contains(pkg) ? $"{desc} [{pkg}]" : desc,
+                                BestPrice: bestPrice,
                                 Currency: "USD",
                                 Stock: stock,
-                                HasSymbol: hasSymbol,
-                                HasFootprint: hasFootprint,
-                                Has3DModel: has3D,
-                                DatasheetUrl: packageUrl,
+                                HasSymbol: true,
+                                HasFootprint: !string.IsNullOrEmpty(pkg) && pkg != "-",
+                                Has3DModel: true,
+                                DatasheetUrl: datasheetUrl,
                                 PackageDownloadUrl: null
                             ));
                         }
@@ -87,44 +124,35 @@ namespace UltraLibrarianImporter.UI.Services.Providers
             }
             catch (Exception)
             {
-                // Fallback direct link
-                results.Add(new PartSearchResult(
-                    ProviderId: Id,
-                    ProviderName: DisplayName,
-                    PartNumber: query.ToUpperInvariant(),
-                    Manufacturer: "LCSC / EasyEDA",
-                    Description: "Search directly on EasyEDA / LCSC for symbols, footprints, and JLCPCB assembly parts.",
-                    BestPrice: null,
-                    Currency: "USD",
-                    Stock: null,
-                    HasSymbol: true,
-                    HasFootprint: true,
-                    Has3DModel: true,
-                    DatasheetUrl: $"https://jlcpcb.com/parts/componentSearch?searchTxt={Uri.EscapeDataString(query)}",
-                    PackageDownloadUrl: null
-                ));
-            }
-
-            if (results.Count == 0)
-            {
-                results.Add(new PartSearchResult(
-                    ProviderId: Id,
-                    ProviderName: DisplayName,
-                    PartNumber: query.ToUpperInvariant(),
-                    Manufacturer: "LCSC / JLCPCB",
-                    Description: "Direct part lookup on EasyEDA / JLCPCB catalog.",
-                    BestPrice: null,
-                    Currency: "USD",
-                    Stock: null,
-                    HasSymbol: true,
-                    HasFootprint: true,
-                    Has3DModel: true,
-                    DatasheetUrl: $"https://jlcpcb.com/parts/componentSearch?searchTxt={Uri.EscapeDataString(query)}",
-                    PackageDownloadUrl: null
-                ));
+                // Network or API failure fallback
             }
 
             return results;
+        }
+
+        private static decimal? ParseBestPrice(string? priceStr)
+        {
+            if (string.IsNullOrWhiteSpace(priceStr))
+            {
+                return null;
+            }
+
+            decimal? best = null;
+            var tiers = priceStr.Split(',');
+            foreach (var tier in tiers)
+            {
+                var colonIdx = tier.IndexOf(':');
+                string valStr = colonIdx >= 0 ? tier.Substring(colonIdx + 1).Trim() : tier.Trim();
+                if (decimal.TryParse(valStr, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal price) && price > 0)
+                {
+                    if (!best.HasValue || price < best.Value)
+                    {
+                        best = price;
+                    }
+                }
+            }
+
+            return best.HasValue ? Math.Round(best.Value, 3) : null;
         }
     }
 }

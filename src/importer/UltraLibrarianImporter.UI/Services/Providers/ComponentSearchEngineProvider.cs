@@ -29,16 +29,17 @@ namespace UltraLibrarianImporter.UI.Services.Providers
             var results = new List<PartSearchResult>();
 
             string apiKey = _configService.SamacSysApiKey?.Trim() ?? string.Empty;
-            string description = string.IsNullOrEmpty(apiKey)
-                ? "SamacSys API credentials not configured in Settings. Click to search SamacSys CAD models directly."
-                : "SamacSys Component Search Engine provider (credentials configured).";
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
+            }
 
             results.Add(new PartSearchResult(
                 ProviderId: Id,
                 ProviderName: DisplayName,
                 PartNumber: query.ToUpperInvariant(),
                 Manufacturer: "SamacSys",
-                Description: description,
+                Description: "SamacSys Component Search Engine provider (credentials configured).",
                 BestPrice: null,
                 Currency: "USD",
                 Stock: null,
