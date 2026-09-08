@@ -1,65 +1,192 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
+        xmlns:models="using:UltraLibrarianImporter.UI.Services.Interfaces"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:webview="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
-        xmlns:views="clr-namespace:UltraLibrarianImporter.UI.Views;assembly=UltraLibrarianImporter.UI"
         x:Class="UltraLibrarianImporter.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="UltraLibrarian Importer for KiCad"
-        Width="1400" Height="800"
-        MinWidth="1300" MinHeight="800"
+        Title="KiCad Component Explorer &amp; Importer"
+        Width="1400" Height="820"
+        MinWidth="1200" MinHeight="750"
         WindowStartupLocation="CenterScreen">
 
-  <Design.DataContext>
-    <vm:MainWindowViewModel/>
-  </Design.DataContext>
+  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,320">
+    <!-- Top Action Bar -->
+    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,8" Spacing="8">
+      <Button Content="Settings" Command="{Binding OpenSettingsCommand}" Padding="10,5"/>
+      <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="10,5"/>
+      <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="10,5"/>
+      <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="10,5"/>
 
-  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,300">
-    <!-- Toolbar -->
-    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,5" Spacing="5">
-      <Button Content="Settings" Command="{Binding OpenSettingsCommand}" Padding="8,4"/>
-      <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="8,4"/>
-      <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="8,4"/>
-      <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="8,4"/>
-
-      <ComboBox Margin="20,0,0,0" Width="200" SelectedIndex="3">
+      <TextBlock Text="Import Filter:" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
+      <ComboBox Width="180" SelectedIndex="3">
         <ComboBoxItem Content="Import Symbols Only" Tag="Symbol"/>
         <ComboBoxItem Content="Import Footprints Only" Tag="Footprint"/>
         <ComboBoxItem Content="Import 3D Models Only" Tag="Model3D"/>
-        <ComboBoxItem Content="Import All" Tag="All"/>
+        <ComboBoxItem Content="Import All Assets" Tag="All"/>
       </ComboBox>
     </StackPanel>
 
-    <!-- WebView Container -->
-    <Border Grid.Row="1" Grid.Column="0" BorderThickness="1" BorderBrush="Gray" Margin="10,0,5,10">
-      <Panel Name="WebViewContainer" Background="White">
-        <!-- OutSystems WebView control with correct namespace -->
-        <!--<views:BrowserView />--> 
-        <webview:WebView Name="OSWebView" AllowDeveloperTools="True"  Address="{Binding WebviewUrl}" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
-        <TextBlock Text="Loading UltraLibrarian website..."
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Center"
-                   IsVisible="{Binding !WebViewLoaded}"/>
-      </Panel>
-    </Border>
+    <!-- Main Content Area: Tabs for Part Explorer vs Web Browser -->
+    <TabControl Grid.Row="1" Grid.Column="0" SelectedIndex="{Binding SelectedTabIndex}" Margin="10,0,5,10">
+      
+      <!-- TAB 1: Unified Multi-Provider Part Explorer -->
+      <TabItem Header="🔍 Part Explorer (Aggregated Search)">
+        <Grid RowDefinitions="Auto,Auto,*" Margin="10">
+          <!-- Search Header -->
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,10">
+            <TextBox Grid.Column="0" 
+                     Text="{Binding SearchQuery}" 
+                     Watermark="Search parts across all providers by MPN, keyword or value (e.g. STM32F401, NE555, ESP32, 10k 0805)..."
+                     VerticalContentAlignment="Center"
+                     Height="38"
+                     FontSize="14"
+                     Margin="0,0,10,0"/>
+            <Button Grid.Column="1" 
+                    Content="Search All Providers" 
+                    Command="{Binding SearchPartsCommand}" 
+                    Height="38"
+                    Padding="16,0"
+                    FontWeight="Bold"/>
+          </Grid>
 
-    <!-- Right Panel (Import Log) -->
+          <!-- Search Progress Bar -->
+          <ProgressBar Grid.Row="1" 
+                       IsIndeterminate="True" 
+                       IsVisible="{Binding IsSearching}" 
+                       Height="3" 
+                       Margin="0,0,0,8"/>
+
+          <!-- Results List / Table -->
+          <Border Grid.Row="2" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+            <Grid RowDefinitions="Auto,*">
+              <!-- Table Header -->
+              <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
+                <Grid ColumnDefinitions="140,160,130,90,90,120,*">
+                  <TextBlock Grid.Column="0" Text="Provider" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="1" Text="Part Number" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="2" Text="Manufacturer" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="3" Text="Stock" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="4" Text="Best Price" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="5" Text="CAD Assets" FontWeight="Bold"/>
+                  <TextBlock Grid.Column="6" Text="Action" FontWeight="Bold"/>
+                </Grid>
+              </Border>
+
+              <!-- Results Items -->
+              <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedSearchResult}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:PartSearchResult">
+                    <Grid ColumnDefinitions="140,160,130,90,90,120,*" Margin="0,4">
+                      <!-- Provider Badge -->
+                      <Border Grid.Column="0" 
+                              Background="{DynamicResource SystemControlHighlightListAccentLowBrush}" 
+                              CornerRadius="3" 
+                              Padding="6,2" 
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold"/>
+                      </Border>
+
+                      <!-- MPN -->
+                      <TextBlock Grid.Column="1" Text="{Binding PartNumber}" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                      <!-- Manufacturer -->
+                      <TextBlock Grid.Column="2" Text="{Binding Manufacturer}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                      <!-- Stock -->
+                      <TextBlock Grid.Column="3" 
+                                 Text="{Binding Stock, StringFormat='{}{0:N0}', TargetNullValue='-'}" 
+                                 VerticalAlignment="Center"/>
+
+                      <!-- Price -->
+                      <TextBlock Grid.Column="4" 
+                                 Text="{Binding BestPrice, StringFormat='${0:F2}', TargetNullValue='-'}" 
+                                 VerticalAlignment="Center"/>
+
+                      <!-- CAD Flags -->
+                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Border Background="#2E7D32" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasSymbol}">
+                          <TextBlock Text="Sym" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                        <Border Background="#1565C0" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasFootprint}">
+                          <TextBlock Text="FP" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                        <Border Background="#6A1B9A" CornerRadius="2" Padding="4,1" IsVisible="{Binding Has3DModel}">
+                          <TextBlock Text="3D" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                      </StackPanel>
+
+                      <!-- Action Button -->
+                      <Button Grid.Column="6" 
+                              Content="Open &amp; Import" 
+                              Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                              CommandParameter="{Binding}"
+                              Padding="8,3" 
+                              FontSize="11"
+                              HorizontalAlignment="Left"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- TAB 2: Embedded Web Browser & Direct Download Interceptor -->
+      <TabItem Header="🌐 Web Browser (Interactive)">
+        <Grid RowDefinitions="Auto,*" Margin="5">
+          <!-- Web Browser Navigation Header -->
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+            <TextBlock Text="Provider Platform:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <ComboBox Width="220"
+                      ItemsSource="{Binding AvailableProviders}"
+                      SelectedItem="{Binding SelectedProvider}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding DisplayName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="{Binding SelectedProvider.SearchUrl}" 
+                       VerticalAlignment="Center" 
+                       Foreground="Gray" 
+                       FontSize="11" 
+                       Margin="10,0,0,0"/>
+          </StackPanel>
+
+          <!-- WebView Container -->
+          <Border Grid.Row="1" BorderThickness="1" BorderBrush="Gray">
+            <Panel Name="WebViewContainer" Background="White">
+              <webview:WebView Name="OSWebView" AllowDeveloperTools="True" Address="{Binding WebviewUrl}" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
+              <TextBlock Text="Loading component provider portal..."
+                         VerticalAlignment="Center"
+                         HorizontalAlignment="Center"
+                         IsVisible="{Binding !WebViewLoaded}"/>
+            </Panel>
+          </Border>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <!-- Right Panel (Import Activity Log) -->
     <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*" Margin="5,0,10,10">
-      <TextBlock Grid.Row="0" Text="Import Log" FontWeight="Bold" Margin="0,0,0,5"/>
-      <Border Grid.Row="1" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}">
+      <TextBlock Grid.Row="0" Text="Import &amp; System Log" FontWeight="Bold" Margin="0,0,0,6"/>
+      <Border Grid.Row="1" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
         <ListBox ItemsSource="{Binding ImportMessages}" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" />
       </Border>
     </Grid>
 
     <!-- Status Bar -->
-    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" >
-      <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,5"/>
-      <ProgressBar Grid.Column="1" Width="200" Height="15" IsVisible="{Binding IsProgressVisible}"
-                   Value="{Binding ProgressValue}" Margin="10,0,0,0"/>
+    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+      <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,4"/>
+      <ProgressBar Grid.Column="1" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+                   Value="{Binding ProgressValue}" Margin="10,0,10,0"/>
     </Grid>
   </Grid>
 </Window>

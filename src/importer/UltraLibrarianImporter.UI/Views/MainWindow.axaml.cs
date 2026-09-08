@@ -49,6 +49,24 @@ namespace UltraLibrarianImporter.UI.Views
                 };
                 webView.DownloadCompleted += DownloadComplete;
             }
+
+            DataContextChanged += (s, e) =>
+            {
+                if (DataContext is MainViewModel vm)
+                {
+                    vm.PropertyChanged += (sender, args) =>
+                    {
+                        if (args.PropertyName == nameof(MainViewModel.WebviewUrl))
+                        {
+                            var wv = this.FindControl<WebView>("OSWebView");
+                            if (wv != null && !string.IsNullOrEmpty(vm.WebviewUrl) && wv.Address != vm.WebviewUrl)
+                            {
+                                wv.Address = vm.WebviewUrl;
+                            }
+                        }
+                    };
+                }
+            };
         }
 
         private void Initialize(WebView view)
@@ -94,7 +112,11 @@ namespace UltraLibrarianImporter.UI.Views
                 // parameter; fall back to the name CEF already suggested rather than crashing the
                 // download inside Path.Combine.
                 var fileName = string.IsNullOrEmpty(header.FileName) ? suggestedName : header.FileName;
-                var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad", fileName);
+                var downloadDir = !string.IsNullOrEmpty(_mainWindow.ViewModel.DownloadDirectory)
+                    ? _mainWindow.ViewModel.DownloadDirectory
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KiCadComponentDownloads");
+                Directory.CreateDirectory(downloadDir);
+                var filePath = Path.Combine(downloadDir, fileName);
                 callback.Continue(filePath, false);
                 _mainWindow.AsyncExecuteInUI(() => _mainWindow.DownloadStarted(filePath));
             }

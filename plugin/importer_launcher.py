@@ -10,11 +10,18 @@ def launch_importer():
     # The valonia app is a .exe application shipped with the kicad plugin
     # Determine the path to the executable
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    exe_path = os.path.join(script_dir, "bin", "UltralibrarianImporter.exe")
+    candidate_paths = [
+        os.path.join(script_dir, "bin", "UltralibrarianImporter.exe"),
+        os.path.join(script_dir, "bin", "UltraLibrarianImporter.UI.exe"),
+        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Debug", "net10.0", "UltraLibrarianImporter.UI.exe"),
+        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Release", "net10.0", "UltraLibrarianImporter.UI.exe"),
+    ]
+    
+    exe_path = next((p for p in candidate_paths if os.path.exists(p)), None)
     
     # Check if the executable exists
-    if not os.path.exists(exe_path):
-        print(f"Error: Executable not found at {exe_path}")
+    if not exe_path:
+        print(f"Error: Executable not found in any of: {candidate_paths}")
         sys.exit(1)
     
     # Launch the executable with the current environment variables

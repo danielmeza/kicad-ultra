@@ -44,6 +44,21 @@ namespace UltraLibrarianImporter.UI.Services.Interfaces
         string LibraryName { get; set; }
 
         /// <summary>
+        /// API token for Octopart / Nexar part search
+        /// </summary>
+        string OctopartApiToken { get; set; }
+
+        /// <summary>
+        /// API key for SnapEDA / SnapMagic CAD search
+        /// </summary>
+        string SnapEdaApiKey { get; set; }
+
+        /// <summary>
+        /// API key for Component Search Engine (SamacSys)
+        /// </summary>
+        string SamacSysApiKey { get; set; }
+
+        /// <summary>
         /// Ensures the download directory exists
         /// </summary>
         void EnsureDownloadDirectoryExists();
