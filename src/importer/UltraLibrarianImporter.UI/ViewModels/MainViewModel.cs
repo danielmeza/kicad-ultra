@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Avalonia.Threading;
@@ -65,6 +66,27 @@ namespace UltraLibrarianImporter.UI.ViewModels
 
         [ObservableProperty]
         private PartSearchResult? _selectedSearchResult;
+
+        public enum SortField { Stock, Price, CadAssets }
+        public enum SortOrder { Ascending, Descending }
+
+        [ObservableProperty]
+        private SortField _activeSortField = SortField.Stock;
+
+        [ObservableProperty]
+        private SortOrder _activeSortOrder = SortOrder.Descending;
+
+        [ObservableProperty]
+        private string _stockSortIndicator = "▼";
+
+        [ObservableProperty]
+        private string _priceSortIndicator = "";
+
+        [ObservableProperty]
+        private string _cadSortIndicator = "";
+
+        [ObservableProperty]
+        private string _sortStatusSummary = "Sorted: Stock (High → Low)";
 
         public ObservableCollection<PartSearchResult> SearchResults { get; } = new ObservableCollection<PartSearchResult>();
 
@@ -136,7 +158,9 @@ namespace UltraLibrarianImporter.UI.ViewModels
                     SearchResults.Add(r);
                 }
 
-                StatusMessage = $"Found {SearchResults.Count} results across providers for '{SearchQuery}'.";
+                ApplySort();
+
+                StatusMessage = $"Found {SearchResults.Count} results across providers for '{SearchQuery}'. ({SortStatusSummary})";
                 _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", SearchQuery, SearchResults.Count);
             }
             catch (Exception ex)
@@ -148,6 +172,121 @@ namespace UltraLibrarianImporter.UI.ViewModels
             {
                 IsSearching = false;
             }
+        }
+
+        [RelayCommand]
+        private void Sort(string? column)
+        {
+            if (string.IsNullOrEmpty(column)) return;
+
+            if (string.Equals(column, "Stock", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.Stock)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Descending
+                        ? SortOrder.Ascending
+                        : SortOrder.Descending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.Stock;
+                    ActiveSortOrder = SortOrder.Descending;
+                }
+            }
+            else if (string.Equals(column, "Price", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.Price)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Ascending
+                        ? SortOrder.Descending
+                        : SortOrder.Ascending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.Price;
+                    ActiveSortOrder = SortOrder.Ascending;
+                }
+            }
+            else if (string.Equals(column, "CAD", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.CadAssets)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Descending
+                        ? SortOrder.Ascending
+                        : SortOrder.Descending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.CadAssets;
+                    ActiveSortOrder = SortOrder.Descending;
+                }
+            }
+
+            UpdateSortVisuals();
+            ApplySort();
+        }
+
+        private void UpdateSortVisuals()
+        {
+            string arrow = ActiveSortOrder == SortOrder.Ascending ? "▲" : "▼";
+            StockSortIndicator = ActiveSortField == SortField.Stock ? arrow : "";
+            PriceSortIndicator = ActiveSortField == SortField.Price ? arrow : "";
+            CadSortIndicator = ActiveSortField == SortField.CadAssets ? arrow : "";
+
+            string fieldName = ActiveSortField switch
+            {
+                SortField.Stock => "Stock",
+                SortField.Price => "Price",
+                SortField.CadAssets => "CAD Assets",
+                _ => ""
+            };
+            string direction = ActiveSortOrder == SortOrder.Ascending ? "Low → High" : "High → Low";
+            SortStatusSummary = $"Sorted: {fieldName} ({direction})";
+        }
+
+        private void ApplySort()
+        {
+            if (SearchResults.Count <= 1) return;
+
+            List<PartSearchResult> sorted;
+            switch (ActiveSortField)
+            {
+                case SortField.Price:
+                    sorted = ActiveSortOrder == SortOrder.Ascending
+                        ? SearchResults.OrderBy(r => r.BestPrice == null).ThenBy(r => r.BestPrice).ToList()
+                        : SearchResults.OrderBy(r => r.BestPrice == null).ThenByDescending(r => r.BestPrice).ToList();
+                    break;
+
+                case SortField.Stock:
+                    sorted = ActiveSortOrder == SortOrder.Descending
+                        ? SearchResults.OrderBy(r => r.Stock == null).ThenByDescending(r => r.Stock).ToList()
+                        : SearchResults.OrderBy(r => r.Stock == null).ThenBy(r => r.Stock).ToList();
+                    break;
+
+                case SortField.CadAssets:
+                    sorted = ActiveSortOrder == SortOrder.Descending
+                        ? SearchResults.OrderByDescending(GetCadScore).ThenByDescending(r => r.Stock ?? 0).ToList()
+                        : SearchResults.OrderBy(GetCadScore).ThenBy(r => r.Stock ?? 0).ToList();
+                    break;
+
+                default:
+                    return;
+            }
+
+            SearchResults.Clear();
+            foreach (var item in sorted)
+            {
+                SearchResults.Add(item);
+            }
+        }
+
+        private static int GetCadScore(PartSearchResult part)
+        {
+            int score = 0;
+            if (part.Has3DModel) score += 4;
+            if (part.HasFootprint) score += 2;
+            if (part.HasSymbol) score += 1;
+            return score;
         }
 
         [RelayCommand]

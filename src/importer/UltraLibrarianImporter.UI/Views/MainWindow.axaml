@@ -36,9 +36,9 @@
       
       <!-- TAB 1: Unified Multi-Provider Part Explorer -->
       <TabItem Header="🔍 Part Explorer (Aggregated Search)">
-        <Grid RowDefinitions="Auto,Auto,*" Margin="10">
+        <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="10">
           <!-- Search Header -->
-          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,10">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
                      Text="{Binding SearchQuery}" 
                      Watermark="Search parts across all providers by MPN, keyword or value (e.g. STM32F401, NE555, ESP32, 10k 0805)..."
@@ -47,33 +47,134 @@
                      FontSize="14"
                      Margin="0,0,10,0"/>
             <Button Grid.Column="1" 
-                    Content="Search All Providers" 
                     Command="{Binding SearchPartsCommand}" 
                     Height="38"
-                    Padding="16,0"
-                    FontWeight="Bold"/>
+                    Padding="18,0"
+                    VerticalContentAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    CornerRadius="4"
+                    Cursor="Hand">
+              <TextBlock Text="Search All Providers" 
+                         FontWeight="Bold" 
+                         FontSize="13" 
+                         VerticalAlignment="Center" 
+                         HorizontalAlignment="Center"
+                         Margin="0,3,0,0"/>
+            </Button>
+          </Grid>
+
+          <!-- Quick Filter/Sort Bar -->
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,Auto,*" Margin="0,0,0,8" VerticalAlignment="Center">
+            <TextBlock Grid.Column="0" Text="Sort by:" VerticalAlignment="Center" FontSize="12" Opacity="0.75" Margin="0,0,8,0"/>
+            
+            <Button Grid.Column="1" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="Stock" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="📦 Stock" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding StockSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="2" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="Price" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="💲 Price" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding PriceSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="3" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="CAD" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="📐 CAD Assets" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding CadSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <TextBlock Grid.Column="4" Text="{Binding SortStatusSummary}" VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="11" Opacity="0.65" Margin="10,0,0,0"/>
           </Grid>
 
           <!-- Search Progress Bar -->
-          <ProgressBar Grid.Row="1" 
+          <ProgressBar Grid.Row="2" 
                        IsIndeterminate="True" 
                        IsVisible="{Binding IsSearching}" 
                        Height="3" 
                        Margin="0,0,0,8"/>
 
           <!-- Results List / Table -->
-          <Border Grid.Row="2" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+          <Border Grid.Row="3" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
             <Grid RowDefinitions="Auto,*">
               <!-- Table Header -->
               <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
-                <Grid ColumnDefinitions="140,160,130,90,90,120,*">
-                  <TextBlock Grid.Column="0" Text="Provider" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="1" Text="Part Number" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="2" Text="Manufacturer" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="3" Text="Stock" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="4" Text="Best Price" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="5" Text="CAD Assets" FontWeight="Bold"/>
-                  <TextBlock Grid.Column="6" Text="Action" FontWeight="Bold"/>
+                <Grid ColumnDefinitions="140,160,130,105,105,120,*">
+                  <TextBlock Grid.Column="0" Text="Provider" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1" Text="Part Number" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="2" Text="Manufacturer" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                  <!-- Stock Header (Clickable Sort) -->
+                  <Button Grid.Column="3" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="Stock"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="Stock" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding StockSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <!-- Best Price Header (Clickable Sort) -->
+                  <Button Grid.Column="4" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="Price"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="Best Price" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding PriceSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <!-- CAD Assets Header (Clickable Sort) -->
+                  <Button Grid.Column="5" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="CAD"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="CAD Assets" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding CadSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <TextBlock Grid.Column="6" Text="Action" FontWeight="Bold" VerticalAlignment="Center"/>
                 </Grid>
               </Border>
 
@@ -81,7 +182,7 @@
               <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedSearchResult}">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="models:PartSearchResult">
-                    <Grid ColumnDefinitions="140,160,130,90,90,120,*" Margin="0,4">
+                    <Grid ColumnDefinitions="140,160,130,105,105,120,*" Margin="0,4">
                       <!-- Provider Badge -->
                       <Border Grid.Column="0" 
                               Background="{DynamicResource SystemControlHighlightListAccentLowBrush}" 
@@ -126,7 +227,8 @@
                               Content="Open &amp; Import" 
                               Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
                               CommandParameter="{Binding}"
-                              Padding="8,3" 
+                              Padding="10,4" 
+                              VerticalContentAlignment="Center"
                               FontSize="11"
                               HorizontalAlignment="Left"/>
                     </Grid>
