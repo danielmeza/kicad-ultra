@@ -22,7 +22,7 @@ def launch_importer():
         return
     
     env = os.environ.copy()
-    subprocess.Popen([exe_path], env=env)
+    subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path), env=env)
 
 if __name__ == "__main__":
     launch_importer()

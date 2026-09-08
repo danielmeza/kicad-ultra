@@ -11,6 +11,7 @@ __license__ = "MIT"
 
 try:
     import pcbnew
+    import wx
     from .importer_launcher import launch_importer
 
     class UltraLibrarianActionPlugin(pcbnew.ActionPlugin):
@@ -26,6 +27,11 @@ try:
         def Run(self):
             launch_importer()
 
-    UltraLibrarianActionPlugin().register()
+    exe_name = os.path.basename(sys.executable).lower()
+    is_standalone_cli = exe_name.startswith("python") and wx.GetApp() is None
+
+    if not is_standalone_cli:
+        UltraLibrarianActionPlugin().register()
 except Exception as e:
-    pass
+    print(f"[ComponentExplorer] Error during plugin registration: {e}")
+
