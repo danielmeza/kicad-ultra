@@ -66,29 +66,21 @@ internal sealed class Program
     [SupportedOSPlatform("windows")]
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
-    private static void ConfigureServices(IServiceCollection services)
-    {
-        // Register App as a singleton
-        _ = services.AddSingleton(p => new App(p));
-
-        // Register ViewModels
-        _ = services.AddTransient<ViewModels.MainViewModel>();
-        _ = services.AddTransient<ViewModels.SettingsViewModel>();
-        _ = services.AddTransient<ViewModels.AboutViewModel>();
-
-        _ = services.AddSingleton<IConfigService, ConfigService>();
-
-        //Register KiCad
-        _ = services.AddUltraLibrarianKiCadServices();
-
 #pragma warning disable CS0618 // AddAvaloniauiDesktopApplication is obsolete in favour of AddAppBuilder.
-        // AddAppBuilder invokes its Func<AppBuilder> eagerly, with no service provider in scope.
-        // App's constructor requires the container, so it cannot be constructed at that point;
-        // AddAvaloniauiDesktopApplication resolves App lazily from the provider, which is the
-        // behaviour this app depends on. Revisit if AddAppBuilder gains a provider-aware overload.
-        _ = services.AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
+    // AddAppBuilder invokes its Func<AppBuilder> eagerly, with no service provider in scope. App's
+    // constructor requires the container, so it cannot be constructed at that point;
+    // AddAvaloniauiDesktopApplication resolves App lazily from the provider, which is the behaviour
+    // this app depends on. Revisit if AddAppBuilder gains a provider-aware overload.
+    private static void ConfigureServices(IServiceCollection services) =>
+        services
+            .AddSingleton(p => new App(p))
+            .AddTransient<ViewModels.MainViewModel>()
+            .AddTransient<ViewModels.SettingsViewModel>()
+            .AddTransient<ViewModels.AboutViewModel>()
+            .AddSingleton<IConfigService, ConfigService>()
+            .AddUltraLibrarianKiCadServices()
+            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
 #pragma warning restore CS0618
-    }
 
 
 }

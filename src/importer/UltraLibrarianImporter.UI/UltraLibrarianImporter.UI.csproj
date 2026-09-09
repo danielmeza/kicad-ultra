@@ -26,29 +26,30 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.21" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.21" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.21" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.21" />
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.21">
+    <PackageReference Include="Avalonia.Diagnostics">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Avalonia.Xaml.Interactions" Version="11.3.0.6" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageReference Include="NLog.Extensions.Logging" Version="6.2.0" />
-    <PackageReference Include="WebViewControl-Avalonia" Version="3.120.11" />
+    <PackageReference Include="Avalonia.Xaml.Interactions" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="NLog.Extensions.Logging" />
+    <PackageReference Include="WebViewControl-Avalonia" />
     <!-- Removed Microsoft.Web.WebView2 package -->
   </ItemGroup>
 
   <ItemGroup>
     <!-- KiCadSharp moved to its own repository (danielmeza/kicad-sharp) and ships from nuget.org.
-         $(KiCadSharpVersion) selects the version; see README, "Developing against local library
+         Its version lives in Directory.Packages.props, which resolves it from $(KiCadSharpVersion)
+         so the command-line override still works; see README, "Developing against local library
          sources", for the local folder feed that builds this against an unreleased checkout. -->
-    <PackageReference Include="KiCadSharp" Version="$(KiCadSharpVersion)" />
+    <PackageReference Include="KiCadSharp" />
   </ItemGroup>
 </Project>

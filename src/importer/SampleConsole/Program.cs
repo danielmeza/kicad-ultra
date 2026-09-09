@@ -17,26 +17,22 @@ if (args.Length > 0 && args[0] == "--test-parser")
 
 IHost host = Host
     .CreateDefaultBuilder(args)
-    .ConfigureLogging((hostContext, builder) =>
-    {
-        _ = builder.ClearProviders();
-        _ = builder.SetMinimumLevel(LogLevel.Information);
-        _ = builder.AddSimpleConsole(options =>
+    .ConfigureLogging(logging => logging
+        .ClearProviders()
+        .SetMinimumLevel(LogLevel.Information)
+        .AddSimpleConsole(options =>
         {
             options.SingleLine = false;
             options.TimestampFormat = "HH:mm:ss.fff";
             options.ColorBehavior = LoggerColorBehavior.Enabled;
-        });
-    })
-    .ConfigureServices(services =>
-    {
-        _ = services.AddKiCad(ServiceTest.ClientName, settings =>
+        }))
+    .ConfigureServices(services => services
+        .AddKiCad(ServiceTest.ClientName, settings =>
         {
             settings.Token = "72eb9eb5-d0b6-49d4-b5b2-49e665c5f478";
             settings.PipeName = "ipc://C:\\Users\\danie\\AppData\\Local\\Temp\\kicad\\api.sock";
-        });
-        _ = services.AddHostedService<ServiceTest>();
-    })
+        })
+        .AddHostedService<ServiceTest>())
     .Build();
 
 host.Run();

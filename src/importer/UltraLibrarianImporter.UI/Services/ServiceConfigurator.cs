@@ -21,32 +21,17 @@ public static class ServiceConfigurator
     /// <param name="services">Service collection to configure</param>
     /// <param name="context">Host builder context supplying the configuration to bind against</param>
     /// <returns>Configured service collection</returns>
-    public static IServiceCollection ConfigureServices(IServiceCollection services, HostBuilderContext context)
-    {
-        // Register framework services
-        _ = services.AddLogging(logging =>
-        {
-            _ = logging.ClearProviders();
-            _ = logging.AddNLog();
-        });
-
-        _ = services.AddOptions<KiCadClientSettings>()
-            .Bind(context.Configuration.GetSection("client"));
-
-        // Register application services
-        _ = services.AddSingleton<IConfigService, ConfigService>();
-        _ = services.AddSingleton<KiCadIPCClient>();
-        _ = services.AddSingleton<KiCad>();
-
-        // Register KiCad binding types
-        _ = services.AddTransient(provider =>
-        {
-            IConfigService configService = provider.GetRequiredService<IConfigService>();
-            return configService.GetImportOptions();
-        });
-
-        return services;
-    }
+    public static IServiceCollection ConfigureServices(IServiceCollection services, HostBuilderContext context) =>
+        services
+            .AddLogging(logging => logging.ClearProviders().AddNLog())
+            // OptionsBuilder<T> breaks the IServiceCollection chain; .Services returns to it.
+            .AddOptions<KiCadClientSettings>()
+                .Bind(context.Configuration.GetSection("client"))
+                .Services
+            .AddSingleton<IConfigService, ConfigService>()
+            .AddSingleton<KiCadIPCClient>()
+            .AddSingleton<KiCad>()
+            .AddTransient(provider => provider.GetRequiredService<IConfigService>().GetImportOptions());
 
     /// <summary>
     /// Configures services for the host

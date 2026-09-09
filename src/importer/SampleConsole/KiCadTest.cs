@@ -138,28 +138,41 @@ internal class KiCadTest
             // Add attributes for SMD
             footprint.Attributes.Add("smd");
 
-            // Add SMD pads
-            _ = footprint.AddPad("1", "smd", "rect", -2.0, 0.0, 1.0, 0.5,
-                ["F.Cu", "F.Paste", "F.Mask"]);
+            // KiCadFootprint's Add* methods return the element they just created - KiCadPad,
+            // KiCadFpLine, KiCadModel - rather than the footprint, so they cannot be chained
+            // fluently. Driving them from a table is the next best thing: the geometry reads as
+            // data, and the return value is discarded in one place instead of twelve.
+            (string Number, double X, double Y)[] pads = [("1", -2.0, 0.0), ("2", 2.0, 0.0)];
 
-            _ = footprint.AddPad("2", "smd", "rect", 2.0, 0.0, 1.0, 0.5,
-                ["F.Cu", "F.Paste", "F.Mask"]);
+            foreach ((string Number, double X, double Y) pad in pads)
+            {
+                _ = footprint.AddPad(pad.Number, "smd", "rect", pad.X, pad.Y, 1.0, 0.5,
+                    ["F.Cu", "F.Paste", "F.Mask"]);
+            }
 
-            // Add silkscreen outline
-            _ = footprint.AddLine(-3.0, -1.0, 3.0, -1.0, "F.SilkS");
-            _ = footprint.AddLine(3.0, -1.0, 3.0, 1.0, "F.SilkS");
-            _ = footprint.AddLine(3.0, 1.0, -3.0, 1.0, "F.SilkS");
-            _ = footprint.AddLine(-3.0, 1.0, -3.0, -1.0, "F.SilkS");
+            (double X1, double Y1, double X2, double Y2, string Layer)[] lines =
+            [
+                // Silkscreen outline
+                (-3.0, -1.0, 3.0, -1.0, "F.SilkS"),
+                (3.0, -1.0, 3.0, 1.0, "F.SilkS"),
+                (3.0, 1.0, -3.0, 1.0, "F.SilkS"),
+                (-3.0, 1.0, -3.0, -1.0, "F.SilkS"),
 
-            // Add pin 1 marker
-            _ = footprint.AddLine(-3.0, -1.0, -3.0, -1.5, "F.SilkS");
-            _ = footprint.AddLine(-3.0, -1.5, -2.5, -1.5, "F.SilkS");
+                // Pin 1 marker
+                (-3.0, -1.0, -3.0, -1.5, "F.SilkS"),
+                (-3.0, -1.5, -2.5, -1.5, "F.SilkS"),
 
-            // Add a courtyard
-            _ = footprint.AddLine(-3.5, -1.5, 3.5, -1.5, "F.CrtYd");
-            _ = footprint.AddLine(3.5, -1.5, 3.5, 1.5, "F.CrtYd");
-            _ = footprint.AddLine(3.5, 1.5, -3.5, 1.5, "F.CrtYd");
-            _ = footprint.AddLine(-3.5, 1.5, -3.5, -1.5, "F.CrtYd");
+                // Courtyard
+                (-3.5, -1.5, 3.5, -1.5, "F.CrtYd"),
+                (3.5, -1.5, 3.5, 1.5, "F.CrtYd"),
+                (3.5, 1.5, -3.5, 1.5, "F.CrtYd"),
+                (-3.5, 1.5, -3.5, -1.5, "F.CrtYd"),
+            ];
+
+            foreach ((double X1, double Y1, double X2, double Y2, string Layer) line in lines)
+            {
+                _ = footprint.AddLine(line.X1, line.Y1, line.X2, line.Y2, line.Layer);
+            }
 
             // Add a 3D model (example path)
             KiCadModel model = footprint.AddModel("${KICAD6_3DMODEL_DIR}/Package_SO.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.wrl");

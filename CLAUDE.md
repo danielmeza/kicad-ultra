@@ -43,6 +43,13 @@ nullable-analyzer warning, a code-style violation, or a newly disclosed CVE in a
 package fails the local build, not just CI. `global.json` pins SDK 10.0.400
 (`rollForward: latestMajor`, prerelease allowed).
 
+Package versions are centrally managed: `Directory.Packages.props` sets
+`ManagePackageVersionsCentrally=true` and carries every `PackageVersion`, so a `PackageReference` in
+a csproj is an id and nothing else. Add a package by adding both. `KiCadSharp` and `SExpressions`
+resolve their `PackageVersion` from `$(KiCadSharpVersion)` / `$(SExpressionsVersion)` in
+`Directory.Build.props`, which is what keeps `scripts/use-local-libs.sh`'s command-line override
+working — verified: `-p:KiCadSharpVersion=0.1.0` still resolves 0.1.0.
+
 `GenerateDocumentationFile=true` is set for one reason: IDE0005 (unnecessary usings) is silently
 skipped during a build unless the compiler is also emitting a doc file
 ([roslyn#41640](https://github.com/dotnet/roslyn/issues/41640)). `CS1591` is in `NoWarn` because of
