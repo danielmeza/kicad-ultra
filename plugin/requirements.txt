@@ -1,4 +1,11 @@
-requests>=2.34.2
-wxPython>=4.3.1
-watchdog>=6.0.0
-# wxWebView is part of wxPython
+# Intentionally empty.
+#
+# importer_launcher.py is the whole Python side of this plugin and imports only the standard
+# library (os, subprocess, sys). Everything else runs in the .NET importer in bin/.
+#
+# This file previously listed requests, wxPython and watchdog, left over from an earlier wxPython
+# implementation. Nothing imported them, and KiCad installs this file's contents into the plugin's
+# environment when it loads the plugin - which meant a wxPython build on every install.
+#
+# The file is kept (rather than deleted) because .github/workflows/release.yml stages it into the
+# Plugin and Content Manager bundle.
