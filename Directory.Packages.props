@@ -1,0 +1,38 @@
+<Project>
+
+  <!-- Central Package Management: every PackageReference in the repository takes its version from
+       this file, and the csproj files carry only the package id. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Avalonia">
+    <!-- Held on the 11.3 line on purpose. WebViewControl-Avalonia (the CEF browser the import flow
+         runs inside) and Lemon.Hosting.AvaloniauiDesktop are both built against Avalonia 11, so a
+         12.x bump is a port rather than an upgrade. Take 11.3 patches. -->
+    <PackageVersion Include="Avalonia" Version="11.3.21" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.21" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.21" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.21" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.21" />
+    <PackageVersion Include="Avalonia.Xaml.Interactions" Version="11.3.0.6" />
+  </ItemGroup>
+
+  <ItemGroup Label="Application">
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.0" />
+    <PackageVersion Include="WebViewControl-Avalonia" Version="3.120.11" />
+  </ItemGroup>
+
+  <ItemGroup Label="Split-out libraries">
+    <!-- These two keep taking their version from the properties in Directory.Build.props so that
+         scripts/use-local-libs.sh can still select a locally packed build with
+         -p:SExpressionsVersion=... / -p:KiCadSharpVersion=... on the command line. -->
+    <PackageVersion Include="KiCadSharp" Version="$(KiCadSharpVersion)" />
+    <PackageVersion Include="SExpressions" Version="$(SExpressionsVersion)" />
+  </ItemGroup>
+
+</Project>
