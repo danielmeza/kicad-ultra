@@ -1,4 +1,4 @@
-using KiCadSharp;
+﻿using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -8,56 +8,56 @@ using NLog.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
-namespace UltraLibrarianImporter.UI.Services
+namespace UltraLibrarianImporter.UI.Services;
+
+/// <summary>
+/// Configures services for dependency injection
+/// </summary>
+public static class ServiceConfigurator
 {
     /// <summary>
-    /// Configures services for dependency injection
+    /// Configures services for the application
     /// </summary>
-    public static class ServiceConfigurator
+    /// <param name="services">Service collection to configure</param>
+    /// <param name="context">Host builder context supplying the configuration to bind against</param>
+    /// <returns>Configured service collection</returns>
+    public static IServiceCollection ConfigureServices(IServiceCollection services, HostBuilderContext context)
     {
-        /// <summary>
-        /// Configures services for the application
-        /// </summary>
-        /// <param name="services">Service collection to configure</param>
-        /// <returns>Configured service collection</returns>
-        public static IServiceCollection ConfigureServices(IServiceCollection services, HostBuilderContext context)
+        // Register framework services
+        _ = services.AddLogging(logging =>
         {
-            // Register framework services
-            services.AddLogging(logging =>
-            {
-                logging.ClearProviders();
-                logging.AddNLog();
-            });
+            _ = logging.ClearProviders();
+            _ = logging.AddNLog();
+        });
 
-            services.AddOptions<KiCadClientSettings>()
-                .Bind(context.Configuration.GetSection("client"));
+        _ = services.AddOptions<KiCadClientSettings>()
+            .Bind(context.Configuration.GetSection("client"));
 
-            // Register application services
-            services.AddSingleton<IConfigService, ConfigService>();
-            services.AddSingleton<KiCadIPCClient>();
-            services.AddSingleton<KiCad>();
+        // Register application services
+        _ = services.AddSingleton<IConfigService, ConfigService>();
+        _ = services.AddSingleton<KiCadIPCClient>();
+        _ = services.AddSingleton<KiCad>();
 
-            // Register KiCad binding types
-            services.AddTransient<ImportOptions>(provider =>
-            {
-                var configService = provider.GetRequiredService<IConfigService>();
-                return configService.GetImportOptions();
-            });
-
-            return services;
-        }
-
-        /// <summary>
-        /// Configures services for the host
-        /// </summary>
-        /// <param name="hostBuilder">Host builder to configure</param>
-        /// <returns>Configured host builder</returns>
-        public static IHostBuilder ConfigureAppServices(this IHostBuilder hostBuilder)
+        // Register KiCad binding types
+        _ = services.AddTransient(provider =>
         {
-            return hostBuilder.ConfigureServices((context, services) =>
-            {
-                ConfigureServices(services, context);
-            });
-        }
+            IConfigService configService = provider.GetRequiredService<IConfigService>();
+            return configService.GetImportOptions();
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Configures services for the host
+    /// </summary>
+    /// <param name="hostBuilder">Host builder to configure</param>
+    /// <returns>Configured host builder</returns>
+    public static IHostBuilder ConfigureAppServices(this IHostBuilder hostBuilder)
+    {
+        return hostBuilder.ConfigureServices((context, services) =>
+        {
+            _ = ConfigureServices(services, context);
+        });
     }
 }
