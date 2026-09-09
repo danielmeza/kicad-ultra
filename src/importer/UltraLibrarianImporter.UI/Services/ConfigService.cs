@@ -14,8 +14,33 @@ public class ConfigService : IConfigService
     private readonly ILogger<ConfigService> _logger;
     private readonly string _configFilePath;
 
+    private static readonly JsonSerializerOptions s_serializerOptions = new() { WriteIndented = true };
+
     // Default values
     private const string DEFAULT_DOWNLOAD_DIR = "";
+
+    /// <summary>
+    /// The on-disk shape of the configuration.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ConfigService"/> cannot serialize itself. System.Text.Json binds a type's single
+    /// public constructor by parameter name, and this one takes an <see cref="ILogger"/> that
+    /// matches no property, so <c>Deserialize&lt;ConfigService&gt;</c> threw
+    /// <see cref="InvalidOperationException"/> on every launch that found an existing file. The
+    /// catch in <see cref="Load"/> swallowed it, which turned a hard failure into settings that
+    /// silently reverted to their defaults on restart. The property names here match what the old
+    /// code wrote, so existing config.json files still load.
+    /// </remarks>
+    private sealed class ConfigData
+    {
+        public string DownloadDirectory { get; set; } = string.Empty;
+        public bool AddToGlobalLibrary { get; set; } = true;
+        public bool CleanupAfterImport { get; set; } = true;
+        public string TargetPath { get; set; } = string.Empty;
+        public bool UseProjectPath { get; set; } = true;
+        public bool AutoImportWhenDownloaded { get; set; } = true;
+        public string LibraryName { get; set; } = string.Empty;
+    }
 
     // Configuration properties
     public string DownloadDirectory { get; set; } = DEFAULT_DOWNLOAD_DIR;
@@ -64,7 +89,7 @@ public class ConfigService : IConfigService
             if (File.Exists(_configFilePath))
             {
                 var json = File.ReadAllText(_configFilePath);
-                ConfigService? config = JsonSerializer.Deserialize<ConfigService>(json);
+                ConfigData? config = JsonSerializer.Deserialize<ConfigData>(json);
 
                 if (config != null)
                 {
@@ -98,7 +123,17 @@ public class ConfigService : IConfigService
     {
         try
         {
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            var data = new ConfigData
+            {
+                DownloadDirectory = DownloadDirectory,
+                AddToGlobalLibrary = AddToGlobalLibrary,
+                CleanupAfterImport = CleanupAfterImport,
+                TargetPath = TargetPath,
+                UseProjectPath = UseProjectPath,
+                AutoImportWhenDownloaded = AutoImportWhenDownloaded,
+                LibraryName = LibraryName,
+            };
+            var json = JsonSerializer.Serialize(data, s_serializerOptions);
             File.WriteAllText(_configFilePath, json);
             _logger.LogInformation("Configuration saved to file");
         }
