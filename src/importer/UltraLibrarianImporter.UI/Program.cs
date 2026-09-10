@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Runtime.Versioning;
 
@@ -11,6 +11,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 using NLog;
+
+using Microsoft.Extensions.Logging;
+using NLog.Extensions.Logging;
 
 using KiCadSharp;
 using UltraLibrarianImporter.UI.Services;
@@ -32,6 +35,36 @@ sealed class Program
         // Initialize NLog
         LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
 
+        bool isMcp = Array.Exists(args, a =>
+            string.Equals(a, "--mcp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "-mcp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(a, "mcp", StringComparison.OrdinalIgnoreCase));
+
+        if (isMcp)
+        {
+            try
+            {
+                var consoleTarget = LogManager.Configuration?.FindTargetByName("console");
+                if (consoleTarget != null)
+                {
+                    LogManager.Configuration?.RemoveTarget("console");
+                    LogManager.ReconfigExistingLoggers();
+                }
+
+                RunMcpHostAsync(args).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                LogManager.GetCurrentClassLogger().Error(ex, "MCP Server error");
+                Console.Error.WriteLine($"MCP Server Error: {ex.Message}");
+            }
+            finally
+            {
+                LogManager.Shutdown();
+            }
+            return;
+        }
+
         try
         {
             // Create the host
@@ -51,6 +84,23 @@ sealed class Program
             // Ensure to flush and stop internal timers/threads before application-exit
             LogManager.Shutdown();
         }
+    }
+
+    private static async System.Threading.Tasks.Task RunMcpHostAsync(string[] args)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(builder =>
+        {
+            builder.ClearProviders();
+            builder.AddNLog();
+        });
+
+        services.AddSingleton<IConfigService, ConfigService>();
+        services.AddUltraLibrarianKiCadServices();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var mcpServer = serviceProvider.GetRequiredService<Services.Mcp.McpServer>();
+        await mcpServer.RunStdioAsync();
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
