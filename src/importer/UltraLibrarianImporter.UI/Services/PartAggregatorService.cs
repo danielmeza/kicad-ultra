@@ -37,11 +37,15 @@ namespace UltraLibrarianImporter.UI.Services
                 return Array.Empty<PartSearchResult>();
             }
 
-            var tasks = apiProviders.Select(async provider =>
+            var tasks = apiProviders.Select(provider => Task.Run(async () =>
             {
                 try
                 {
                     return await provider.SearchPartsAsync(query, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -49,7 +53,7 @@ namespace UltraLibrarianImporter.UI.Services
                         provider.DisplayName, query, ex.Message);
                     return (IReadOnlyList<PartSearchResult>)Array.Empty<PartSearchResult>();
                 }
-            });
+            }, cancellationToken));
 
             var providerResults = await Task.WhenAll(tasks);
 
@@ -58,28 +62,6 @@ namespace UltraLibrarianImporter.UI.Services
                 .OrderByDescending(r => r.Stock ?? 0)
                 .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
                 .ToList();
-
-            if (consolidated.Count == 0)
-            {
-                foreach (var provider in _registry.Providers)
-                {
-                    consolidated.Add(new PartSearchResult(
-                        ProviderId: provider.Id,
-                        ProviderName: provider.DisplayName,
-                        PartNumber: query.ToUpperInvariant(),
-                        Manufacturer: provider.DisplayName,
-                        Description: $"Search '{query}' directly on {provider.DisplayName}.",
-                        BestPrice: null,
-                        Currency: "USD",
-                        Stock: null,
-                        HasSymbol: true,
-                        HasFootprint: true,
-                        Has3DModel: true,
-                        DatasheetUrl: provider.SearchUrl,
-                        PackageDownloadUrl: null
-                    ));
-                }
-            }
 
             _logger.LogInformation("Consolidated {Count} parts across providers for: '{Query}'", consolidated.Count, query);
             return consolidated;

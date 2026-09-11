@@ -14,6 +14,11 @@
         MinWidth="1200" MinHeight="750"
         WindowStartupLocation="CenterScreen">
 
+  <Window.Resources>
+    <vm:HexToBrushConverter x:Key="HexToBrushConverter" />
+    <vm:ImportTypeDisplayConverter x:Key="ImportTypeDisplayConverter" />
+  </Window.Resources>
+
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,320">
     <!-- Top Action Bar -->
     <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,8" Spacing="8">
@@ -23,11 +28,14 @@
       <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="10,5"/>
 
       <TextBlock Text="Import Filter:" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
-      <ComboBox Width="180" SelectedIndex="3">
-        <ComboBoxItem Content="Import Symbols Only" Tag="Symbol"/>
-        <ComboBoxItem Content="Import Footprints Only" Tag="Footprint"/>
-        <ComboBoxItem Content="Import 3D Models Only" Tag="Model3D"/>
-        <ComboBoxItem Content="Import All Assets" Tag="All"/>
+      <ComboBox Width="180" 
+                ItemsSource="{Binding ImportTypes}" 
+                SelectedItem="{Binding SelectedImportType}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Converter={StaticResource ImportTypeDisplayConverter}}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
       </ComboBox>
     </StackPanel>
 
@@ -185,12 +193,12 @@
                     <Grid ColumnDefinitions="140,160,130,105,105,120,*" Margin="0,4">
                       <!-- Provider Badge -->
                       <Border Grid.Column="0" 
-                              Background="{DynamicResource SystemControlHighlightListAccentLowBrush}" 
+                              Background="{Binding ProviderColor, Converter={StaticResource HexToBrushConverter}}" 
                               CornerRadius="3" 
                               Padding="6,2" 
                               HorizontalAlignment="Left"
                               VerticalAlignment="Center">
-                        <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
                       </Border>
 
                       <!-- MPN -->
@@ -235,6 +243,24 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+
+              <!-- Empty state message -->
+              <StackPanel Grid.Row="1" 
+                          IsVisible="{Binding !SearchResults.Count}" 
+                          HorizontalAlignment="Center" 
+                          VerticalAlignment="Center" 
+                          Spacing="6" 
+                          Margin="20">
+                <TextBlock Text="No component search results" 
+                           HorizontalAlignment="Center" 
+                           Opacity="0.6" 
+                           FontSize="13" 
+                           FontWeight="SemiBold"/>
+                <TextBlock Text="Search parts across providers by MPN or keyword using the search bar above." 
+                           HorizontalAlignment="Center" 
+                           Opacity="0.4" 
+                           FontSize="11"/>
+              </StackPanel>
             </Grid>
           </Border>
         </Grid>

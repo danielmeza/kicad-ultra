@@ -21,36 +21,14 @@ namespace UltraLibrarianImporter.UI.Services.Providers
         public override string SearchUrl => "https://www.snapmagic.com/search/";
         public override string DefaultPrefix => "SE_";
         public override string DefaultLibraryName => "SnapEDA";
+        public override string ProviderColor => "#0288D1";
 
-        public override bool SupportsDirectApi => true;
+        public override bool SupportsDirectApi => false;
 
         public override Task<IReadOnlyList<PartSearchResult>> SearchPartsAsync(string query, CancellationToken cancellationToken = default)
         {
-            var results = new List<PartSearchResult>();
-
-            string apiKey = _configService.SnapEdaApiKey?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
-            }
-
-            results.Add(new PartSearchResult(
-                ProviderId: Id,
-                ProviderName: DisplayName,
-                PartNumber: query.ToUpperInvariant(),
-                Manufacturer: "SnapMagic / SnapEDA",
-                Description: "SnapMagic CAD provider (API key configured).",
-                BestPrice: null,
-                Currency: "USD",
-                Stock: null,
-                HasSymbol: true,
-                HasFootprint: true,
-                Has3DModel: true,
-                DatasheetUrl: $"https://www.snapmagic.com/search/?q={Uri.EscapeDataString(query)}",
-                PackageDownloadUrl: null
-            ));
-
-            return Task.FromResult<IReadOnlyList<PartSearchResult>>(results);
+            // Direct API search is not yet implemented; user-driven embedded browser workflow is used instead.
+            return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
         }
     }
 }

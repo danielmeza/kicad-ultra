@@ -48,6 +48,14 @@ namespace UltraLibrarianImporter.UI.ViewModels
         [ObservableProperty]
         private Services.ImportType _selectedImportType = Services.ImportType.All;
 
+        public IReadOnlyList<Services.ImportType> ImportTypes { get; } = new[]
+        {
+            Services.ImportType.Symbol,
+            Services.ImportType.Footprint,
+            Services.ImportType.Model3D,
+            Services.ImportType.All
+        };
+
         [ObservableProperty]
         private IComponentProvider _selectedProvider;
 

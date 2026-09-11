@@ -21,36 +21,14 @@ namespace UltraLibrarianImporter.UI.Services.Providers
         public override string SearchUrl => "https://componentsearchengine.com/";
         public override string DefaultPrefix => "CSE_";
         public override string DefaultLibraryName => "ComponentSearchEngine";
+        public override string ProviderColor => "#C2185B";
 
-        public override bool SupportsDirectApi => true;
+        public override bool SupportsDirectApi => false;
 
         public override Task<IReadOnlyList<PartSearchResult>> SearchPartsAsync(string query, CancellationToken cancellationToken = default)
         {
-            var results = new List<PartSearchResult>();
-
-            string apiKey = _configService.SamacSysApiKey?.Trim() ?? string.Empty;
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
-            }
-
-            results.Add(new PartSearchResult(
-                ProviderId: Id,
-                ProviderName: DisplayName,
-                PartNumber: query.ToUpperInvariant(),
-                Manufacturer: "SamacSys",
-                Description: "SamacSys Component Search Engine provider (credentials configured).",
-                BestPrice: null,
-                Currency: "USD",
-                Stock: null,
-                HasSymbol: true,
-                HasFootprint: true,
-                Has3DModel: true,
-                DatasheetUrl: $"https://componentsearchengine.com/search?term={Uri.EscapeDataString(query)}",
-                PackageDownloadUrl: null
-            ));
-
-            return Task.FromResult<IReadOnlyList<PartSearchResult>>(results);
+            // Direct API search is not yet implemented; user-driven embedded browser workflow is used instead.
+            return Task.FromResult<IReadOnlyList<PartSearchResult>>(Array.Empty<PartSearchResult>());
         }
     }
 }

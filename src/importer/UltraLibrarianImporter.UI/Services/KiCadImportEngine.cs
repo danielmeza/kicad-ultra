@@ -8,6 +8,8 @@ using KiCadSharp.Documents;
 
 using Microsoft.Extensions.Logging;
 
+using SExpressions;
+
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.Services
@@ -36,7 +38,7 @@ namespace UltraLibrarianImporter.UI.Services
             {
                 _logger.LogInformation("Importing {Provider} component from {FilePath}", provider.DisplayName, packageFilePath);
 
-                ResolveProjectContext(options, provider.DefaultLibraryName, out string projectPath, out string projectName);
+                ResolveProjectContext(options, provider.DefaultLibraryName, out string projectDirectory, out string projectName);
 
                 _logger.LogDebug("Extracting package via provider {Provider} into {TempDir}", provider.DisplayName, tempDir);
                 var extraction = await provider.ExtractPackageAsync(packageFilePath, tempDir);
@@ -45,7 +47,7 @@ namespace UltraLibrarianImporter.UI.Services
 
                 if (importType.HasFlag(ImportType.Symbol))
                 {
-                    bool symbolSuccess = await ImportSymbolsAsync(extraction, projectPath, projectName, options, provider);
+                    bool symbolSuccess = await RunStepAsync("Symbol import", () => ImportSymbolsAsync(extraction, projectDirectory, projectName, options, provider), result);
                     result.SymbolImportSuccess = symbolSuccess;
                     success |= symbolSuccess;
                     result.Details.Add($"Symbol import: {(symbolSuccess ? "Success" : "Failed")}");
@@ -53,7 +55,7 @@ namespace UltraLibrarianImporter.UI.Services
 
                 if (importType.HasFlag(ImportType.Footprint))
                 {
-                    bool footprintSuccess = await ImportFootprintsAsync(extraction, projectPath, projectName, options, provider);
+                    bool footprintSuccess = await RunStepAsync("Footprint import", () => ImportFootprintsAsync(extraction, projectDirectory, projectName, options, provider), result);
                     result.FootprintImportSuccess = footprintSuccess;
                     success |= footprintSuccess;
                     result.Details.Add($"Footprint import: {(footprintSuccess ? "Success" : "Failed")}");
@@ -61,7 +63,7 @@ namespace UltraLibrarianImporter.UI.Services
 
                 if (importType.HasFlag(ImportType.Model3D))
                 {
-                    bool modelSuccess = await Import3DModelsAsync(extraction, projectPath, provider);
+                    bool modelSuccess = await RunStepAsync("3D Model import", () => Import3DModelsAsync(extraction, projectDirectory, provider), result);
                     result.Model3DImportSuccess = modelSuccess;
                     success |= modelSuccess;
                     result.Details.Add($"3D Model import: {(modelSuccess ? "Success" : "Failed")}");
@@ -107,31 +109,48 @@ namespace UltraLibrarianImporter.UI.Services
             }
         }
 
-        private void ResolveProjectContext(ImportOptions options, string defaultName, out string projectPath, out string projectName)
+        private async Task<bool> RunStepAsync(string step, Func<Task<bool>> body, ImportResult result)
+        {
+            try
+            {
+                return await body();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Step} failed", step);
+                result.Details.Add($"{step} failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void ResolveProjectContext(ImportOptions options, string defaultName, out string projectDirectory, out string projectName)
         {
             try
             {
                 if (options.UseProjectPath)
                 {
-                    projectPath = KiCadEnvironment.GetProjectDirectory()
+                    string dir = KiCadEnvironment.GetProjectDirectory()
                         ?? throw new InvalidOperationException("Project path not in environment variables. Ensure this was launched from KiCad.");
 
-                    var projects = Directory.GetFiles(projectPath, $"*{KiCadFileExtensions.Project}");
-                    projectName = projects.FirstOrDefault() ?? throw new InvalidOperationException($"No project file found in {projectPath}");
+                    projectDirectory = File.Exists(dir) ? (Path.GetDirectoryName(dir) ?? dir) : dir;
+
+                    var projects = Directory.GetFiles(projectDirectory, $"*{KiCadFileExtensions.Project}");
+                    projectName = projects.FirstOrDefault() ?? throw new InvalidOperationException($"No project file found in {projectDirectory}");
                     projectName = Path.GetFileNameWithoutExtension(projectName);
-                    _logger.LogInformation("Using KiCad project: {Name} at {Path}", projectName, projectPath);
+                    _logger.LogInformation("Using KiCad project: {Name} at {Path}", projectName, projectDirectory);
                     return;
                 }
 
                 if (!string.IsNullOrWhiteSpace(options.TargetPath))
                 {
-                    projectPath = options.TargetPath;
-                    projectName = Path.GetFileNameWithoutExtension(projectPath);
+                    string target = options.TargetPath;
+                    projectDirectory = File.Exists(target) ? (Path.GetDirectoryName(target) ?? target) : target;
+                    projectName = Path.GetFileNameWithoutExtension(target);
                     if (string.IsNullOrEmpty(projectName))
                     {
                         projectName = defaultName;
                     }
-                    _logger.LogInformation("Using custom target path: {Path}", projectPath);
+                    _logger.LogInformation("Using custom target path: {Path}", projectDirectory);
                     return;
                 }
             }
@@ -140,8 +159,9 @@ namespace UltraLibrarianImporter.UI.Services
                 _logger.LogWarning(ex, "Could not resolve project path from environment; falling back to target path or defaults.");
                 if (!string.IsNullOrWhiteSpace(options.TargetPath) && !options.UseProjectPath)
                 {
-                    projectPath = options.TargetPath;
-                    projectName = Path.GetFileNameWithoutExtension(projectPath);
+                    string target = options.TargetPath;
+                    projectDirectory = File.Exists(target) ? (Path.GetDirectoryName(target) ?? target) : target;
+                    projectName = Path.GetFileNameWithoutExtension(target);
                     if (string.IsNullOrEmpty(projectName))
                     {
                         projectName = defaultName;
@@ -150,13 +170,13 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            projectPath = string.Empty;
+            projectDirectory = string.Empty;
             projectName = defaultName;
         }
 
         private async Task<bool> ImportSymbolsAsync(
             ProviderExtractionResult extraction,
-            string projectPath,
+            string projectDirectory,
             string projectName,
             ImportOptions options,
             IComponentProvider provider)
@@ -169,11 +189,11 @@ namespace UltraLibrarianImporter.UI.Services
 
             string libraryBaseName = !string.IsNullOrEmpty(options.LibraryName)
                 ? options.LibraryName
-                : (string.IsNullOrEmpty(projectPath) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
+                : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
-            string symbolLibPath = !string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), $"{libraryBaseName}.kicad_sym")
-                : Path.Combine(DirectoryOf(await GetSymbolLibraryPath(projectPath)), $"{libraryBaseName}.kicad_sym");
+            string symbolLibPath = !string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, $"{libraryBaseName}.kicad_sym")
+                : Path.Combine(await GetSymbolLibraryPath(projectDirectory), $"{libraryBaseName}.kicad_sym");
 
             KiCadSymbolLibrary symbolLibrary;
             if (File.Exists(symbolLibPath))
@@ -217,41 +237,42 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            if (success)
+            if (!success)
             {
-                try
-                {
-                    symbolLibrary.Save(symbolLibPath);
-                    if (options.AddToGlobalLibrary)
-                    {
-                        await AddSymbolLibraryToTableAsync(symbolLibPath, libraryBaseName);
-                    }
-                    _logger.LogInformation("Successfully saved symbol library to {Path}", symbolLibPath);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to save symbol library to {Path}: {Message}", symbolLibPath, ex.Message);
-                    success = false;
-                }
+                return false;
             }
 
-            return success;
+            try
+            {
+                symbolLibrary.Save(symbolLibPath);
+                if (options.AddToGlobalLibrary)
+                {
+                    await AddSymbolLibraryToTableAsync(symbolLibPath, libraryBaseName);
+                }
+                _logger.LogInformation("Successfully saved symbol library to {Path}", symbolLibPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save symbol library to {Path}: {Message}", symbolLibPath, ex.Message);
+                return false;
+            }
         }
 
         private async Task<bool> ImportFootprintsAsync(
             ProviderExtractionResult extraction,
-            string projectPath,
+            string projectDirectory,
             string projectName,
             ImportOptions options,
             IComponentProvider provider)
         {
             string libraryBaseName = !string.IsNullOrEmpty(options.LibraryName)
                 ? options.LibraryName
-                : (string.IsNullOrEmpty(projectPath) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
+                : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
-            string footprintLibPath = !string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), $"{libraryBaseName}.pretty")
-                : Path.Combine(DirectoryOf(await GetFootprintLibraryPath(projectPath)), $"{libraryBaseName}.pretty");
+            string footprintLibPath = !string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, $"{libraryBaseName}.pretty")
+                : Path.Combine(await GetFootprintLibraryPath(projectDirectory), $"{libraryBaseName}.pretty");
 
             Directory.CreateDirectory(footprintLibPath);
 
@@ -292,25 +313,16 @@ namespace UltraLibrarianImporter.UI.Services
         {
             try
             {
-                var sourceLib = KiCadFootprintLibrary.Load(sourceFilePath);
-                if (sourceLib.Footprints.Count == 0)
-                {
-                    return false;
-                }
+                var expr = SExpression.Load(sourceFilePath);
+                string currentId = expr.GetValue(0) ?? Path.GetFileNameWithoutExtension(sourceFilePath);
+                string newFootprintId = $"{prefix}{currentId}";
+                expr.SetValue(0, newFootprintId);
 
-                bool anySaved = false;
-                foreach (var footprint in sourceLib.Footprints)
-                {
-                    string newFootprintId = $"{prefix}{footprint.Id}";
-                    var newFootprint = CloneFootprint(footprint, newFootprintId);
-
-                    string destPath = Path.Combine(targetPrettyDir, $"{newFootprintId}.kicad_mod");
-                    KiCadFootprintLibrary.SaveFootprint(newFootprint, destPath);
-                    _logger.LogDebug("Saved footprint to {DestPath}", destPath);
-                    anySaved = true;
-                }
-
-                return anySaved;
+                var newFootprint = new KiCadFootprint(expr);
+                string destPath = Path.Combine(targetPrettyDir, $"{newFootprintId}.kicad_mod");
+                KiCadFootprintLibrary.SaveFootprint(newFootprint, destPath);
+                _logger.LogDebug("Saved footprint to {DestPath}", destPath);
+                return true;
             }
             catch (Exception ex)
             {
@@ -319,24 +331,9 @@ namespace UltraLibrarianImporter.UI.Services
             }
         }
 
-        private static KiCadFootprint CloneFootprint(KiCadFootprint source, string newId)
-        {
-            var target = new KiCadFootprint(newId);
-
-            foreach (var pad in source.Pads) target.Pads.Add(pad);
-            foreach (var text in source.TextItems) target.TextItems.Add(text);
-            foreach (var line in source.Lines) target.Lines.Add(line);
-            foreach (var circle in source.Circles) target.Circles.Add(circle);
-            foreach (var arc in source.Arcs) target.Arcs.Add(arc);
-            foreach (var poly in source.Polygons) target.Polygons.Add(poly);
-            foreach (var model in source.Models) target.Models.Add(model);
-
-            return target;
-        }
-
         private async Task<bool> Import3DModelsAsync(
             ProviderExtractionResult extraction,
-            string projectPath,
+            string projectDirectory,
             IComponentProvider provider)
         {
             if (extraction.Model3DFiles.Count == 0)
@@ -345,9 +342,9 @@ namespace UltraLibrarianImporter.UI.Services
                 return false;
             }
 
-            string modelDir = !string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), "3d_models", provider.DefaultLibraryName)
-                : Path.Combine(await Get3DModelPath(projectPath), provider.DefaultLibraryName);
+            string modelDir = !string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, "3d_models", provider.DefaultLibraryName)
+                : Path.Combine(await Get3DModelPath(projectDirectory), provider.DefaultLibraryName);
 
             Directory.CreateDirectory(modelDir);
 
@@ -367,26 +364,13 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            if (success)
-            {
-                try
-                {
-                    await _kicad.RefreshPaths();
-                    _logger.LogDebug("Refreshed KiCad paths after 3D model import.");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to refresh KiCad paths after 3D model import.");
-                }
-            }
-
             return success;
         }
 
         private async Task AddSymbolLibraryToTableAsync(string libraryPath, string libraryName)
         {
-            var result = await _kicad.RunAction("common.Control.addLibrary");
-            if (result.Status == Kiapi.Common.Commands.RunActionStatus.RasOk)
+            await _kicad.RunAction($"eeschema.SymLibTable.AddLibrary:{libraryPath}:{libraryName}");
+            if (_logger.IsEnabled(LogLevel.Information))
             {
                 _logger.LogInformation("Symbol library registered in table: {Name}", libraryName);
             }
@@ -398,16 +382,11 @@ namespace UltraLibrarianImporter.UI.Services
             _logger.LogInformation("Footprint library registered in table: {Name}", libraryName);
         }
 
-        private static string DirectoryOf(string path) =>
-            Path.GetDirectoryName(path)
-                ?? throw new InvalidOperationException($"'{path}' has no parent directory. Expected a path inside a project folder.");
-
-        private Task<string> GetSymbolLibraryPath(string projectPath)
+        private Task<string> GetSymbolLibraryPath(string projectDirectory)
         {
-            if (!string.IsNullOrEmpty(projectPath))
+            if (!string.IsNullOrEmpty(projectDirectory))
             {
-                string projectDir = DirectoryOf(projectPath);
-                string symLibTable = Path.Combine(projectDir, "sym-lib-table");
+                string symLibTable = Path.Combine(projectDirectory, "sym-lib-table");
                 if (File.Exists(symLibTable))
                 {
                     return Task.FromResult(symLibTable);
@@ -425,17 +404,16 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            return Task.FromResult(!string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), "symbols")
+            return Task.FromResult(!string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, "symbols")
                 : Path.Combine(Path.GetTempPath(), "kicad_symbols"));
         }
 
-        private Task<string> GetFootprintLibraryPath(string projectPath)
+        private Task<string> GetFootprintLibraryPath(string projectDirectory)
         {
-            if (!string.IsNullOrEmpty(projectPath))
+            if (!string.IsNullOrEmpty(projectDirectory))
             {
-                string projectDir = DirectoryOf(projectPath);
-                string fpLibTable = Path.Combine(projectDir, "fp-lib-table");
+                string fpLibTable = Path.Combine(projectDirectory, "fp-lib-table");
                 if (File.Exists(fpLibTable))
                 {
                     return Task.FromResult(fpLibTable);
@@ -453,12 +431,12 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            return Task.FromResult(!string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), "footprints")
+            return Task.FromResult(!string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, "footprints")
                 : Path.Combine(Path.GetTempPath(), "kicad_footprints"));
         }
 
-        private Task<string> Get3DModelPath(string projectPath)
+        private Task<string> Get3DModelPath(string projectDirectory)
         {
             string? kicadEnv = Environment.GetEnvironmentVariable("KICAD7_3DMODEL_DIR");
             if (!string.IsNullOrEmpty(kicadEnv) && Directory.Exists(kicadEnv))
@@ -466,10 +444,9 @@ namespace UltraLibrarianImporter.UI.Services
                 return Task.FromResult(kicadEnv);
             }
 
-            if (!string.IsNullOrEmpty(projectPath))
+            if (!string.IsNullOrEmpty(projectDirectory))
             {
-                string projectDir = DirectoryOf(projectPath);
-                string modelDir = Path.Combine(projectDir, "3d_models");
+                string modelDir = Path.Combine(projectDirectory, "3d_models");
                 Directory.CreateDirectory(modelDir);
                 return Task.FromResult(modelDir);
             }
@@ -500,8 +477,8 @@ namespace UltraLibrarianImporter.UI.Services
                 }
             }
 
-            return Task.FromResult(!string.IsNullOrEmpty(projectPath)
-                ? Path.Combine(DirectoryOf(projectPath), "3d_models")
+            return Task.FromResult(!string.IsNullOrEmpty(projectDirectory)
+                ? Path.Combine(projectDirectory, "3d_models")
                 : Path.Combine(Path.GetTempPath(), "kicad_3dmodels"));
         }
     }

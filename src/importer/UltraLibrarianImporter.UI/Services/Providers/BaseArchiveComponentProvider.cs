@@ -20,6 +20,7 @@ namespace UltraLibrarianImporter.UI.Services.Providers
         public abstract string SearchUrl { get; }
         public abstract string DefaultPrefix { get; }
         public abstract string DefaultLibraryName { get; }
+        public virtual string ProviderColor => "#555555";
 
         public virtual bool CanHandleDownload(string filePath)
         {
