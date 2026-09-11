@@ -54,6 +54,30 @@ namespace UltraLibrarianImporter.UI.Views
             {
                 if (DataContext is MainViewModel vm)
                 {
+                    vm.RequestBrowserBack += () =>
+                    {
+                        var wv = this.FindControl<WebView>("OSWebView");
+                        if (wv != null)
+                        {
+                            try { wv.GoBack(); } catch { }
+                        }
+                    };
+                    vm.RequestBrowserForward += () =>
+                    {
+                        var wv = this.FindControl<WebView>("OSWebView");
+                        if (wv != null)
+                        {
+                            try { wv.GoForward(); } catch { }
+                        }
+                    };
+                    vm.RequestBrowserReload += () =>
+                    {
+                        var wv = this.FindControl<WebView>("OSWebView");
+                        if (wv != null)
+                        {
+                            try { wv.Reload(); } catch { }
+                        }
+                    };
                     vm.PropertyChanged += (sender, args) =>
                     {
                         if (args.PropertyName == nameof(MainViewModel.WebviewUrl))

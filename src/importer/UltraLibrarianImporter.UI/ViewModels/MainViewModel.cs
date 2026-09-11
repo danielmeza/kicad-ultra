@@ -70,7 +70,38 @@ namespace UltraLibrarianImporter.UI.ViewModels
         private bool _isSearching;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsOnBrowserTab))]
         private int _selectedTabIndex;
+
+        public bool IsOnBrowserTab => SelectedTabIndex == 1;
+
+        public event Action? RequestBrowserBack;
+        public event Action? RequestBrowserForward;
+        public event Action? RequestBrowserReload;
+
+        [RelayCommand]
+        private void BackToExplorer()
+        {
+            SelectedTabIndex = 0;
+        }
+
+        [RelayCommand]
+        private void BrowserBack()
+        {
+            RequestBrowserBack?.Invoke();
+        }
+
+        [RelayCommand]
+        private void BrowserForward()
+        {
+            RequestBrowserForward?.Invoke();
+        }
+
+        [RelayCommand]
+        private void BrowserReload()
+        {
+            RequestBrowserReload?.Invoke();
+        }
 
         [ObservableProperty]
         private PartSearchResult? _selectedSearchResult;

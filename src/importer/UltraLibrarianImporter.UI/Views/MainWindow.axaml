@@ -26,6 +26,17 @@
       <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="10,5"/>
       <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="10,5"/>
       <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="10,5"/>
+      <Button Command="{Binding BackToExplorerCommand}" 
+              IsVisible="{Binding IsOnBrowserTab}" 
+              ToolTip.Tip="Return to Part Explorer search results"
+              Padding="10,5"
+              FontWeight="SemiBold"
+              Cursor="Hand">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock Text="◀" FontSize="11" VerticalAlignment="Center"/>
+          <TextBlock Text="Back to Search" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Button>
 
       <TextBlock Text="Import Filter:" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
       <ComboBox Width="180" 
@@ -270,23 +281,70 @@
       <TabItem Header="🌐 Web Browser (Interactive)">
         <Grid RowDefinitions="Auto,*" Margin="5">
           <!-- Web Browser Navigation Header -->
-          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-            <TextBlock Text="Provider Platform:" VerticalAlignment="Center" FontWeight="SemiBold"/>
-            <ComboBox Width="220"
-                      ItemsSource="{Binding AvailableProviders}"
-                      SelectedItem="{Binding SelectedProvider}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate>
-                  <TextBlock Text="{Binding DisplayName}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-            <TextBlock Text="{Binding SelectedProvider.SearchUrl}" 
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" Margin="0,0,0,8" VerticalAlignment="Center">
+            <!-- Back to Part Explorer Button -->
+            <Button Grid.Column="0" 
+                    Command="{Binding BackToExplorerCommand}" 
+                    ToolTip.Tip="Back to Part Explorer search results"
+                    Padding="10,5" 
+                    Margin="0,0,8,0"
+                    FontWeight="SemiBold"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="◀" FontSize="11" VerticalAlignment="Center"/>
+                <TextBlock Text="Back to Search" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <!-- Web Browser History Navigation Buttons -->
+            <Button Grid.Column="1" 
+                    Command="{Binding BrowserBackCommand}" 
+                    ToolTip.Tip="Go back to previous page"
+                    Padding="8,5" 
+                    Margin="0,0,4,0"
+                    Cursor="Hand">
+              <TextBlock Text="◀" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+            <Button Grid.Column="2" 
+                    Command="{Binding BrowserForwardCommand}" 
+                    ToolTip.Tip="Go forward to next page"
+                    Padding="8,5" 
+                    Margin="0,0,4,0"
+                    Cursor="Hand">
+              <TextBlock Text="▶" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+            <Button Grid.Column="3" 
+                    Command="{Binding BrowserReloadCommand}" 
+                    ToolTip.Tip="Reload current page"
+                    Padding="8,5" 
+                    Margin="0,0,10,0"
+                    Cursor="Hand">
+              <TextBlock Text="🔄" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+
+            <!-- Provider Platform Selector -->
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="Provider Platform:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+              <ComboBox Width="200"
+                        ItemsSource="{Binding AvailableProviders}"
+                        SelectedItem="{Binding SelectedProvider}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <!-- Provider Search URL -->
+            <TextBlock Grid.Column="5" 
+                       Text="{Binding SelectedProvider.SearchUrl}" 
                        VerticalAlignment="Center" 
                        Foreground="Gray" 
                        FontSize="11" 
+                       TextTrimming="CharacterEllipsis"
                        Margin="10,0,0,0"/>
-          </StackPanel>
+          </Grid>
 
           <!-- WebView Container -->
           <Border Grid.Row="1" BorderThickness="1" BorderBrush="Gray">
