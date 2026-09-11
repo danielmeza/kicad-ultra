@@ -1,65 +1,378 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
+        xmlns:models="using:UltraLibrarianImporter.UI.Services.Interfaces"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:webview="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
-        xmlns:views="clr-namespace:UltraLibrarianImporter.UI.Views;assembly=UltraLibrarianImporter.UI"
         x:Class="UltraLibrarianImporter.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="UltraLibrarian Importer for KiCad"
-        Width="1400" Height="800"
-        MinWidth="1300" MinHeight="800"
+        Title="KiCad Component Explorer &amp; Importer"
+        Width="1400" Height="820"
+        MinWidth="1200" MinHeight="750"
         WindowStartupLocation="CenterScreen">
 
-  <Design.DataContext>
-    <vm:MainWindowViewModel/>
-  </Design.DataContext>
+  <Window.Resources>
+    <vm:HexToBrushConverter x:Key="HexToBrushConverter" />
+    <vm:ImportTypeDisplayConverter x:Key="ImportTypeDisplayConverter" />
+  </Window.Resources>
 
-  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,300">
-    <!-- Toolbar -->
-    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,5" Spacing="5">
-      <Button Content="Settings" Command="{Binding OpenSettingsCommand}" Padding="8,4"/>
-      <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="8,4"/>
-      <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="8,4"/>
-      <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="8,4"/>
+  <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,320">
+    <!-- Top Action Bar -->
+    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="10,8" Spacing="8">
+      <Button Content="Settings" Command="{Binding OpenSettingsCommand}" Padding="10,5"/>
+      <Button Content="Import Component" Command="{Binding ImportComponentCommand}" IsEnabled="{Binding CanImport}" Padding="10,5"/>
+      <Button Content="Open Downloads Folder" Command="{Binding OpenDownloadsFolderCommand}" Padding="10,5"/>
+      <Button Content="About" Command="{Binding ShowAboutCommand}" Padding="10,5"/>
+      <Button Command="{Binding BackToExplorerCommand}" 
+              IsVisible="{Binding IsOnBrowserTab}" 
+              ToolTip.Tip="Return to Part Explorer search results"
+              Padding="10,5"
+              FontWeight="SemiBold"
+              Cursor="Hand">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <TextBlock Text="◀" FontSize="11" VerticalAlignment="Center"/>
+          <TextBlock Text="Back to Search" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Button>
 
-      <ComboBox Margin="20,0,0,0" Width="200" SelectedIndex="3">
-        <ComboBoxItem Content="Import Symbols Only" Tag="Symbol"/>
-        <ComboBoxItem Content="Import Footprints Only" Tag="Footprint"/>
-        <ComboBoxItem Content="Import 3D Models Only" Tag="Model3D"/>
-        <ComboBoxItem Content="Import All" Tag="All"/>
+      <TextBlock Text="Import Filter:" VerticalAlignment="Center" Margin="15,0,0,0" FontWeight="SemiBold"/>
+      <ComboBox Width="180" 
+                ItemsSource="{Binding ImportTypes}" 
+                SelectedItem="{Binding SelectedImportType}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Converter={StaticResource ImportTypeDisplayConverter}}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
       </ComboBox>
     </StackPanel>
 
-    <!-- WebView Container -->
-    <Border Grid.Row="1" Grid.Column="0" BorderThickness="1" BorderBrush="Gray" Margin="10,0,5,10">
-      <Panel Name="WebViewContainer" Background="White">
-        <!-- OutSystems WebView control with correct namespace -->
-        <!--<views:BrowserView />--> 
-        <webview:WebView Name="OSWebView" AllowDeveloperTools="True"  Address="{Binding WebviewUrl}" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
-        <TextBlock Text="Loading UltraLibrarian website..."
-                   VerticalAlignment="Center"
-                   HorizontalAlignment="Center"
-                   IsVisible="{Binding !WebViewLoaded}"/>
-      </Panel>
-    </Border>
+    <!-- Main Content Area: Tabs for Part Explorer vs Web Browser -->
+    <TabControl Grid.Row="1" Grid.Column="0" SelectedIndex="{Binding SelectedTabIndex}" Margin="10,0,5,10">
+      
+      <!-- TAB 1: Unified Multi-Provider Part Explorer -->
+      <TabItem Header="🔍 Part Explorer (Aggregated Search)">
+        <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="10">
+          <!-- Search Header -->
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
+            <TextBox Grid.Column="0" 
+                     Text="{Binding SearchQuery}" 
+                     Watermark="Search parts across all providers by MPN, keyword or value (e.g. STM32F401, NE555, ESP32, 10k 0805)..."
+                     VerticalContentAlignment="Center"
+                     Height="38"
+                     FontSize="14"
+                     Margin="0,0,10,0"/>
+            <Button Grid.Column="1" 
+                    Command="{Binding SearchPartsCommand}" 
+                    Height="38"
+                    Padding="18,0"
+                    VerticalContentAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    CornerRadius="4"
+                    Cursor="Hand">
+              <TextBlock Text="Search All Providers" 
+                         FontWeight="Bold" 
+                         FontSize="13" 
+                         VerticalAlignment="Center" 
+                         HorizontalAlignment="Center"
+                         Margin="0,3,0,0"/>
+            </Button>
+          </Grid>
 
-    <!-- Right Panel (Import Log) -->
+          <!-- Quick Filter/Sort Bar -->
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,Auto,*" Margin="0,0,0,8" VerticalAlignment="Center">
+            <TextBlock Grid.Column="0" Text="Sort by:" VerticalAlignment="Center" FontSize="12" Opacity="0.75" Margin="0,0,8,0"/>
+            
+            <Button Grid.Column="1" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="Stock" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="📦 Stock" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding StockSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="2" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="Price" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="💲 Price" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding PriceSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <Button Grid.Column="3" 
+                    Command="{Binding SortCommand}" 
+                    CommandParameter="CAD" 
+                    Padding="10,4" 
+                    Margin="0,0,6,0"
+                    FontSize="11" 
+                    CornerRadius="3"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="📐 CAD Assets" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,1,0,0"/>
+                <TextBlock Text="{Binding CadSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <TextBlock Grid.Column="4" Text="{Binding SortStatusSummary}" VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="11" Opacity="0.65" Margin="10,0,0,0"/>
+          </Grid>
+
+          <!-- Search Progress Bar -->
+          <ProgressBar Grid.Row="2" 
+                       IsIndeterminate="True" 
+                       IsVisible="{Binding IsSearching}" 
+                       Height="3" 
+                       Margin="0,0,0,8"/>
+
+          <!-- Results List / Table -->
+          <Border Grid.Row="3" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+            <Grid RowDefinitions="Auto,*">
+              <!-- Table Header -->
+              <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
+                <Grid ColumnDefinitions="140,160,130,105,105,120,*">
+                  <TextBlock Grid.Column="0" Text="Provider" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1" Text="Part Number" FontWeight="Bold" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="2" Text="Manufacturer" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                  <!-- Stock Header (Clickable Sort) -->
+                  <Button Grid.Column="3" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="Stock"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="Stock" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding StockSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <!-- Best Price Header (Clickable Sort) -->
+                  <Button Grid.Column="4" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="Price"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="Best Price" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding PriceSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <!-- CAD Assets Header (Clickable Sort) -->
+                  <Button Grid.Column="5" 
+                          Command="{Binding SortCommand}" 
+                          CommandParameter="CAD"
+                          Background="Transparent" 
+                          BorderThickness="0" 
+                          Padding="0" 
+                          Cursor="Hand"
+                          HorizontalAlignment="Left">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                      <TextBlock Text="CAD Assets" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <TextBlock Text="{Binding CadSortIndicator}" FontWeight="ExtraBold" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Button>
+
+                  <TextBlock Grid.Column="6" Text="Action" FontWeight="Bold" VerticalAlignment="Center"/>
+                </Grid>
+              </Border>
+
+              <!-- Results Items -->
+              <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedSearchResult}">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:PartSearchResult">
+                    <Grid ColumnDefinitions="140,160,130,105,105,120,*" Margin="0,4">
+                      <!-- Provider Badge -->
+                      <Border Grid.Column="0" 
+                              Background="{Binding ProviderColor, Converter={StaticResource HexToBrushConverter}}" 
+                              CornerRadius="3" 
+                              Padding="6,2" 
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                      </Border>
+
+                      <!-- MPN -->
+                      <TextBlock Grid.Column="1" Text="{Binding PartNumber}" FontWeight="Bold" VerticalAlignment="Center"/>
+
+                      <!-- Manufacturer -->
+                      <TextBlock Grid.Column="2" Text="{Binding Manufacturer}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                      <!-- Stock -->
+                      <TextBlock Grid.Column="3" 
+                                 Text="{Binding Stock, StringFormat='{}{0:N0}', TargetNullValue='-'}" 
+                                 VerticalAlignment="Center"/>
+
+                      <!-- Price -->
+                      <TextBlock Grid.Column="4" 
+                                 Text="{Binding BestPrice, StringFormat='${0:F2}', TargetNullValue='-'}" 
+                                 VerticalAlignment="Center"/>
+
+                      <!-- CAD Flags -->
+                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Border Background="#2E7D32" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasSymbol}">
+                          <TextBlock Text="Sym" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                        <Border Background="#1565C0" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasFootprint}">
+                          <TextBlock Text="FP" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                        <Border Background="#6A1B9A" CornerRadius="2" Padding="4,1" IsVisible="{Binding Has3DModel}">
+                          <TextBlock Text="3D" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        </Border>
+                      </StackPanel>
+
+                      <!-- Action Button -->
+                      <Button Grid.Column="6" 
+                              Content="Open &amp; Import" 
+                              Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                              CommandParameter="{Binding}"
+                              Padding="10,4" 
+                              VerticalContentAlignment="Center"
+                              FontSize="11"
+                              HorizontalAlignment="Left"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+
+              <!-- Empty state message -->
+              <StackPanel Grid.Row="1" 
+                          IsVisible="{Binding !SearchResults.Count}" 
+                          HorizontalAlignment="Center" 
+                          VerticalAlignment="Center" 
+                          Spacing="6" 
+                          Margin="20">
+                <TextBlock Text="No component search results" 
+                           HorizontalAlignment="Center" 
+                           Opacity="0.6" 
+                           FontSize="13" 
+                           FontWeight="SemiBold"/>
+                <TextBlock Text="Search parts across providers by MPN or keyword using the search bar above." 
+                           HorizontalAlignment="Center" 
+                           Opacity="0.4" 
+                           FontSize="11"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- TAB 2: Embedded Web Browser & Direct Download Interceptor -->
+      <TabItem Header="🌐 Web Browser (Interactive)">
+        <Grid RowDefinitions="Auto,*" Margin="5">
+          <!-- Web Browser Navigation Header -->
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" Margin="0,0,0,8" VerticalAlignment="Center">
+            <!-- Back to Part Explorer Button -->
+            <Button Grid.Column="0" 
+                    Command="{Binding BackToExplorerCommand}" 
+                    ToolTip.Tip="Back to Part Explorer search results"
+                    Padding="10,5" 
+                    Margin="0,0,8,0"
+                    FontWeight="SemiBold"
+                    Cursor="Hand">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="◀" FontSize="11" VerticalAlignment="Center"/>
+                <TextBlock Text="Back to Search" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
+
+            <!-- Web Browser History Navigation Buttons -->
+            <Button Grid.Column="1" 
+                    Command="{Binding BrowserBackCommand}" 
+                    ToolTip.Tip="Go back to previous page"
+                    Padding="8,5" 
+                    Margin="0,0,4,0"
+                    Cursor="Hand">
+              <TextBlock Text="◀" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+            <Button Grid.Column="2" 
+                    Command="{Binding BrowserForwardCommand}" 
+                    ToolTip.Tip="Go forward to next page"
+                    Padding="8,5" 
+                    Margin="0,0,4,0"
+                    Cursor="Hand">
+              <TextBlock Text="▶" FontWeight="Bold" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+            <Button Grid.Column="3" 
+                    Command="{Binding BrowserReloadCommand}" 
+                    ToolTip.Tip="Reload current page"
+                    Padding="8,5" 
+                    Margin="0,0,10,0"
+                    Cursor="Hand">
+              <TextBlock Text="🔄" FontSize="11" VerticalAlignment="Center"/>
+            </Button>
+
+            <!-- Provider Platform Selector -->
+            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="Provider Platform:" VerticalAlignment="Center" FontWeight="SemiBold"/>
+              <ComboBox Width="200"
+                        ItemsSource="{Binding AvailableProviders}"
+                        SelectedItem="{Binding SelectedProvider}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="{Binding DisplayName}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <!-- Provider Search URL -->
+            <TextBlock Grid.Column="5" 
+                       Text="{Binding SelectedProvider.SearchUrl}" 
+                       VerticalAlignment="Center" 
+                       Foreground="Gray" 
+                       FontSize="11" 
+                       TextTrimming="CharacterEllipsis"
+                       Margin="10,0,0,0"/>
+          </Grid>
+
+          <!-- WebView Container -->
+          <Border Grid.Row="1" BorderThickness="1" BorderBrush="Gray">
+            <Panel Name="WebViewContainer" Background="White">
+              <webview:WebView Name="OSWebView" AllowDeveloperTools="True" Address="{Binding WebviewUrl}" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
+              <TextBlock Text="Loading component provider portal..."
+                         VerticalAlignment="Center"
+                         HorizontalAlignment="Center"
+                         IsVisible="{Binding !WebViewLoaded}"/>
+            </Panel>
+          </Border>
+        </Grid>
+      </TabItem>
+    </TabControl>
+
+    <!-- Right Panel (Import Activity Log) -->
     <Grid Grid.Row="1" Grid.Column="1" RowDefinitions="Auto,*" Margin="5,0,10,10">
-      <TextBlock Grid.Row="0" Text="Import Log" FontWeight="Bold" Margin="0,0,0,5"/>
-      <Border Grid.Row="1" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}">
+      <TextBlock Grid.Row="0" Text="Import &amp; System Log" FontWeight="Bold" Margin="0,0,0,6"/>
+      <Border Grid.Row="1" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
         <ListBox ItemsSource="{Binding ImportMessages}" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" />
       </Border>
     </Grid>
 
     <!-- Status Bar -->
-    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" >
-      <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,5"/>
-      <ProgressBar Grid.Column="1" Width="200" Height="15" IsVisible="{Binding IsProgressVisible}"
-                   Value="{Binding ProgressValue}" Margin="10,0,0,0"/>
+    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+      <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,4"/>
+      <ProgressBar Grid.Column="1" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+                   Value="{Binding ProgressValue}" Margin="10,0,10,0"/>
     </Grid>
   </Grid>
 </Window>

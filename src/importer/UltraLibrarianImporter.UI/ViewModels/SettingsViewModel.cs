@@ -48,6 +48,15 @@ namespace UltraLibrarianImporter.UI.ViewModels
         
         [ObservableProperty]
         private string _libraryName = string.Empty;
+
+        [ObservableProperty]
+        private string _octopartApiToken = string.Empty;
+
+        [ObservableProperty]
+        private string _snapEdaApiKey = string.Empty;
+
+        [ObservableProperty]
+        private string _samacSysApiKey = string.Empty;
         
         // Event for folder browsing (will be handled by the view)
         public event EventHandler<EventArgs>? BrowseForFolderRequested;
@@ -104,6 +113,9 @@ namespace UltraLibrarianImporter.UI.ViewModels
             UseProjectPath = _configService.UseProjectPath;
             AutoImportWhenDownloaded = _configService.AutoImportWhenDownloaded;
             LibraryName = _configService.LibraryName;
+            OctopartApiToken = _configService.OctopartApiToken;
+            SnapEdaApiKey = _configService.SnapEdaApiKey;
+            SamacSysApiKey = _configService.SamacSysApiKey;
         }
 
         [RelayCommand]
@@ -124,6 +136,9 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 _configService.UseProjectPath = UseProjectPath;
                 _configService.AutoImportWhenDownloaded = AutoImportWhenDownloaded;
                 _configService.LibraryName = LibraryName;
+                _configService.OctopartApiToken = OctopartApiToken;
+                _configService.SnapEdaApiKey = SnapEdaApiKey;
+                _configService.SamacSysApiKey = SamacSysApiKey;
 
                 // Save to file
                 _configService.Save();

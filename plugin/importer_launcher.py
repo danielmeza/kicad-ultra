@@ -1,29 +1,28 @@
-
 import sys
 import os
 import subprocess
 
 def launch_importer():
     """
-    Launches the importer module.
+    Launches the Avalonia importer desktop application.
     """
-    # The valonia app is a .exe application shipped with the kicad plugin
-    # Determine the path to the executable
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    exe_path = os.path.join(script_dir, "bin", "UltralibrarianImporter.exe")
+    candidate_paths = [
+        os.path.join(script_dir, "bin", "UltraLibrarianImporter.UI.exe"),
+        os.path.join(script_dir, "bin", "UltralibrarianImporter.exe"),
+        r"d:\proiecte Programare\KiCad-pluggin-discord-try\kicad-ultra-master\src\importer\UltraLibrarianImporter.UI\bin\Debug\net10.0\UltraLibrarianImporter.UI.exe",
+        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Debug", "net10.0", "UltraLibrarianImporter.UI.exe"),
+        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Release", "net10.0", "UltraLibrarianImporter.UI.exe"),
+    ]
     
-    # Check if the executable exists
-    if not os.path.exists(exe_path):
-        print(f"Error: Executable not found at {exe_path}")
-        sys.exit(1)
+    exe_path = next((p for p in candidate_paths if os.path.exists(p)), None)
     
-    # Launch the executable with the current environment variables
-    process = subprocess.Popen(exe_path, env=os.environ)
+    if not exe_path:
+        print(f"Error: Executable not found in any of: {candidate_paths}")
+        return
     
-    # Wait for the process to complete
-    return_code = process.wait()
-    sys.exit(return_code)
-    os.environ.update(os.environ)
+    env = os.environ.copy()
+    subprocess.Popen([exe_path], cwd=os.path.dirname(exe_path), env=env)
 
-launch_importer()
-# The above code is a Python script that launches an external executable (UltralibrarianImporter.exe) from a specified directory.
+if __name__ == "__main__":
+    launch_importer()

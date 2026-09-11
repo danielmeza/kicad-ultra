@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Runtime.Versioning;
 
@@ -9,8 +9,10 @@ using Lemon.Hosting.AvaloniauiDesktop;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using NLog;
+using NLog.Extensions.Logging;
 
 using KiCadSharp;
 using UltraLibrarianImporter.UI.Services;
@@ -67,6 +69,10 @@ sealed class Program
     private static HostApplicationBuilder CreateApplicationBuilder(string[] args)
     {
         var builder = Host.CreateApplicationBuilder(args);
+
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+        builder.Logging.AddNLog();
 
         ConfigureServices(builder.Services, builder.Environment, builder.Configuration);
         return builder;
