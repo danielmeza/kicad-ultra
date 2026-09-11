@@ -53,24 +53,7 @@ namespace UltraLibrarianImporter.UI.Views
                 .BuildServiceProvider()
                 .GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
 
-        public SettingsWindow(SettingsViewModel viewModel, ILogger<SettingsWindow>? logger = null)
-        {
-            InitializeComponent();
-#if DEBUG
-            this.AttachDevTools();
-#endif
-            _resultCompletionSource = new TaskCompletionSource<bool>();
-            _logger = logger ?? LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsWindow>();
-            _viewModel = viewModel;
-            DataContext = _viewModel;
-            BindViewModelEvents();
-        }
-
-        public SettingsWindow(
-            IConfigService configService,
-            ILogger logger,
-            IOptionsMonitor<KiCadClientSettings> kicadSettings,
-            IComponentProviderRegistry? providerRegistry = null)
+        public SettingsWindow(IConfigService configService, ILogger logger, IOptionsMonitor<KiCadClientSettings> kicadSettings)
         {
             InitializeComponent();
 #if DEBUG
@@ -89,32 +72,18 @@ namespace UltraLibrarianImporter.UI.Views
             _viewModel = new SettingsViewModel(
                 configService,
                 LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsViewModel>(),
-                kicadSettings,
-                providerRegistry);
+                kicadSettings);
                 
             DataContext = _viewModel;
-            BindViewModelEvents();
-        }
-
-        private void BindViewModelEvents()
-        {
+            
+            // Subscribe to the browse folder event
             _viewModel.BrowseForFolderRequested += OnBrowseForFolderRequested;
+            
+            // Subscribe to the browse target path event
             _viewModel.BrowseForTargetPathRequested += OnBrowseForTargetPathRequested;
+            
+            // Subscribe to settings saved event (handles both save and cancel)
             _viewModel.SettingsSaved += OnSettingsSaved;
-            _viewModel.CopyToClipboardRequested += async (s, text) =>
-            {
-                try
-                {
-                    if (Clipboard != null)
-                    {
-                        await Clipboard.SetTextAsync(text);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error copying to clipboard");
-                }
-            };
             
             _logger.LogInformation("Settings window initialized");
         }

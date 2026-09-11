@@ -31,24 +31,6 @@ namespace UltraLibrarianImporter.UI.Services
         public string OctopartApiToken { get; set; } = string.Empty;
         public string SnapEdaApiKey { get; set; } = string.Empty;
         public string SamacSysApiKey { get; set; } = string.Empty;
-        public string DefaultProviderId { get; set; } = "ultralibrarian";
-        public System.Collections.Generic.Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-        public bool IsProviderEnabled(string providerId)
-        {
-            if (string.IsNullOrEmpty(providerId)) return false;
-            if (EnabledProviders.TryGetValue(providerId, out bool enabled))
-            {
-                return enabled;
-            }
-            return true;
-        }
-
-        public void SetProviderEnabled(string providerId, bool isEnabled)
-        {
-            if (string.IsNullOrEmpty(providerId)) return;
-            EnabledProviders[providerId] = isEnabled;
-        }
 
         /// <summary>
         /// Creates a new instance of the configuration service
@@ -79,22 +61,6 @@ namespace UltraLibrarianImporter.UI.Services
             Load();
         }
 
-        private class ConfigData
-        {
-            public string? DownloadDirectory { get; set; }
-            public bool AddToGlobalLibrary { get; set; } = true;
-            public bool CleanupAfterImport { get; set; } = true;
-            public string? TargetPath { get; set; }
-            public bool UseProjectPath { get; set; } = true;
-            public bool AutoImportWhenDownloaded { get; set; } = true;
-            public string? LibraryName { get; set; }
-            public string? OctopartApiToken { get; set; }
-            public string? SnapEdaApiKey { get; set; }
-            public string? SamacSysApiKey { get; set; }
-            public string? DefaultProviderId { get; set; }
-            public System.Collections.Generic.Dictionary<string, bool>? EnabledProviders { get; set; }
-        }
-
         /// <summary>
         /// Loads the configuration from the config file
         /// </summary>
@@ -105,27 +71,20 @@ namespace UltraLibrarianImporter.UI.Services
                 if (File.Exists(_configFilePath))
                 {
                     string json = File.ReadAllText(_configFilePath);
-                    var config = JsonSerializer.Deserialize<ConfigData>(json, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
+                    var config = JsonSerializer.Deserialize<ConfigService>(json);
 
                     if (config != null)
                     {
-                        DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
+                        DownloadDirectory = config.DownloadDirectory;
                         AddToGlobalLibrary = config.AddToGlobalLibrary;
                         CleanupAfterImport = config.CleanupAfterImport;
-                        TargetPath = config.TargetPath ?? string.Empty;
+                        TargetPath = config.TargetPath;
                         UseProjectPath = config.UseProjectPath;
                         AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
-                        LibraryName = config.LibraryName ?? string.Empty;
+                        LibraryName = config.LibraryName;
                         OctopartApiToken = config.OctopartApiToken ?? string.Empty;
                         SnapEdaApiKey = config.SnapEdaApiKey ?? string.Empty;
                         SamacSysApiKey = config.SamacSysApiKey ?? string.Empty;
-                        DefaultProviderId = string.IsNullOrEmpty(config.DefaultProviderId) ? "ultralibrarian" : config.DefaultProviderId;
-                        EnabledProviders = config.EnabledProviders != null
-                            ? new System.Collections.Generic.Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
-                            : new System.Collections.Generic.Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                     }
 
                     _logger.LogInformation("Configuration loaded from file");
@@ -149,23 +108,7 @@ namespace UltraLibrarianImporter.UI.Services
         {
             try
             {
-                var data = new ConfigData
-                {
-                    DownloadDirectory = DownloadDirectory,
-                    AddToGlobalLibrary = AddToGlobalLibrary,
-                    CleanupAfterImport = CleanupAfterImport,
-                    TargetPath = TargetPath,
-                    UseProjectPath = UseProjectPath,
-                    AutoImportWhenDownloaded = AutoImportWhenDownloaded,
-                    LibraryName = LibraryName,
-                    OctopartApiToken = OctopartApiToken,
-                    SnapEdaApiKey = SnapEdaApiKey,
-                    SamacSysApiKey = SamacSysApiKey,
-                    DefaultProviderId = DefaultProviderId,
-                    EnabledProviders = EnabledProviders
-                };
-
-                string json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
+                string json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_configFilePath, json);
                 _logger.LogInformation("Configuration saved to file");
             }

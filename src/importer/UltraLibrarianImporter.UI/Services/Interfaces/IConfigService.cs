@@ -59,26 +59,6 @@ namespace UltraLibrarianImporter.UI.Services.Interfaces
         string SamacSysApiKey { get; set; }
 
         /// <summary>
-        /// Default component provider ID to select on startup (e.g. "ultralibrarian", "easyeda")
-        /// </summary>
-        string DefaultProviderId { get; set; }
-
-        /// <summary>
-        /// Enabled state for each provider ID. If not present in map, defaults to true.
-        /// </summary>
-        System.Collections.Generic.Dictionary<string, bool> EnabledProviders { get; set; }
-
-        /// <summary>
-        /// Checks whether a specific provider is enabled by user configuration
-        /// </summary>
-        bool IsProviderEnabled(string providerId);
-
-        /// <summary>
-        /// Sets enabled state for a specific provider
-        /// </summary>
-        void SetProviderEnabled(string providerId, bool isEnabled);
-
-        /// <summary>
         /// Ensures the download directory exists
         /// </summary>
         void EnsureDownloadDirectoryExists();

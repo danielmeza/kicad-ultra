@@ -119,15 +119,6 @@ namespace UltraLibrarianImporter.UI.ViewModels
             _configService.EnsureDownloadDirectoryExists();
             _logger.LogInformation("MainViewModel initialized for provider {Provider}. Watching for downloads in {Dir}",
                 SelectedProvider.DisplayName, _configService.DownloadDirectory);
-
-            _providerRegistry.RegistryUpdated += () =>
-            {
-                OnPropertyChanged(nameof(AvailableProviders));
-                if (!AvailableProviders.Contains(SelectedProvider))
-                {
-                    SelectedProvider = _providerRegistry.SelectedProvider;
-                }
-            };
         }
 
         partial void OnSelectedProviderChanged(IComponentProvider value)
@@ -368,7 +359,8 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 if (serviceProvider != null)
                 {
                     var viewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
-                    settingsWindow = new SettingsWindow(viewModel);
+                    var options = serviceProvider.GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
+                    settingsWindow = new SettingsWindow(_configService, _logger, options) { DataContext = viewModel };
                 }
                 else
                 {

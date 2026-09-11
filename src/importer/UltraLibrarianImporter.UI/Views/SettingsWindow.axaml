@@ -3,210 +3,77 @@
         xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="350"
         x:Class="UltraLibrarianImporter.UI.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="KiCad Component Explorer Settings"
-        Width="660" Height="640"
+        Title="UltraLibrarian Importer Settings"
+        Width="480" Height="520"
         WindowStartupLocation="CenterOwner"
-        CanResize="True">
+        CanResize="False">
 
-    <Grid RowDefinitions="*,Auto" Margin="15">
-        <!-- Main Settings Tabs -->
-        <TabControl Grid.Row="0">
-            <!-- TAB 1: General & KiCad Storage -->
-            <TabItem Header="💾 General">
-                <ScrollViewer Margin="0,10,0,0">
-                    <StackPanel Spacing="16" Margin="5,0,15,0">
-                        <!-- Download Settings -->
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="Download Directory" FontWeight="Bold" FontSize="14"/>
-                                <TextBlock Text="Temporary location where CAD archive packages (.zip) are received:" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12"/>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}"/>
-                                    <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="8,0,0,0"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+    <ScrollViewer>
+      <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+        <!-- Download Settings -->
+        <TextBlock Grid.Row="0" Text="Download Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,15">
+            <TextBlock Grid.Column="0" Text="Download Directory:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBox Grid.Column="1" Text="{Binding DownloadDirectory}"/>
+            <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="5,0,0,0"/>
+        </Grid>
+        
+        <!-- Import Settings -->
+        <TextBlock Grid.Row="2" Text="Import Settings" FontWeight="Bold" Margin="0,0,0,10"/>
+        
+        <StackPanel Grid.Row="3" Orientation="Vertical" Spacing="10">
+            <!-- Library Name Setting -->
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Text="Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Custom library name (leave empty for default)"/>
+            </Grid>
+            
+            <CheckBox Content="Add to global library" IsChecked="{Binding AddToGlobalLibrary}"/>
+            <CheckBox Content="Clean up downloaded files after import" IsChecked="{Binding CleanupAfterImport}"/>
+            <CheckBox Content="Automatically import library when downloaded" IsChecked="{Binding AutoImportWhenDownloaded}"/>
+            
+            <!-- Target Path Settings -->
+            <CheckBox Content="Use project path for libraries (recommended)" 
+                      IsChecked="{Binding UseProjectPath}" 
+                      Name="UseProjectPathCheckbox"/>
+            
+            <Grid ColumnDefinitions="Auto,*,Auto" 
+                  IsEnabled="{Binding !UseProjectPath}" 
+                  Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
+                <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library location..."/>
+                <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="5,0,0,0"/>
+            </Grid>
+        </StackPanel>
 
-                        <!-- Import Settings -->
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="KiCad Import Options" FontWeight="Bold" FontSize="14"/>
+        <!-- API Tokens & Credentials -->
+        <TextBlock Grid.Row="4" Text="API Tokens (For Multi-Provider Part Explorer)" FontWeight="Bold" Margin="0,15,0,10"/>
 
-                                <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Grid.Column="0" Text="Custom Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Default naming if empty"/>
-                                </Grid>
-
-                                <CheckBox Content="Add imported components to global library table" IsChecked="{Binding AddToGlobalLibrary}"/>
-                                <CheckBox Content="Clean up temporary files after successful import" IsChecked="{Binding CleanupAfterImport}"/>
-                                <CheckBox Content="Automatically trigger import when CAD package finishes downloading" IsChecked="{Binding AutoImportWhenDownloaded}"/>
-                                
-                                <Separator Margin="0,5"/>
-
-                                <CheckBox Content="Use active KiCad project directory for libraries (recommended)" 
-                                          IsChecked="{Binding UseProjectPath}" 
-                                          Name="UseProjectPathCheckbox"/>
-
-                                <Grid ColumnDefinitions="Auto,*,Auto" 
-                                      IsEnabled="{Binding !UseProjectPath}" 
-                                      Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
-                                    <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
-                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- TAB 2: Component Providers Configuration -->
-            <TabItem Header="🔌 Component Providers">
-                <ScrollViewer Margin="0,10,0,0">
-                    <StackPanel Spacing="14" Margin="5,0,15,0">
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Startup Default Provider:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                <ComboBox Grid.Row="0" Grid.Column="1" 
-                                          ItemsSource="{Binding AvailableProviderIds}" 
-                                          SelectedItem="{Binding SelectedDefaultProviderId}" 
-                                          HorizontalAlignment="Stretch"/>
-                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" 
-                                           Text="Select the default source to activate when opening the Component Explorer." 
-                                           FontSize="12" 
-                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
-                                           Margin="0,6,0,0"/>
-                            </Grid>
-                        </Border>
-
-                        <TextBlock Text="Available Providers &amp; APIs" FontWeight="Bold" FontSize="14" Margin="2,5,0,0"/>
-                        <TextBlock Text="Enable or disable providers to customize search aggregation and supply API credentials:" 
-                                   FontSize="12" 
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
-                                   Margin="2,-6,0,5"/>
-
-                        <ItemsControl ItemsSource="{Binding ConfiguredProviders}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ProviderConfigItemViewModel">
-                                    <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" 
-                                            BorderThickness="1" 
-                                            CornerRadius="6" 
-                                            Padding="12" 
-                                            Margin="0,0,0,10"
-                                            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
-                                        <StackPanel Spacing="8">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <CheckBox Grid.Column="0" 
-                                                          IsChecked="{Binding IsEnabled}" 
-                                                          Content="{Binding DisplayName}" 
-                                                          FontWeight="SemiBold" 
-                                                          FontSize="14"/>
-                                                <Border Grid.Column="1" 
-                                                        IsVisible="{Binding SupportsDirectApi}" 
-                                                        Background="#20388E3C" 
-                                                        CornerRadius="4" 
-                                                        Padding="6,2">
-                                                    <TextBlock Text="API Active" FontSize="11" Foreground="#2E7D32" FontWeight="Bold"/>
-                                                </Border>
-                                            </Grid>
-
-                                            <TextBlock Text="{Binding CapabilitiesDescription}" 
-                                                       FontSize="11" 
-                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
-                                                       Margin="26,0,0,2"/>
-
-                                            <!-- API Key row (if required by provider) -->
-                                            <Grid ColumnDefinitions="120,*" Margin="26,4,0,0" IsVisible="{Binding RequiresApiKey}">
-                                                <TextBlock Grid.Column="0" Text="API Key / Token:" VerticalAlignment="Center" FontSize="12"/>
-                                                <TextBox Grid.Column="1" 
-                                                         Text="{Binding ApiKey}" 
-                                                         PasswordChar="*" 
-                                                         Watermark="{Binding ApiKeyPlaceholder}"/>
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- TAB 3: AI & MCP Server -->
-            <TabItem Header="🤖 AI &amp; MCP Server">
-                <ScrollViewer Margin="0,10,0,0">
-                    <StackPanel Spacing="14" Margin="5,0,15,0">
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="Model Context Protocol (MCP) Server" FontWeight="Bold" FontSize="15"/>
-                                    <Border Grid.Column="1" Background="#201976D2" CornerRadius="4" Padding="6,2">
-                                        <TextBlock Text="Protocol 2024-11-05" FontSize="11" Foreground="#1565C0" FontWeight="Bold"/>
-                                    </Border>
-                                </Grid>
-                                
-                                <TextBlock Text="KiCad Ultra includes a native C# MCP server allowing AI assistants (Claude Desktop, Cursor, Antigravity, Copilot, Goose) to explore parts, query stocks, and import CAD footprints directly into your projects."
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                           FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <StackPanel Spacing="10">
-                                <TextBlock Text="MCP Server Executable" FontWeight="Bold" FontSize="13"/>
-                                <TextBox Text="{Binding McpExecutablePath}" IsReadOnly="True" FontSize="11"/>
-
-                                <TextBlock Text="Quick MCP Configuration (mcp_config.json):" FontWeight="Bold" FontSize="13" Margin="0,6,0,0"/>
-                                <TextBlock Text="Add this configuration block to Claude Desktop or your AI editor's MCP server settings:" 
-                                           FontSize="12" 
-                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-
-                                <TextBox Text="{Binding McpConfigSnippet}" 
-                                         IsReadOnly="True" 
-                                         AcceptsReturn="True" 
-                                         Height="130" 
-                                         FontFamily="Consolas, Cascadia Code, Courier New, monospace" 
-                                         FontSize="11"/>
-
-                                <Grid ColumnDefinitions="Auto,*">
-                                    <Button Grid.Column="0" 
-                                            Content="📋 Copy MCP Config" 
-                                            Command="{Binding CopyMcpConfigCommand}" 
-                                            Padding="12,6"/>
-                                    <TextBlock Grid.Column="1" 
-                                               Text="{Binding McpCopyStatusMessage}" 
-                                               Foreground="#2E7D32" 
-                                               FontWeight="SemiBold" 
-                                               VerticalAlignment="Center" 
-                                               Margin="12,0,0,0"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                            <StackPanel Spacing="6">
-                                <TextBlock Text="Exposed MCP Tools:" FontWeight="Bold" FontSize="13"/>
-                                <TextBlock Text="• search_components (query, in_stock_only, has_cad_only, max_results)" FontSize="12"/>
-                                <TextBlock Text="• get_component_details (query, provider_id)" FontSize="12"/>
-                                <TextBlock Text="• list_providers ()" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
-
-        <!-- Dialog Action Buttons -->
-        <Border Grid.Row="1" BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,8,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
-                <Button Content="Save" Command="{Binding SaveCommand}" Width="90" HorizontalContentAlignment="Center"/>
-                <Button Content="Cancel" Command="{Binding CancelCommand}" Width="90" HorizontalContentAlignment="Center"/>
-            </StackPanel>
-        </Border>
-    </Grid>
+        <StackPanel Grid.Row="5" Orientation="Vertical" Spacing="8">
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="Octopart / Nexar Token:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding OctopartApiToken}" PasswordChar="*" Watermark="Nexar API Bearer token..."/>
+            </Grid>
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="SnapMagic API Key:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding SnapEdaApiKey}" PasswordChar="*" Watermark="SnapEDA / SnapMagic API key..."/>
+            </Grid>
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="SamacSys API Key:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding SamacSysApiKey}" PasswordChar="*" Watermark="Component Search Engine key..."/>
+            </Grid>
+        </StackPanel>
+        
+        <!-- Buttons -->
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
+            <Button Content="Save" Command="{Binding SaveCommand}" Width="80"/>
+            <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80"/>
+        </StackPanel>
+      </Grid>
+    </ScrollViewer>
 </Window>

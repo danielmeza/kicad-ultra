@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
-using UltraLibrarianImporter.UI.Services.Mcp;
 using UltraLibrarianImporter.UI.Services.Providers;
 
 namespace UltraLibrarianImporter.UI
@@ -29,7 +28,6 @@ namespace UltraLibrarianImporter.UI
             services.AddSingleton<IComponentProvider, OctopartProvider>();
             services.AddSingleton<IComponentProviderRegistry, ComponentProviderRegistry>();
             services.AddSingleton<IPartAggregatorService, PartAggregatorService>();
-            services.AddSingleton<McpServer>();
 
             // Legacy importer facade for backward compatibility
             services.AddTransient<Services.UltraLibrarianImporter>((provider) =>
