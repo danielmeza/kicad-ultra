@@ -40,7 +40,7 @@
     <!-- Pins the transitive Tmds.DBus.Protocol that Avalonia 11.3.0 brings in on Linux past
          GHSA-xrw6-gwf8-vvr9 (high, fixed in 0.21.3). NuGetAuditMode=all fails the build on it. -->
     <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
-    <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.0.0" />
+    <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.4" />
     <PackageReference Include="NLog.Extensions.Logging" Version="5.4.0" />
