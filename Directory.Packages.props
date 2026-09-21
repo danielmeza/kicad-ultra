@@ -24,6 +24,11 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.0" />
+    <!-- The BCL token-bucket and partitioned rate limiters (#55). dotnet/runtime ships this assembly
+         in the ASP.NET Core shared framework only, not in Microsoft.NETCore.App, so a desktop app
+         takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the
+         Microsoft.Extensions packages above. -->
+    <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.12" />
     <PackageVersion Include="WebViewControl-Avalonia" Version="3.120.11" />
   </ItemGroup>
 

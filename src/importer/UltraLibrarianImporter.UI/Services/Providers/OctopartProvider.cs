@@ -41,7 +41,7 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
         var token = _configService.OctopartApiToken?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(token))
         {
-            return results;
+            throw new ProviderNotConfiguredException("No Octopart (Nexar) API token is configured.");
         }
 
         try
@@ -81,21 +81,23 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
             request.Content = new StringContent(JsonSerializer.Serialize(graphQuery), Encoding.UTF8, "application/json");
 
             using HttpResponseMessage response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("Nexar request failed with status code {StatusCode}", response.StatusCode);
-                return results;
-            }
+            // Anything short of an answer throws, so the aggregator leaves it out and does not cache it.
+            _ = response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             using var doc = JsonDocument.Parse(json);
 
             if (!doc.RootElement.TryGetProperty("data", out JsonElement data) ||
+                data.ValueKind != JsonValueKind.Object ||
                 !data.TryGetProperty("supSearch", out JsonElement supSearch) ||
+                supSearch.ValueKind != JsonValueKind.Object ||
                 !supSearch.TryGetProperty("results", out JsonElement resultsArray) ||
                 resultsArray.ValueKind != JsonValueKind.Array)
             {
-                return results;
+                // A GraphQL server can report a failure such as a rejected token or a spent quota in
+                // "errors" with HTTP 200 and "data": null. Either way, this is not an answer.
+                var errors = doc.RootElement.TryGetProperty("errors", out JsonElement e) ? e.GetRawText() : "none";
+                throw new JsonException($"Nexar response has no supSearch results (errors: {errors}).");
             }
 
             foreach (JsonElement item in resultsArray.EnumerateArray())
@@ -192,14 +194,17 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Nexar HTTP request failed");
+            throw;
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Nexar returned unparseable JSON");
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Unexpected error searching Octopart/Nexar parts");
+            throw;
         }
 
         return results;

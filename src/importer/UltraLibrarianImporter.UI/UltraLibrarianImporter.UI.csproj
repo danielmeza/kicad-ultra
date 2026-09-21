@@ -41,6 +41,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="NLog.Extensions.Logging" />
+    <PackageReference Include="System.Threading.RateLimiting" />
     <PackageReference Include="WebViewControl-Avalonia" />
     <!-- Removed Microsoft.Web.WebView2 package -->
   </ItemGroup>

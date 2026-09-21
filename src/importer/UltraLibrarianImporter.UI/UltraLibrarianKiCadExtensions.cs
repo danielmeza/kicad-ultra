@@ -1,4 +1,6 @@
-﻿using KiCadSharp;
+﻿using System;
+
+using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,6 +28,12 @@ internal static class UltraLibrarianKiCadExtensions
             .AddSingleton<IComponentProvider, EasyEdaProvider>()
             .AddSingleton<IComponentProvider, OctopartProvider>()
             .AddSingleton<IComponentProviderRegistry, ComponentProviderRegistry>()
+            // Search pipeline (#49, #55): one response cache and one set of per-provider rate limits per
+            // process. `--mcp` runs as its own process, so it has its own.
+            .AddSingleton(TimeProvider.System)
+            .AddSingleton(new ProviderSearchOptions())
+            .AddSingleton<ProviderResponseCache>()
+            .AddSingleton<ProviderRateLimiter>()
             .AddSingleton<IPartAggregatorService, PartAggregatorService>()
             // Resolved only in `--mcp` mode (Program.RunMcpHostAsync), which builds its own container
             .AddSingleton<McpServer>()
