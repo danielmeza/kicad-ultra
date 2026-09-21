@@ -41,19 +41,62 @@ public enum ImportType
 }
 
 /// <summary>
+/// How an import ended, as <see cref="ImportResult.Outcome"/> judges it (#102).
+/// </summary>
+public enum ImportOutcome
+{
+    /// <summary>Every requested step worked.</summary>
+    Succeeded,
+
+    /// <summary>At least one requested step worked, and the <see cref="ImportResult.FailedSteps"/> did not.</summary>
+    PartiallySucceeded,
+
+    /// <summary>No requested step worked.</summary>
+    Failed,
+
+    /// <summary>The user cancelled the import before it finished.</summary>
+    Cancelled,
+}
+
+/// <summary>
 /// Result of an import operation.
 /// </summary>
 public class ImportResult
 {
+    /// <summary>
+    /// At least one requested step worked. Also true for a partial import: <see cref="Outcome"/>
+    /// tells a partial import from a full one (#102).
+    /// </summary>
     public bool Success { get; set; }
     public bool SymbolImportSuccess { get; set; }
     public bool FootprintImportSuccess { get; set; }
     public bool Model3DImportSuccess { get; set; }
 
+    /// <summary>
+    /// The steps the import was asked for, which <see cref="Outcome"/> is judged against. Required
+    /// because a result without it would report every import as failed.
+    /// </summary>
+    public required ImportType RequestedSteps { get; init; }
+
     /// <summary>The user cancelled the import before it finished. <see cref="Success"/> is then false.</summary>
     public bool Cancelled { get; set; }
 
     public List<string> Details { get; } = [];
+
+    /// <summary>The requested steps whose per-step flag is false.</summary>
+    public ImportType FailedSteps => ImportType.All & RequestedSteps & ~SucceededSteps;
+
+    /// <summary>From the per-step flags and <see cref="RequestedSteps"/>, unless the import was cancelled.</summary>
+    public ImportOutcome Outcome =>
+        Cancelled ? ImportOutcome.Cancelled
+        : (RequestedSteps & SucceededSteps) == 0 ? ImportOutcome.Failed
+        : FailedSteps == 0 ? ImportOutcome.Succeeded
+        : ImportOutcome.PartiallySucceeded;
+
+    private ImportType SucceededSteps =>
+        (SymbolImportSuccess ? ImportType.Symbol : 0)
+        | (FootprintImportSuccess ? ImportType.Footprint : 0)
+        | (Model3DImportSuccess ? ImportType.Model3D : 0);
 }
 
 /// <summary>

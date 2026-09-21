@@ -643,9 +643,9 @@ public partial class MainViewModel : ObservableObject
             ImportResult result = await _importEngine.ImportLcscPartAsync(
                 provider, lcscPartNumber, SelectedImportType, _configService.GetImportOptions(), cancellationToken);
 
-            var outcome = result.Cancelled ? "cancelled" : result.Success ? "succeeded" : "failed";
+            var outcome = DescribeOutcome(result);
             StatusMessage = $"Import of {label} {outcome}";
-            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import {outcome} ({label})");
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import of {label} {outcome}");
             foreach (var detail in result.Details)
             {
                 ImportMessages.Add($"  - {detail}");
@@ -808,25 +808,12 @@ public partial class MainViewModel : ObservableObject
 
             progressTimer.Stop();
 
-            if (result.Success)
+            var outcome = DescribeOutcome(result);
+            StatusMessage = $"Import from {SelectedProvider.DisplayName} {outcome}";
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import from {SelectedProvider.DisplayName} {outcome}");
+            foreach (var detail in result.Details)
             {
-                StatusMessage = $"Import completed ({SelectedProvider.DisplayName})";
-                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import succeeded ({SelectedProvider.DisplayName})");
-
-                foreach (var detail in result.Details)
-                {
-                    ImportMessages.Add($"  - {detail}");
-                }
-            }
-            else
-            {
-                StatusMessage = "Import failed";
-                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import failed ({SelectedProvider.DisplayName})");
-
-                foreach (var detail in result.Details)
-                {
-                    ImportMessages.Add($"  - {detail}");
-                }
+                ImportMessages.Add($"  - {detail}");
             }
         }
         catch (Exception ex)
@@ -841,6 +828,27 @@ public partial class MainViewModel : ObservableObject
             ProgressValue = 0;
         }
     }
+
+    /// <summary>
+    /// How an import ended, for the status line and the import log (#102). A partial import names the
+    /// requested steps that failed; the details logged under it say why.
+    /// </summary>
+    private static string DescribeOutcome(ImportResult result) => result.Outcome switch
+    {
+        ImportOutcome.Succeeded => "succeeded",
+        ImportOutcome.PartiallySucceeded => $"partially succeeded: {DescribeSteps(result.FailedSteps)} failed",
+        ImportOutcome.Failed => "failed",
+        ImportOutcome.Cancelled => "cancelled",
+        _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, null),
+    };
+
+    // At most two: a partial import has at least one step that worked.
+    private static string DescribeSteps(ImportType steps) => string.Join(" and ", new[]
+    {
+        steps.HasFlag(ImportType.Symbol) ? "symbol" : null,
+        steps.HasFlag(ImportType.Footprint) ? "footprint" : null,
+        steps.HasFlag(ImportType.Model3D) ? "3D model" : null,
+    }.OfType<string>());
 
     [RelayCommand]
     private void OpenDownloadsFolder()
