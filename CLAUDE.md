@@ -67,25 +67,39 @@ flow runs inside) and `Lemon.Hosting.AvaloniauiDesktop` are both built against A
 `App`'s constructor requires the container. Migrating means moving `App`'s startup work out of its
 constructor — a startup change, not a package bump. The pragma carries the same note.
 
-### Code style is enforced by the build
+### Code style is enforced by the build and by `dotnet format`
 
 `.editorconfig` follows [dotnet/roslyn's](https://github.com/dotnet/roslyn/blob/main/.editorconfig)
-structure and escalates most `IDE*` diagnostics to `error`. With `EnforceCodeStyleInBuild=true` they
-are ordinary build diagnostics, so **`dotnet build` is the style gate** — there is no separate lint
-step to run or to add to CI. The tree is clean against it; keep it that way.
+structure and escalates most `IDE*` diagnostics to `error`. With `EnforceCodeStyleInBuild=true` most
+of them are ordinary build diagnostics, so `dotnet build` catches most style violations, **but not
+all of them.** CI therefore has two style gates, the Build step and a Format step
+(`dotnet format --verify-no-changes`), and each catches something the other misses (#59). The tree
+is clean against both; keep it that way, and run both before pushing.
 
 ```bash
 dotnet format UltraLibrarianImporter.sln --severity warn                      # fix
-dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes  # check
+dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes  # check (CI adds --no-restore)
 ```
+
+Two classes of violation pass the build and are caught only by the format check:
+
+- **`CHARSET`.** `.editorconfig` requires `utf-8-bom` for `.cs` files. A file saved without the BOM
+  compiles fine.
+- **IDE0001 (name can be simplified).** It is set to `error` but is not reported during a build: a
+  fully qualified `System.Threading.Tasks.Task` return type with `using System.Threading.Tasks;` in
+  scope builds clean, and only `dotnet format` flags it.
+
+Both turned up while merging #44, with the build green throughout. A green build does not mean the
+format check passes.
 
 Use `--severity warn`, never `--severity info`: the naming conventions are deliberately left at
 `suggestion` (as in Roslyn), and `info` would let the formatter rename members.
 
-Two things `dotnet format` will not do for you:
+Three things `dotnet format` will not do for you:
 
-- **IDE0005 is invisible to it.** The formatter does not emit a documentation file, so unnecessary
-  usings only show up in a real build. `dotnet format` passing does not mean the build passes.
+- **IDE0005 is invisible to it**, the reverse of the case above. The formatter does not emit a
+  documentation file, so unnecessary usings only show up in a real build. `dotnet format` passing
+  does not mean the build passes.
 - **IDE0060 has no fixer.** Unused parameters must be removed or used by hand.
 - **Do not accept its IDE0058 fix for builder chains.** It resolves "expression value is never used"
   by prefixing `_ =`, and on DI or logging registrations that stacks a discard on every line —

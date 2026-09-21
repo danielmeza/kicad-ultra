@@ -29,13 +29,25 @@ jobs:
       # nullable/analyzer diagnostics that `TreatWarningsAsErrors` promotes were fixed at source.
       # This step is what keeps it that way.
       #
-      # It is also the code-style gate. Directory.Build.props sets EnforceCodeStyleInBuild=true, so
-      # the IDE* rules in .editorconfig are reported by the compiler and promoted to errors by
-      # TreatWarningsAsErrors. There is deliberately no separate `dotnet format` step: it would
-      # duplicate this one and still miss IDE0005, which needs the documentation file the build
-      # produces. Run `dotnet format --severity warn` locally to fix what this reports.
+      # It is also half of the code-style gate. Directory.Build.props sets
+      # EnforceCodeStyleInBuild=true, so most IDE* rules in .editorconfig are reported by the
+      # compiler and promoted to errors by TreatWarningsAsErrors. Only the build sees IDE0005
+      # (unnecessary usings): it needs the documentation file the build produces, which
+      # `dotnet format` does not.
       - name: Build
         run: dotnet build UltraLibrarianImporter.sln -c Release --no-restore
+
+      # The other half. Some .editorconfig violations pass the build and only `dotnet format`
+      # reports them (#59): CHARSET (`.cs` files must be utf-8-bom, and a file saved without the
+      # BOM compiles fine) and IDE0001 (name can be simplified), which is set to `error` but is not
+      # reported during a build. Both turned up while merging #44, with the build green throughout.
+      # So this step and Build each catch something the other misses; neither replaces the other.
+      #
+      # `--severity warn`, never `info`: the naming rules are deliberately left at `suggestion`, and
+      # `info` would turn them into failures here and into member renames in the local fix. To fix
+      # what this reports, run the same command without `--verify-no-changes`.
+      - name: Format
+        run: dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes --no-restore
 
       # No `dotnet test` step: UltraLibrarianImporter.sln contains only the Avalonia app and the
       # SampleConsole harness, and neither is a test project. Add one here with the first test
