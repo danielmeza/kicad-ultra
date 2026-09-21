@@ -35,6 +35,8 @@ public record ProviderExtractionResult(
 /// <param name="DatasheetUrl">URL to component datasheet or provider product page.</param>
 /// <param name="PackageDownloadUrl">Direct URL to download CAD model package archive if supported.</param>
 /// <param name="ProviderColor">Hex color code for provider visual badge (e.g. "#E65100").</param>
+/// <param name="Attribution">Where this result's data actually comes from, shown beside the result, when that is
+/// not the provider itself (e.g. a third-party index). <c>null</c> when the provider is the source.</param>
 public record PartSearchResult(
     string ProviderId,
     string ProviderName,
@@ -49,7 +51,8 @@ public record PartSearchResult(
     bool Has3DModel,
     string? DatasheetUrl,
     string? PackageDownloadUrl,
-    string ProviderColor = "#666666"
+    string ProviderColor = "#666666",
+    string? Attribution = null
 );
 
 /// <summary>

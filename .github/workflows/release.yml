@@ -58,6 +58,10 @@ jobs:
           cp -r plugin/resources staging/plugins/
           cp plugin/resources/icon-pcm-64.png staging/resources/icon.png
 
+      # The PCM listing is this plugin's advertising. JLCPCB's API terms forbid its trademark or logo
+      # in a partner's advertising and "JLC" in its website URLs, on pain of losing API access (#58):
+      # keep JLCPCB (and LCSC) out of the name, description and icon, and "JLC" out of the
+      # identifier, the homepage and the download URL.
       - name: Write metadata.json
         shell: bash
         env:

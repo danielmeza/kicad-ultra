@@ -183,7 +183,7 @@ public partial class SettingsViewModel : ObservableObject
 
                 var caps = p.Id switch
                 {
-                    "easyeda" => "Direct API: Yes • JLCPCB / LCSC Stock & Pricing • Symbols, Footprints, 3D Models",
+                    "easyeda" => "Direct API: Yes • Stock & Pricing from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts • Symbols, Footprints, 3D Models",
                     "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
                     "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
                     "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
@@ -217,7 +217,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             // Fallback default list if no registry provided
             AddFallbackProvider("ultralibrarian", "UltraLibrarian", false, "Browser-Assisted • CAD Models & 3D Assets", false, "");
-            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • JLCPCB / LCSC Stock & Pricing", false, "");
+            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • Stock & Pricing from third-party jlcsearch.tscircuit.com", false, "");
             AddFallbackProvider("octopart", "Octopart (Nexar)", true, "Direct API • Multi-Distributor Stock & Pricing", true, _configService.OctopartApiToken);
             AddFallbackProvider("snapeda", "SnapEDA / SnapMagic", true, "Direct API • CAD Models & Footprints", true, _configService.SnapEdaApiKey);
             AddFallbackProvider("samacsys", "Component Search Engine", true, "Direct API • SamacSys CAD Models", true, _configService.SamacSysApiKey);
