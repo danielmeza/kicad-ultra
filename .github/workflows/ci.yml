@@ -53,6 +53,12 @@ jobs:
       # `--severity warn`, never `info`: the naming rules are deliberately left at `suggestion`, and
       # `info` would turn them into failures here and into member renames in the local fix. To fix
       # what this reports, run the same command without `--verify-no-changes`.
+      # Code under `#if DEBUG` exists only in Debug builds, so a Release-only CI never compiles it. #35 removed
+      # a `using` that IDE0005 saw as unused in Release but that `AttachDevTools()` needs in Debug, and every
+      # Debug build - including the documented `dotnet run` - broke unnoticed.
+      - name: Build (Debug)
+        run: dotnet build UltraLibrarianImporter.sln -c Debug --no-restore
+
       - name: Format
         run: dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes --no-restore
 

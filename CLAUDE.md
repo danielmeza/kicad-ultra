@@ -57,15 +57,33 @@ it — nothing here ships as a documented public API. The doc file is a means to
 deliverable; do not start treating missing XML comments as a real signal.
 
 **Avalonia is held on the 11.3 line on purpose.** 12.x is available and `dotnet list package
---outdated` will keep offering it, but `WebViewControl-Avalonia` (the CEF browser the entire import
-flow runs inside) and `Lemon.Hosting.AvaloniauiDesktop` are both built against Avalonia 11. Take
-11.3 patches; a 12.x bump is a port, not an upgrade.
+--outdated` will keep offering it, but the CEF browser the browser-based import flow runs inside —
+`WebViewControl-Avalonia`, and `CefGlue.Avalonia` beneath it — is built against Avalonia 11, and so is
+`Lemon.Hosting.AvaloniauiDesktop`. Take 11.3 patches; 12.x is a port, tracked in #67 (in progress on a
+local build of an upstream CefGlue PR).
 
-`Lemon.Hosting.AvaloniauiDesktop` 1.1.1 deprecates `AddAvaloniauiDesktopApplication` in favour of
-`AddAppBuilder`, and `Program.ConfigureServices` suppresses CS0618 rather than migrating.
-`AddAppBuilder` invokes its `Func<AppBuilder>` eagerly, with no service provider in scope, and
-`App`'s constructor requires the container. Migrating means moving `App`'s startup work out of its
-constructor — a startup change, not a package bump. The pragma carries the same note.
+**ReactiveUI: `ReactiveUI.Avalonia` 11.4.13 (ReactiveUI 23.2.28), enabled with `.UseReactiveUI(_ => { })`
+in `Program.BuildAvaloniaApp`.** CefGlue.Avalonia also pulls in the older `Avalonia.ReactiveUI` 11.0.9,
+built against a ReactiveUI that still had `RxApp`; CefGlue only uses its `AvaloniaScheduler`, which
+still binds. **Never import the `Avalonia.ReactiveUI` namespace** or call its parameterless
+`UseReactiveUI()`. ReactiveUI 24 needs Avalonia 12 (#67).
+
+**The rule for which MVVM library to use:** CommunityToolkit.Mvvm (`ObservableObject`,
+`[ObservableProperty]`, `[RelayCommand]`) for ordinary bindings, which is almost everything. ReactiveUI
+**only where high-throughput display or async streams need it** — the Part Explorer's result grid fed
+from an `IAsyncEnumerable` is the case today. Do not convert view models to `ReactiveObject`
+wholesale.
+
+`Lemon.Hosting.AvaloniauiDesktop` 1.1.1 has two traps, both handled in `Program.ConfigureServices`, one
+with a comment carrying each reason:
+- **Do not remove the explicit `IHostLifetime` registration (#77).** 1.1.1 gave
+  `AvaloniauiApplicationLifetime<App>` a constructor that takes `App`, and DI prefers it. That builds
+  `App` before Avalonia's platform setup, binds the UI dispatcher to `NullDispatcherImpl`, and the app
+  aborts in `Dispatcher.MainLoop` with `PlatformNotSupportedException` right after "Main window created"
+  — exit code 134. The registration forces the lazy constructor.
+- `AddAvaloniauiDesktopApplication` is deprecated in favour of `AddAppBuilder`, and CS0618 is
+  suppressed rather than migrated: `AddAppBuilder` invokes its `Func<AppBuilder>` eagerly with no
+  service provider, and `App`'s constructor needs the container.
 
 ### Code style is enforced by the build and by `dotnet format`
 
@@ -120,9 +138,10 @@ Two processes, and the interesting one is the .NET side.
 
 1. **`plugin/`** — Python. KiCad loads it two ways at once: `plugin.json` registers an IPC API action
    whose entrypoint is `importer_launcher.py`, and `__init__.py` also registers a legacy
-   `pcbnew.ActionPlugin` whose `Run()` calls `launch_importer()`. Both only start the .NET app.
+   `pcbnew.ActionPlugin`. Both only start the .NET app.
 2. **`src/importer/UltraLibrarianImporter.UI`** — Avalonia 11 desktop app on the generic host
-   (`Host.CreateApplicationBuilder` + `Lemon.Hosting.AvaloniauiDesktop`), NLog, CommunityToolkit.Mvvm.
+   (`Host.CreateApplicationBuilder` + `Lemon.Hosting.AvaloniauiDesktop`), NLog, CommunityToolkit.Mvvm,
+   and ReactiveUI for the search grid only. Started with `--mcp` it is instead an MCP server — see below.
 
 **The KiCad file formats and the IPC client are not in this repo.** `SExpressions` (lossless
 s-expression read/write) and `KiCadSharp` (IPC client + library formats) live in
@@ -131,92 +150,129 @@ s-expression read/write) and `KiCadSharp` (IPC client + library formats) live in
 
 ### The launcher hand-off
 
-`importer_launcher.py` looks for `plugin/bin/UltraLibrarianImporter.UI.exe` (the real apphost name)
-and `plugin/bin/UltralibrarianImporter.exe`, nothing else — never add candidates outside the plugin
-directory; the #34 review removed three that an installed bundle would actually have reached. Still
-broken:
+`importer_launcher.py` starts exactly one thing: `plugin/bin/UltraLibrarianImporter.UI` (`.exe` on
+Windows). **Never add candidates outside the plugin directory** — an earlier version searched a
+development machine's absolute path, which an installed bundle would actually have reached. It waits
+on the child by default (the IPC API runs it as its own process); `__init__.py`'s
+`ActionPlugin.Run()` runs on KiCad's UI thread and so calls `launch_importer(wait=False)`.
 
-- **`.exe` is hardcoded**, so Linux and macOS cannot launch anything. #36 rewrites it per platform.
-- **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
-- When the launcher starts waiting on the child (as #36 does), `__init__.py`'s `ActionPlugin.Run()`
-  must call it with `wait=False` — it runs on KiCad's UI thread and would freeze the editor.
+It passes the environment through: KiCad exports the IPC socket path, the API token and the project
+directory, and `KiCadSharp` reads them from there (`KiCadEnvironment.GetApiToken()` /
+`GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any other way, the app starts fine and
+every KiCad operation fails. `plugin/requirements.txt` is deliberately empty; its comment explains why.
 
-What the launcher gets right is passing the environment through: KiCad exports the IPC socket
-path, the API token and the project directory into it, and `KiCadSharp` reads them from there
-(`KiCadEnvironment.GetApiToken()` / `GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any
-other way, the app starts fine and every KiCad operation fails.
+Still missing: **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
 
-### Providers and the import engine
+**Known crash on Linux (#78):** right after the main window opens, a SIGSEGV (exit 139) in HarfBuzz.
+CEF's GTK stack loads the system `libharfbuzz.so.0`, and `libHarfBuzzSharp.so`'s calls get interposed
+onto it. To run the app on Linux until it is fixed:
+`LD_PRELOAD=<bin>/runtimes/linux-x64/native/libHarfBuzzSharp.so`.
 
-Since #34 the importer is multi-provider:
+### Providers, search and the import engine
 
-- **`IComponentProvider`** (`Services/Interfaces`) is one source. `ComponentProviderRegistry`
-  collects every registered provider from DI; `PartAggregatorService` fans a search out to those
-  with `SupportsDirectApi == true`.
-- **`KiCadImportEngine`** does all the KiCad file work: extract the archive, then symbols, footprints
-  and 3D models, each wrapped by `RunStepAsync` so one failing step reports its own flag in
-  `ImportResult` instead of aborting the rest. `Services/UltraLibrarianImporter.cs` is now only a
-  thin facade over it.
-- **Live providers:** `EasyEdaProvider`, which searches the third-party `jlcsearch.tscircuit.com`
-  index (#52), and `OctopartProvider` (Nexar GraphQL, needs the user's token). `SnapEdaProvider` and
-  `ComponentSearchEngineProvider` are deliberately `SupportsDirectApi => false` because they used to
-  fabricate results (#56, #57). `UltraLibrarianProvider` is browser-only.
-- **Never fabricate** — the rule the #34 review converged on. A CAD-availability flag is `true` only
-  when the provider said so, and a provider that cannot answer is absent from the results rather
-  than present with invented values. The same review is why providers use narrow `catch`es that log
-  (`OperationCanceledException` rethrown) and an honest `kicad-ultra/1.0` User-Agent.
+- **`IComponentProvider`** (`Services/Interfaces`) is one source; `ComponentProviderRegistry` collects
+  them from DI. **Live:** `EasyEdaProvider` (searches the third-party `jlcsearch.tscircuit.com` index —
+  every result carries an `Attribution` saying so, #52), and `OctopartProvider` (Nexar, needs the user's
+  token). `SnapEdaProvider` and `ComponentSearchEngineProvider` are `SupportsDirectApi => false` until
+  real integrations exist (#56, #57). `UltraLibrarianProvider` is browser-only.
+- **Never fabricate.** A result or a CAD-availability flag appears only if the provider said so. A
+  provider that cannot answer is absent — it does not appear with invented values.
+- **Failures are not "no results".** Providers use narrow catches that log, and then **rethrow**
+  (`EnsureSuccessStatusCode`; a missing token throws `ProviderNotConfiguredException`). The aggregator
+  logs the failure and leaves that provider out, and failures are never cached. Honest
+  `kicad-ultra/1.0` User-Agent.
+- **`PartAggregatorService.StreamAllProvidersAsync`** yields results as each provider finishes, each on
+  its own `Task.Run`, behind `ProviderResponseCache` (5-minute TTL) and `ProviderRateLimiter` (a token
+  bucket per provider). `SearchAllProvidersAsync` is the materialising overload the MCP server uses.
+- **`MainViewModel` search (ReactiveUI).** `SearchPartsCommand` only emits the normalised query and
+  completes at once. If it executed the whole search it would stay disabled for its duration, and a
+  new query could not supersede the running one. Its output runs through `Switch()`: a new query drops
+  the old search's subscription, which cancels its provider calls. The list is cleared inside the same
+  ordered stream as the results, which is what makes stale rows impossible. Keep it that way.
+- **`KiCadImportEngine`** does the file work: extract, then symbols, footprints and 3D models, each
+  wrapped by `RunStepAsync` so a failing step reports its own `ImportResult` flag.
 
 ### Import flow
 
 `MainWindow` has two tabs.
+- **Part Explorer** searches, but **cannot import** yet: `PackageDownloadUrl` is never read (#47). The
+  first provider able to import will be EasyEDA/LCSC through the user-installed `easyeda2kicad` CLI
+  (#76). It is AGPL-3.0, so it runs **only as a separate process**: never `import` it, never distribute
+  it, and never copy its code.
+- **Web Browser** hosts CEF. `InternalDownloadHandler` (`Views/MainWindow.axaml.cs`) reduces the
+  server-supplied file name with `Path.GetFileName` and refuses anything that would resolve outside
+  the download directory — keep that containment check.
 
-- **Part Explorer** searches through the aggregator but **cannot import**: `PackageDownloadUrl` is
-  never read, and activating a result opens a browser (#47).
-- **Web Browser** hosts CEF on the selected provider's site. `InternalDownloadHandler`
-  (`Views/MainWindow.axaml.cs`) intercepts the download, reduces the server-supplied name with
-  `Path.GetFileName`, and refuses anything that would resolve outside the download directory —
-  keep that containment check. The archive then goes to `MainViewModel`, which calls
-  `KiCadImportEngine.ImportAsync` with options read from `ConfigService` at import time.
+**Registration in KiCad's library tables is real** (#66), by editing the table files; KiCad 10's IPC API
+has no library-table calls (they arrive in 11 — #72). `KiCadLibraryTable` parses with SExpressions but
+splices the new row into the original text, so existing bytes are untouched. It refuses tables outside
+KiCad's strict grammar, is idempotent, and writes through a temporary file. `AddToGlobalLibrary` off
+selects the project table (created if missing, `${KIPRJMOD}`-relative); on selects the global table,
+which is **never created**. `KiCadSettingsDirectory` resolves KiCad's config directory for the running
+version. The default scope is an open decision (#71). KiCad does not reload tables on its own, so
+the user must reopen the project or restart KiCad.
 
-Writing the libraries is real, through KiCadSharp. **Registering them is not:** `KiCadImportEngine`
-calls `RunAction($"eeschema.SymLibTable.AddLibrary:{path}:{name}")` and the `pcbnew` equivalent, but
-`RunAction` runs an action by name and does not interpret that colon suffix, so nothing is
-registered (#46). Treat "the part shows up in KiCad's library list" as unimplemented.
+**But imported symbols still do not load in KiCad 10** (#68): the `.kicad_sym` KiCadSharp 0.1.1 writes
+is invalid for it (danielmeza/kicad-sharp#45). Footprints load. Re-importing appends a duplicate
+symbol (#69).
 
 ### DI wiring — one trap
 
-`Program.ConfigureLogging` and `Program.ConfigureServices` build the container;
+`Program.ConfigureLogging` and `Program.ConfigureServices` build the GUI container;
 `AddUltraLibrarianKiCadServices()` (`UltraLibrarianKiCadExtensions.cs`) registers KiCadSharp under the
-**keyed** client name `com.ultralibrarian.kicad.importer` (re-exposed unkeyed), plus the providers,
-registry, aggregator and import engine. `Services/ServiceConfigurator.cs` is a parallel, older
-registration path that **nothing calls** — registrations added there have no effect.
+**keyed** client name `com.ultralibrarian.kicad.importer` (re-exposed unkeyed), the providers, registry,
+aggregator, cache, rate limiter, import engine and MCP server. `ISecretStore` is registered in **both**
+the GUI and `--mcp` containers. `Services/ServiceConfigurator.cs` is an older registration path that
+**nothing calls**. Registrations added there have no effect.
 
-- **Logging works now.** `ConfigureLogging` does `ClearProviders().AddConsole().AddNLog()`, so
-  `ILogger<T>` output reaches the file targets `nlog.config` declares under
-  `%APPDATA%/UltraLibrarianImporter/logs/`. Before #34 nothing bridged `ILogger` into NLog.
-- **`KiCadClientSettings` is bound from configuration only in the dead path.** `SettingsViewModel`
-  edits `IOptionsMonitor<KiCadClientSettings>.CurrentValue` in place and nothing persists
-  `PipeName`/`Token`, so KiCad connection settings entered in the Settings window are lost on restart.
+`ConfigureLogging` bridges `ILogger` into NLog (`AddNLog()`), so `nlog.config`'s file targets under
+`<app data>/UltraLibrarianImporter/logs/` receive output. `KiCadClientSettings` is bound only in the dead
+path, so KiCad connection settings entered in Settings are lost on restart.
 
-### Configuration
+### The MCP server (`--mcp`)
 
-`ConfigService` serializes to `%APPDATA%/UltraLibrarianImporter/config.json`.
+`Program.RunMcpHostAsync` builds its own container and serves MCP over **stdio** (no network port)
+with three read-only tools: `search_components`, `list_providers` and `get_component_details`. **stdout
+is the protocol channel**: nothing in MCP mode may write to it. Today it stays clean only because MCP
+mode logs **nothing at all** (#80). `nlog.config`'s `ColoredConsole` target writes Info to stdout, so
+making MCP logging work means routing it to a file or stderr first. Verify any change by piping
+`initialize`, `notifications/initialized` and a `tools/call`, and checking that every stdout line is
+valid JSON-RPC.
 
-- **Settings do not survive a restart (#45).** `Load()` calls `Deserialize<ConfigService>`, whose only
-  constructor takes an `ILogger`; System.Text.Json binds constructors by parameter name, throws, and
-  the `catch` swallows it. This includes the provider API tokens. The fix is a `ConfigData` DTO, in
-  both #36 and #44 — do not add a third copy.
-- **API tokens are stored in cleartext** in that file, although the Settings dialog masks them (#54).
-- **Three app-data folders:** `UltraLibrarianImporter` (config and logs), `UltralibrarianKicad`
-  (the CEF cache), and `KiCadComponentDownloads` (the fallback download directory when
-  `DownloadDirectory` is empty; it defaults to `~/Documents/UltraLibrarianDownloads`).
+### Configuration and secrets
+
+`ConfigService` persists non-secret settings through a single private `ConfigData` DTO to
+`<app data>/UltraLibrarianImporter/config.json`. Keep it the only persistence path.
+
+**API tokens live in the OS credential store** (#54): `ISecretStore`, with `PlatformSecretStore` choosing
+Windows Credential Manager, the macOS Keychain, or libsecret on Linux (under Flatpak, libsecret goes
+through the Secret portal). A token found in an old `config.json` is migrated into the store, and the
+file is rewritten without it — only after the store write succeeds. With no working store, tokens are
+session-only and never written to the file. **Never log a token value.**
+
+Caveat (#70): on Unix, `Environment.GetFolderPath` returns `""` for a folder that does not exist yet,
+and five call sites would then resolve relative to the working directory.
+
+### Running the app during development — without touching the user's machine
+
+Runtime checks matter here: two real defects (#77, #78) passed every build, format and unit-level
+check. To run it:
+- a headless display — Xvfb, not the user's `DISPLAY`;
+- a temp `HOME` and `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME`, plus a `Documents` folder in
+  it (see #70);
+- `DBUS_SESSION_BUS_ADDRESS` pointed at a dead socket, so the libsecret store cannot read or write the
+  user's real keyring;
+- `LD_PRELOAD` for HarfBuzz on Linux (#78).
+
+A process that exits on its own under `timeout` is **not** a clean run. Exit 134 or 139, or
+"dumped core", means it crashed — SIGTERM from `timeout` does not dump core.
 
 ### Tracked work
 
-Open work from the #34 review and the provider research is filed as #45–#58 — settings persistence,
-library-table registration, importing from the explorer, real CAD availability, streaming results,
-the official JLCPCB API, the AGPL question for EasyEDA conversion, credential storage and rate
-limiting among them. Check there before starting on anything provider-related.
+Open: importing from the explorer (#47, #76), CAD availability (#48), providers (#51, #52, #56, #57),
+Avalonia 12 (#67), symbols KiCad cannot load (#68), duplicate symbols (#69), special-folder paths
+(#70), default registration scope (#71), KiCad 11 IPC (#72 tables, #73 datasheets), the Linux
+HarfBuzz crash (#78), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
 
 ## Release state
 

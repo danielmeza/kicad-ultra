@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
 using NLog.Targets;
+using ReactiveUI.Avalonia;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Mcp;
@@ -59,6 +60,14 @@ internal sealed class Program
             return;
         }
 
+        // Before anything can start Avalonia or CEF: CEF's GTK brings in the system HarfBuzz, and
+        // HarfBuzzSharp's own calls would bind to it and crash (#78). MCP mode loads neither, and must
+        // not log to stdout, so this is the GUI path only.
+        if (OperatingSystem.IsLinux())
+        {
+            HarfBuzzPreload.Apply();
+        }
+
         try
         {
             // Create the host
@@ -98,11 +107,19 @@ internal sealed class Program
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    //
+    // UseReactiveUI is ReactiveUI.Avalonia's (ReactiveUI 23): it initialises ReactiveUI and points
+    // RxSchedulers.MainThreadScheduler at Avalonia's dispatcher, which the Part Explorer search observes
+    // its results on (#49). CefGlue.Avalonia also brings in the older Avalonia.ReactiveUI 11.0.9, whose
+    // parameterless UseReactiveUI() lives in the Avalonia.ReactiveUI namespace and was built against
+    // ReactiveUI 18: it sets RxApp.MainThreadScheduler, and RxApp no longer exists in ReactiveUI 23. Do
+    // not import that namespace or call it.
     public static AppBuilder BuildAvaloniaApp(AppBuilder builder)
         => builder
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .UseReactiveUI(_ => { });
 
     // Create the host builder with all the services
     [SupportedOSPlatform("windows")]
@@ -142,7 +159,17 @@ internal sealed class Program
             .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
             .AddUltraLibrarianKiCadServices()
-            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
+            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp)
+            // Replaces the IHostLifetime AddAvaloniauiDesktopApplication registered (#77). Lemon 1.1.1
+            // gave AvaloniauiApplicationLifetime<App> a second constructor that takes App itself, and
+            // DI picks it because it can satisfy more parameters. That builds App while the host
+            // starts, before Avalonia's platform setup: AvaloniaObject() then binds the UI dispatcher
+            // to NullDispatcherImpl, and Dispatcher.MainLoop throws PlatformNotSupportedException.
+            // The lazy constructor resolves App in WaitForStartAsync, after setup, as Lemon 1.0.0 did.
+            .AddSingleton<IHostLifetime>(provider => new AvaloniauiApplicationLifetime<App>(
+                provider.GetRequiredService<IHostApplicationLifetime>(),
+                provider,
+                provider.GetService<ILogger<AvaloniauiApplicationLifetime<App>>>()));
 #pragma warning restore CS0618
 
 

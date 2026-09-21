@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Threading;
+using System.Reactive;
+using System.Reactive.Concurrency;
+using System.Reactive.Linq;
 using System.Threading.Tasks;
 
 using Avalonia.Threading;
@@ -15,6 +17,9 @@ using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+
+using ReactiveUI;
+
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Views;
@@ -129,9 +134,22 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<PartSearchResult> SearchResults { get; } = [];
 
-    // The search that currently owns SearchResults, IsSearching and the status line, and the query it
-    // is running. Both are only touched on the UI thread.
-    private CancellationTokenSource? _searchCancellation;
+    /// <summary>
+    /// The Search button (#49). Executing it only decides whether the click starts a search: it
+    /// yields the normalised query if it does, and nothing if it does not. The search itself is the
+    /// pipeline built in the constructor, which turns each query into a stream of results and
+    /// switches to the newest one.
+    /// </summary>
+    /// <remarks>
+    /// The execution is deliberately synchronous. ReactiveCommand never runs concurrently with
+    /// itself: its CanExecute is <c>canExecute &amp;&amp; !IsExecuting</c>. If the stream were the
+    /// execution, the button would stay disabled until the slowest provider answered, and a new
+    /// query could not replace the one in flight.
+    /// </remarks>
+    public ReactiveCommand<Unit, string> SearchPartsCommand { get; }
+
+    // The query of the search that currently owns SearchResults, IsSearching and the status line, or
+    // null when no search is running. Only touched on the UI thread, by the search pipeline.
     private string? _activeSearchQuery;
 
     private string? _downloadedFilePath;
@@ -172,6 +190,28 @@ public partial class MainViewModel : ObservableObject
                 SelectedProvider = _providerRegistry.SelectedProvider;
             }
         };
+
+        // Avalonia's dispatcher: UseReactiveUI (Program.BuildAvaloniaApp) sets it during platform setup,
+        // before App resolves this view model. Both the command's output and every search's results
+        // are observed here, so the pipeline below, and every change it makes to SearchResults, runs
+        // on the UI thread.
+        IScheduler uiThread = RxSchedulers.MainThreadScheduler;
+        SearchPartsCommand = ReactiveCommand.CreateFromObservable(SubmitSearch, outputScheduler: uiThread);
+        _ = SearchPartsCommand.ThrownExceptions.Subscribe(ex => _logger.LogError(ex, "Search command failed"));
+
+        // Each query becomes its own stream of updates, and Switch() forwards only the newest one.
+        // Subscribing to a new search disposes the previous one, which cancels the token its
+        // StreamAllProvidersAsync call was given and with it that search's provider calls. The
+        // subscription lives as long as the view model, which the app resolves once.
+        //
+        // Only System.Reactive operators here. ReactiveUI 23's own extension methods (WhereNotNull,
+        // WhenAnyValue, ...) throw from their type initialiser unless ReactiveUI has been initialised
+        // through its builder, which in this app only UseReactiveUI does; the search does not need them.
+        _ = SearchPartsCommand
+            .Where(query => !IsRunning(query))
+            .Select(query => SearchProviders(query, uiThread))
+            .Switch()
+            .Subscribe(ApplySearchUpdate, ex => _logger.LogError(ex, "The Part Explorer search pipeline stopped"));
     }
 
     partial void OnSelectedProviderChanged(IComponentProvider value)
@@ -190,82 +230,107 @@ public partial class MainViewModel : ObservableObject
         WebViewLoaded = isLoaded;
     }
 
-    // AllowConcurrentExecutions: otherwise the command disables the Search button until the slowest
-    // provider has answered or timed out, and a new query cannot replace the one in flight (#49).
-    [RelayCommand(AllowConcurrentExecutions = true)]
-    private async Task SearchParts()
+    // The Search button's execution: the query to search for, or nothing when the click starts no search.
+    private IObservable<string> SubmitSearch()
     {
         var query = SearchQueryNormalizer.Normalize(SearchQuery);
         if (query.Length == 0)
         {
             StatusMessage = "Please enter a part number or keyword to search.";
-            return;
+            return Observable.Empty<string>();
         }
 
-        // A second click on the same query would only cancel it and ask every provider again.
-        if (_searchCancellation is not null && string.Equals(query, _activeSearchQuery, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
+        return Observable.Return(query);
+    }
 
-        // Supersede the search in flight before touching anything it owns. This method runs on the UI
-        // thread, and so does every continuation of the old search, so from here on the old one sees
-        // its token cancelled and cannot write to SearchResults again.
-        _searchCancellation?.Cancel();
-        using var cancellation = new CancellationTokenSource();
-        _searchCancellation = cancellation;
-        _activeSearchQuery = query;
-        CancellationToken token = cancellation.Token;
+    // A second click on the query already running would only cancel it and ask every provider again.
+    // Checked in the pipeline rather than in SubmitSearch, so that it sees the state left by every
+    // earlier click's search even when the command's output is delivered later than the click.
+    private bool IsRunning(string query) =>
+        _activeSearchQuery is not null && string.Equals(query, _activeSearchQuery, StringComparison.OrdinalIgnoreCase);
 
-        try
-        {
-            IsSearching = true;
-            SearchResults.Clear();
-            StatusMessage = $"Searching all component providers for '{query}'...";
+    // One search, as the updates the UI thread applies in order: SearchStarted, a PartFound per part as
+    // its provider answers, then SearchCompleted or SearchFailed.
+    //
+    // Why a superseded search's result cannot land in the new list: the list is cleared by
+    // SearchStarted, an update in the same ordered stream as the results, emitted synchronously when
+    // Switch() subscribes to this search - the moment the previous search stops being current - and
+    // not as a side effect of the click. The results are moved to the UI thread before Switch(), so
+    // the switch and every update happen in one order on one thread. A result the previous search had
+    // already queued on the UI thread then either reaches Switch() before the new query does, and
+    // SearchStarted clears it with the rest, or after, and is dropped: the switch has disposed that
+    // search's subscription, and Switch() forwards only the search it is subscribed to. Clearing the
+    // list at the click instead would let that queued result land after the clear.
+    private IObservable<SearchUpdate> SearchProviders(string query, IScheduler uiThread) =>
+        _aggregatorService.StreamAllProvidersAsync(query)
+            // A superseded search is cancelled by Switch() disposing it, which ToObservable never
+            // reports. Any other cancellation stopped this search early, so it fails rather than
+            // completing: "Found N results" would claim a finished search. ApplySearchUpdate reports it
+            // as cancelled, not as an error.
+            .ToObservable(whenCancelled: AsyncStreamCancellation.Error)
+            .Select<PartSearchResult, SearchUpdate>(part => new PartFound(query, part))
+            .Append(new SearchCompleted(query))
+            // A provider that fails is already left out by the aggregator, so an error here means the
+            // search as a whole failed. It must not look like "no results".
+            .Catch((Exception ex) => Observable.Return<SearchUpdate>(new SearchFailed(query, ex)))
+            .ObserveOn(uiThread)
+            .StartWith(new SearchStarted(query));
 
-            // No ConfigureAwait(false): each iteration must resume on the UI thread, because
-            // SearchResults is bound to the results list. The command is invoked from the UI thread
-            // and Avalonia's SynchronizationContext brings every continuation back to it.
-            await foreach (PartSearchResult part in _aggregatorService.StreamAllProvidersAsync(query, token))
-            {
-                // Superseded while this result was already on its way.
-                if (token.IsCancellationRequested)
-                {
-                    break;
-                }
+    // Runs on the UI thread, and only for the current search.
+    private void ApplySearchUpdate(SearchUpdate update)
+    {
+        switch (update)
+        {
+            case SearchStarted:
+                _activeSearchQuery = update.Query;
+                IsSearching = true;
+                SearchResults.Clear();
+                StatusMessage = $"Searching all component providers for '{update.Query}'...";
+                break;
 
-                InsertSorted(part);
-                StatusMessage = $"Searching all component providers for '{query}'... {SearchResults.Count} result(s) so far.";
-            }
+            case PartFound found:
+                InsertSorted(found.Part);
+                StatusMessage = $"Searching all component providers for '{update.Query}'... {SearchResults.Count} result(s) so far.";
+                break;
 
-            if (!token.IsCancellationRequested)
-            {
-                StatusMessage = $"Found {SearchResults.Count} results across providers for '{query}'. ({SortStatusSummary})";
-                _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", query, SearchResults.Count);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            // Superseded: the newer search owns the results and the status line now.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error searching components across providers");
-            if (!token.IsCancellationRequested)
-            {
-                StatusMessage = $"Search error: {ex.Message}";
-            }
-        }
-        finally
-        {
-            if (ReferenceEquals(_searchCancellation, cancellation))
-            {
-                _searchCancellation = null;
-                _activeSearchQuery = null;
-                IsSearching = false;
-            }
+            case SearchCompleted:
+                StatusMessage = $"Found {SearchResults.Count} results across providers for '{update.Query}'. ({SortStatusSummary})";
+                _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", update.Query, SearchResults.Count);
+                EndSearch();
+                break;
+
+            case SearchFailed { Error: OperationCanceledException }:
+                _logger.LogInformation("Search for {Query} was cancelled before it finished", update.Query);
+                StatusMessage = $"Search for '{update.Query}' was cancelled. {SearchResults.Count} result(s) found before it stopped.";
+                EndSearch();
+                break;
+
+            case SearchFailed failed:
+                _logger.LogError(failed.Error, "Error searching components across providers");
+                StatusMessage = $"Search error: {failed.Error.Message}";
+                EndSearch();
+                break;
+
+            default:
+                throw new System.Diagnostics.UnreachableException($"Unknown search update {update.GetType().Name}");
         }
     }
+
+    private void EndSearch()
+    {
+        _activeSearchQuery = null;
+        IsSearching = false;
+    }
+
+    private abstract record SearchUpdate(string Query);
+
+    private sealed record SearchStarted(string Query) : SearchUpdate(Query);
+
+    private sealed record PartFound(string Query, PartSearchResult Part) : SearchUpdate(Query);
+
+    private sealed record SearchCompleted(string Query) : SearchUpdate(Query);
+
+    private sealed record SearchFailed(string Query, Exception Error) : SearchUpdate(Query);
 
     [RelayCommand]
     private void Sort(string? column)
