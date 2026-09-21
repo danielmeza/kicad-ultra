@@ -11,6 +11,7 @@ using NLog.Targets;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Mcp;
+using UltraLibrarianImporter.UI.Services.Secrets;
 
 namespace UltraLibrarianImporter.UI;
 
@@ -87,6 +88,7 @@ internal sealed class Program
             _ = builder.AddNLog();
         });
 
+        _ = services.AddSingleton(_ => PlatformSecretStore.Create());
         _ = services.AddSingleton<IConfigService, ConfigService>();
         _ = services.AddUltraLibrarianKiCadServices();
 
@@ -137,6 +139,7 @@ internal sealed class Program
             .AddTransient<ViewModels.MainViewModel>()
             .AddTransient<ViewModels.SettingsViewModel>()
             .AddTransient<ViewModels.AboutViewModel>()
+            .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
             .AddUltraLibrarianKiCadServices()
             .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);

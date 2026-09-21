@@ -73,6 +73,12 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<ProviderConfigItemViewModel> ConfiguredProviders { get; } = [];
     public ObservableCollection<string> AvailableProviderIds { get; } = [];
 
+    /// <summary>Where the API keys below are kept - the OS credential store, or this session only.</summary>
+    public string SecretStorageMessage => _configService.SecretStorage.Message;
+
+    /// <summary>True when the OS credential store could not be used and API keys will not survive a restart.</summary>
+    public bool IsSecretStorageSessionOnly => !_configService.SecretStorage.IsPersistent;
+
     [ObservableProperty]
     private string _selectedDefaultProviderId = "ultralibrarian";
 

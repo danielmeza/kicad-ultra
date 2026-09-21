@@ -1,18 +1,52 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Secrets;
 
 namespace UltraLibrarianImporter.UI.Services;
 
 /// <summary>
 /// Service for managing application configuration
 /// </summary>
+/// <remarks>
+/// Two stores, split by sensitivity. Everything that is not a secret goes to <c>config.json</c>
+/// through the <see cref="ConfigData"/> DTO. The three provider API keys go to the OS credential
+/// store through <see cref="ISecretStore"/> and are never added to the file (#54): <c>config.json</c>
+/// gets shared for troubleshooting, and the Settings dialog masking the keys implied a protection
+/// the file never had. <see cref="LoadSecrets"/> moves keys an earlier version left in the file;
+/// <see cref="SaveSecrets"/> describes what happens when the credential store cannot be used.
+/// </remarks>
 public class ConfigService : IConfigService
 {
+    /// <summary>The name the Octopart / Nexar token is filed under in the credential store.</summary>
+    public const string OctopartApiTokenKey = "octopart-api-token";
+
+    /// <summary>The name the SnapEDA key is filed under in the credential store.</summary>
+    public const string SnapEdaApiKeyKey = "snapeda-api-key";
+
+    /// <summary>The name the SamacSys key is filed under in the credential store.</summary>
+    public const string SamacSysApiKeyKey = "samacsys-api-key";
+
+    private static readonly string[] s_secretKeys = [OctopartApiTokenKey, SnapEdaApiKeyKey, SamacSysApiKeyKey];
+
     private readonly ILogger<ConfigService> _logger;
+    private readonly ISecretStore _secretStore;
     private readonly string _configFilePath;
+
+    // What the credential store is known to hold, by key, as of the last read or write that
+    // succeeded. A key is absent while the store could not be read, which is what stops Save from
+    // deleting a secret this instance never saw.
+    private readonly Dictionary<string, string> _storedSecrets = new(StringComparer.Ordinal);
+
+    // Cleartext keys found in a config.json written before #54 that could not be moved into the
+    // credential store yet. Save writes these - and only these - back to the file unchanged, so an
+    // unavailable store does not cost the user a key; they move on the first Load or Save that
+    // reaches the store, and one the user changes or clears in Settings is dropped from the file.
+    private readonly Dictionary<string, string> _unmigratedSecrets = new(StringComparer.Ordinal);
 
     // Default values
     private const string DEFAULT_DOWNLOAD_DIR = "";
@@ -28,8 +62,9 @@ public class ConfigService : IConfigService
     public string OctopartApiToken { get; set; } = string.Empty;
     public string SnapEdaApiKey { get; set; } = string.Empty;
     public string SamacSysApiKey { get; set; } = string.Empty;
+    public SecretStorageStatus SecretStorage { get; private set; } = new(false, "API keys have not been loaded yet.");
     public string DefaultProviderId { get; set; } = "ultralibrarian";
-    public System.Collections.Generic.Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     public bool IsProviderEnabled(string providerId)
     {
@@ -44,13 +79,24 @@ public class ConfigService : IConfigService
     }
 
     /// <summary>
-    /// Creates a new instance of the configuration service
+    /// Creates a new instance of the configuration service, keeping API keys in the credential
+    /// store for this operating system (<see cref="PlatformSecretStore.Create"/>).
     /// </summary>
     /// <param name="logger">Logger for recording operations</param>
     public ConfigService(ILogger<ConfigService> logger)
+        : this(logger, PlatformSecretStore.Create())
+    {
+    }
+
+    /// <summary>
+    /// Creates a new instance of the configuration service
+    /// </summary>
+    /// <param name="logger">Logger for recording operations</param>
+    /// <param name="secretStore">Where the provider API keys are persisted</param>
+    public ConfigService(ILogger<ConfigService> logger, ISecretStore secretStore)
     {
         _logger = logger;
-
+        _secretStore = secretStore;
 
         var appDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -80,24 +126,36 @@ public class ConfigService : IConfigService
         public bool UseProjectPath { get; set; } = true;
         public bool AutoImportWhenDownloaded { get; set; } = true;
         public string? LibraryName { get; set; }
-        public string? OctopartApiToken { get; set; }
-        public string? SnapEdaApiKey { get; set; }
-        public string? SamacSysApiKey { get; set; }
         public string? DefaultProviderId { get; set; }
-        public System.Collections.Generic.Dictionary<string, bool>? EnabledProviders { get; set; }
+        public Dictionary<string, bool>? EnabledProviders { get; set; }
+
+        // Releases before #54 kept the provider API keys here in cleartext. Load reads them only
+        // to move them into the credential store. Save leaves them null, and null is omitted, so
+        // the file carries no secret at all - except a key that could not be moved yet, which is
+        // written back as it was rather than lost (see _unmigratedSecrets).
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? OctopartApiToken { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? SnapEdaApiKey { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? SamacSysApiKey { get; set; }
     }
 
     /// <summary>
-    /// Loads the configuration from the config file
+    /// Loads the configuration from the config file, and the API keys from the credential store
     /// </summary>
     public void Load()
     {
+        ConfigData? config = null;
+        var fileExists = File.Exists(_configFilePath);
         try
         {
-            if (File.Exists(_configFilePath))
+            if (fileExists)
             {
                 var json = File.ReadAllText(_configFilePath);
-                ConfigData? config = JsonSerializer.Deserialize<ConfigData>(json, new JsonSerializerOptions
+                config = JsonSerializer.Deserialize<ConfigData>(json, new JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
@@ -111,13 +169,10 @@ public class ConfigService : IConfigService
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                     LibraryName = config.LibraryName ?? string.Empty;
-                    OctopartApiToken = config.OctopartApiToken ?? string.Empty;
-                    SnapEdaApiKey = config.SnapEdaApiKey ?? string.Empty;
-                    SamacSysApiKey = config.SamacSysApiKey ?? string.Empty;
                     DefaultProviderId = string.IsNullOrEmpty(config.DefaultProviderId) ? "ultralibrarian" : config.DefaultProviderId;
                     EnabledProviders = config.EnabledProviders != null
-                        ? new System.Collections.Generic.Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
-                        : new System.Collections.Generic.Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                        ? new Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
+                        : new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                 }
 
                 _logger.LogInformation("Configuration loaded from file");
@@ -125,20 +180,96 @@ public class ConfigService : IConfigService
             else
             {
                 _logger.LogInformation("No configuration file found, using defaults");
-                Save(); // Create the default config file
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error loading configuration");
         }
+
+        var migrated = LoadSecrets(config);
+
+        // Create the default config file, or rewrite one whose cleartext keys were just moved into
+        // the credential store. A file that exists but failed to parse is left alone.
+        if (!fileExists || migrated)
+        {
+            Save();
+        }
     }
 
     /// <summary>
-    /// Saves the configuration to the config file
+    /// Reads the API keys from the credential store, first moving any that
+    /// <paramref name="config"/> still carries in cleartext into it.
+    /// </summary>
+    /// <returns>True when at least one key was moved, so the file needs rewriting without it.</returns>
+    private bool LoadSecrets(ConfigData? config)
+    {
+        _storedSecrets.Clear();
+        _unmigratedSecrets.Clear();
+
+        var migrated = false;
+        string? failure = null;
+        foreach (var key in s_secretKeys)
+        {
+            var legacyValue = config is null ? null : GetLegacySecret(config, key);
+            if (string.IsNullOrEmpty(legacyValue))
+            {
+                // Builds that kept keys in the file wrote "" for an unset one; that is not a key.
+                legacyValue = null;
+            }
+
+            // After the first failure the store is not asked again during this load: a keyring
+            // whose unlock prompt was just dismissed would otherwise prompt once per key.
+            if (failure is null)
+            {
+                try
+                {
+                    if (legacyValue is null)
+                    {
+                        var stored = _secretStore.Get(key) ?? string.Empty;
+                        SetSecret(key, stored);
+                        _storedSecrets[key] = stored;
+                    }
+                    else
+                    {
+                        // The file's value wins over anything already in the store: only a build
+                        // that predates the store writes a key to the file, so it is the newer one.
+                        _secretStore.Set(key, legacyValue);
+                        SetSecret(key, legacyValue);
+                        _storedSecrets[key] = legacyValue;
+                        migrated = true;
+                        _logger.LogInformation("Moved {SecretKey} from config.json into {SecretStore}", key, _secretStore.DisplayName);
+                    }
+
+                    continue;
+                }
+                catch (SecretStoreException ex)
+                {
+                    failure = ex.Message;
+                    _logger.LogWarning("The credential store cannot be used ({Reason}); API keys are kept for this session only", ex.Message);
+                }
+            }
+
+            // No store: keep the file's key in memory, and in the file until it can be moved. A
+            // key with nothing in the file keeps whatever value this instance already had.
+            if (legacyValue is not null)
+            {
+                SetSecret(key, legacyValue);
+                _unmigratedSecrets[key] = legacyValue;
+            }
+        }
+
+        SecretStorage = CreateStatus(failure);
+        return migrated;
+    }
+
+    /// <summary>
+    /// Saves the API keys to the credential store and everything else to the config file
     /// </summary>
     public void Save()
     {
+        SaveSecrets();
+
         try
         {
             var data = new ConfigData
@@ -150,12 +281,16 @@ public class ConfigService : IConfigService
                 UseProjectPath = UseProjectPath,
                 AutoImportWhenDownloaded = AutoImportWhenDownloaded,
                 LibraryName = LibraryName,
-                OctopartApiToken = OctopartApiToken,
-                SnapEdaApiKey = SnapEdaApiKey,
-                SamacSysApiKey = SamacSysApiKey,
                 DefaultProviderId = DefaultProviderId,
                 EnabledProviders = EnabledProviders
             };
+
+            // Never a key typed into Settings: only ones an earlier version already wrote here and
+            // that could not be moved into the credential store yet.
+            foreach (KeyValuePair<string, string> unmigrated in _unmigratedSecrets)
+            {
+                SetLegacySecret(data, unmigrated.Key, unmigrated.Value);
+            }
 
             var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_configFilePath, json);
@@ -164,6 +299,142 @@ public class ConfigService : IConfigService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error saving configuration");
+        }
+    }
+
+    /// <summary>
+    /// Writes every API key that changed since it was last loaded or saved to the credential store;
+    /// a cleared key is deleted from it.
+    /// </summary>
+    /// <remarks>
+    /// When the store cannot be used, a key is <b>not</b> written to <c>config.json</c> instead:
+    /// it stays in memory, so it keeps working until the app closes, and
+    /// <see cref="SecretStorage"/> says so for the Settings dialog to show. The one exception is a
+    /// key an earlier version already left in the file, which stays there - unchanged - until it
+    /// can be moved (see <c>_unmigratedSecrets</c>).
+    /// </remarks>
+    private void SaveSecrets()
+    {
+        var attempted = false;
+        string? failure = null;
+        foreach (var key in s_secretKeys)
+        {
+            var value = GetSecret(key);
+            var hasLegacy = _unmigratedSecrets.TryGetValue(key, out var legacyValue);
+            var known = _storedSecrets.TryGetValue(key, out var storedValue);
+
+            // Nothing to do when the store already holds this value. An empty key whose stored
+            // value is unknown is also left alone: the store could not be read, so the user never
+            // saw what it holds, and deleting it would destroy a key this instance never loaded.
+            if (!hasLegacy && (known ? storedValue == value : value.Length == 0))
+            {
+                continue;
+            }
+
+            if (failure is null)
+            {
+                attempted = true;
+                try
+                {
+                    if (value.Length == 0)
+                    {
+                        _secretStore.Delete(key);
+                    }
+                    else
+                    {
+                        _secretStore.Set(key, value);
+                    }
+
+                    _storedSecrets[key] = value;
+                    _ = _unmigratedSecrets.Remove(key);
+                    continue;
+                }
+                catch (SecretStoreException ex)
+                {
+                    failure = ex.Message;
+                    _logger.LogWarning("The credential store cannot be used ({Reason}); API keys are kept for this session only", ex.Message);
+                }
+            }
+
+            // Not persisted. A key from the file that the user has since changed or cleared is
+            // stale, so stop carrying it; the new value lives in memory for this session.
+            if (hasLegacy && legacyValue != value)
+            {
+                _ = _unmigratedSecrets.Remove(key);
+            }
+        }
+
+        if (attempted)
+        {
+            SecretStorage = CreateStatus(failure);
+        }
+    }
+
+    private SecretStorageStatus CreateStatus(string? failure)
+    {
+        if (failure is null)
+        {
+            return new SecretStorageStatus(true, $"API keys are saved in {_secretStore.DisplayName}, not in config.json.");
+        }
+
+        var message = $"API keys cannot be saved securely ({failure}), so keys entered here are kept only until the app closes.";
+        if (_unmigratedSecrets.Count > 0)
+        {
+            message += " Keys saved by an earlier version are still in config.json in cleartext; they will be moved to the credential store as soon as it works, and clearing a key here removes it from the file.";
+        }
+
+        return new SecretStorageStatus(false, message);
+    }
+
+    private string GetSecret(string key) => key switch
+    {
+        OctopartApiTokenKey => OctopartApiToken,
+        SnapEdaApiKeyKey => SnapEdaApiKey,
+        SamacSysApiKeyKey => SamacSysApiKey,
+        _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key"),
+    };
+
+    private void SetSecret(string key, string value)
+    {
+        switch (key)
+        {
+            case OctopartApiTokenKey:
+                OctopartApiToken = value;
+                break;
+            case SnapEdaApiKeyKey:
+                SnapEdaApiKey = value;
+                break;
+            case SamacSysApiKeyKey:
+                SamacSysApiKey = value;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key");
+        }
+    }
+
+    private static string? GetLegacySecret(ConfigData data, string key) => key switch
+    {
+        OctopartApiTokenKey => data.OctopartApiToken,
+        SnapEdaApiKeyKey => data.SnapEdaApiKey,
+        SamacSysApiKeyKey => data.SamacSysApiKey,
+        _ => null,
+    };
+
+    private static void SetLegacySecret(ConfigData data, string key, string value)
+    {
+        switch (key)
+        {
+            case OctopartApiTokenKey:
+                data.OctopartApiToken = value;
+                break;
+            case SnapEdaApiKeyKey:
+                data.SnapEdaApiKey = value;
+                break;
+            case SamacSysApiKeyKey:
+                data.SamacSysApiKey = value;
+                break;
+            default:
+                break;
         }
     }
 
