@@ -38,7 +38,7 @@
 
                                 <Grid ColumnDefinitions="Auto,*">
                                     <TextBlock Grid.Column="0" Text="Custom Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Default naming if empty"/>
+                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" PlaceholderText="Default naming if empty"/>
                                 </Grid>
 
                                 <CheckBox Content="Add imported components to global library table" IsChecked="{Binding AddToGlobalLibrary}"/>
@@ -55,7 +55,7 @@
                                       IsEnabled="{Binding !UseProjectPath}" 
                                       Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
                                     <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
+                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" PlaceholderText="Custom library destination folder..."/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
                                 </Grid>
                             </StackPanel>
@@ -143,7 +143,7 @@
                                                 <TextBox Grid.Column="1" 
                                                          Text="{Binding ApiKey}" 
                                                          PasswordChar="*" 
-                                                         Watermark="{Binding ApiKeyPlaceholder}"/>
+                                                         PlaceholderText="{Binding ApiKeyPlaceholder}"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>

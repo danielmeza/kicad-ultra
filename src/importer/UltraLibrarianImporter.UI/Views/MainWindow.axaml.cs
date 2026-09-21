@@ -1,27 +1,15 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Net.Mime;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 
-using WebViewControl;
-
 using Xilium.CefGlue;
-using Xilium.CefGlue.Common;
+using Xilium.CefGlue.Avalonia;
 using Xilium.CefGlue.Common.Handlers;
 
 namespace UltraLibrarianImporter.UI.Views;
@@ -35,29 +23,30 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-
-        WebView.GlobalWebViewInitialized += Initialize;
-
         InitializeComponent();
 
-        //// Get the WebView control and set up event handlers
-        WebView? webView = this.FindControl<WebView>("OSWebView");
-        if (webView != null)
+        // The browser is CefGlue's own control (#67). WebViewControl, which wrapped it until then, has
+        // no Avalonia 12 build; this window only ever used it as a host for these handlers.
+        var downloadHandler = new InternalDownloadHandler(this);
+        AvaloniaCefBrowser? browser = this.FindControl<AvaloniaCefBrowser>("OSWebView");
+        if (browser != null)
         {
-            webView.Loaded += (s, e) =>
+            browser.DownloadHandler = downloadHandler;
+            browser.LifeSpanHandler = new SameBrowserPopupHandler();
+            browser.Loaded += (s, e) =>
             {
                 ViewModel.SetWebViewLoaded(true);
             };
-            webView.DownloadCompleted += DownloadComplete;
         }
 
         DataContextChanged += (s, e) =>
         {
+            downloadHandler.ViewModel = DataContext as MainViewModel;
             if (DataContext is MainViewModel vm)
             {
                 vm.RequestBrowserBack += () =>
                 {
-                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    AvaloniaCefBrowser? wv = this.FindControl<AvaloniaCefBrowser>("OSWebView");
                     if (wv != null)
                     {
                         try { wv.GoBack(); } catch { }
@@ -65,7 +54,7 @@ public partial class MainWindow : Window
                 };
                 vm.RequestBrowserForward += () =>
                 {
-                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    AvaloniaCefBrowser? wv = this.FindControl<AvaloniaCefBrowser>("OSWebView");
                     if (wv != null)
                     {
                         try { wv.GoForward(); } catch { }
@@ -73,31 +62,56 @@ public partial class MainWindow : Window
                 };
                 vm.RequestBrowserReload += () =>
                 {
-                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    AvaloniaCefBrowser? wv = this.FindControl<AvaloniaCefBrowser>("OSWebView");
                     if (wv != null)
                     {
                         try { wv.Reload(); } catch { }
                     }
                 };
+
+                // AvaloniaCefBrowser.Address is a CLR property, not an Avalonia one, so it cannot be
+                // bound in XAML the way WebViewControl's was: set the provider's page now, and follow
+                // WebviewUrl from here on.
+                NavigateTo(vm.WebviewUrl);
                 vm.PropertyChanged += (sender, args) =>
                 {
                     if (args.PropertyName == nameof(MainViewModel.WebviewUrl))
                     {
-                        WebView? wv = this.FindControl<WebView>("OSWebView");
-                        if (wv != null && !string.IsNullOrEmpty(vm.WebviewUrl) && wv.Address != vm.WebviewUrl)
-                        {
-                            wv.Address = vm.WebviewUrl;
-                        }
+                        NavigateTo(vm.WebviewUrl);
                     }
                 };
             }
         };
     }
 
-    private void Initialize(WebView view)
+    private void NavigateTo(string url)
     {
-        var browser = (BaseCefBrowser)view.GetVisualChildren().First();
-        browser.DownloadHandler = new InternalDownloadHandler(this);
+        AvaloniaCefBrowser? wv = this.FindControl<AvaloniaCefBrowser>("OSWebView");
+        if (wv != null && !string.IsNullOrEmpty(url) && wv.Address != url)
+        {
+            wv.Address = url;
+        }
+    }
+
+    // A page's request for a new window (target="_blank", window.open) opens in this browser instead.
+    // WebViewControl handed such links to the system browser, where a download never reaches
+    // InternalDownloadHandler (a JLCPCB datasheet link went to xdg-open); CEF's own default is a
+    // separate, unmanaged native window. In this browser the page keeps the download handler and the
+    // Back button.
+    private sealed class SameBrowserPopupHandler : LifeSpanHandler
+    {
+        protected override bool OnBeforePopup(CefBrowser browser, CefFrame frame, string targetUrl, string targetFrameName, CefWindowOpenDisposition targetDisposition, bool userGesture, CefPopupFeatures popupFeatures, CefWindowInfo windowInfo, ref CefClient client, CefBrowserSettings settings, ref CefDictionaryValue extraInfo, ref bool noJavascriptAccess)
+        {
+            if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out Uri? target)
+                || (target.Scheme != Uri.UriSchemeHttps && target.Scheme != Uri.UriSchemeHttp))
+            {
+                // about:blank and friends: let CEF open its window, as it did before.
+                return false;
+            }
+
+            browser.GetMainFrame().LoadUrl(target.AbsoluteUri);
+            return true;
+        }
     }
 
     private void DownloadComplete(string resourcePath)
@@ -127,10 +141,21 @@ public partial class MainWindow : Window
     private class InternalDownloadHandler : DownloadHandler
     {
         private readonly MainWindow _mainWindow;
+        private volatile MainViewModel? _viewModel;
 
         public InternalDownloadHandler(MainWindow mainWindow)
         {
             _mainWindow = mainWindow;
+        }
+
+        // CEF calls this handler on its own UI thread, which is not Avalonia's, so it must not read
+        // the window's DataContext: that is an Avalonia property, and reading one off Avalonia's UI
+        // thread throws - an unhandled exception on a CEF thread, which aborted the process the
+        // moment a download started (#67). The window hands the view model over instead, on its UI
+        // thread, whenever the DataContext changes.
+        public MainViewModel? ViewModel
+        {
+            set => _viewModel = value;
         }
 
         protected override void OnBeforeDownload(CefBrowser browser, CefDownloadItem downloadItem, string suggestedName, CefBeforeDownloadCallback callback)
@@ -159,8 +184,9 @@ public partial class MainWindow : Window
             }
 
             var defaultDownloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KiCadComponentDownloads");
-            var downloadDir = !string.IsNullOrWhiteSpace(_mainWindow.ViewModel.DownloadDirectory)
-                ? _mainWindow.ViewModel.DownloadDirectory
+            var configuredDir = _viewModel?.DownloadDirectory;
+            var downloadDir = !string.IsNullOrWhiteSpace(configuredDir)
+                ? configuredDir
                 : defaultDownloadDir;
 
             try
@@ -252,227 +278,4 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Normal);
     }
 
-}
-
-
-
-internal class InternalResourceRequestHandler : CefResourceRequestHandler
-{
-    private readonly CefResourceRequestHandler _originalResourceRequestHandler;
-    private readonly MethodInfo _getResourceHandler;
-
-    public InternalResourceRequestHandler(CefResourceRequestHandler originalResourceRequestHandler)
-    {
-        _originalResourceRequestHandler = originalResourceRequestHandler;
-        _getResourceHandler = _originalResourceRequestHandler.GetType().GetMethod(nameof(GetResourceHandler), BindingFlags.NonPublic | BindingFlags.Instance)!;
-    }
-
-    protected override CefCookieAccessFilter GetCookieAccessFilter(CefBrowser browser, CefFrame frame, CefRequest request)
-    {
-        return new CookiesAccessFilter();
-    }
-
-    protected override CefResourceHandler GetResourceHandler(CefBrowser browser, CefFrame frame, CefRequest request)
-    {
-        return (CefResourceHandler)_getResourceHandler.Invoke(_originalResourceRequestHandler, [browser, frame, request])!;
-    }
-
-}
-
-internal class InternalRequestHandler : RequestHandler
-{
-    private readonly Lazy<HttpResourceRequestHandler> HttpResourceRequestHandler = new(() => new HttpResourceRequestHandler());
-    private WebView OwnerWebView { get; }
-
-    private InternalResourceRequestHandler ResourceRequestHandler { get; }
-
-    private readonly RequestHandler _originalRequestHandler;
-    private readonly MethodInfo _originalGetAuthCredentials;
-    private readonly MethodInfo _onBeforeBrowse;
-    private readonly MethodInfo _onCertificateError;
-    private readonly MethodInfo _onRenderProcessTerminated;
-
-    public InternalRequestHandler(WebView webView, RequestHandler originalRequestHandler)
-    {
-        _originalRequestHandler = originalRequestHandler;
-        OwnerWebView = webView;
-
-        Type type = originalRequestHandler.GetType();
-        PropertyInfo property = type.GetProperty(nameof(ResourceRequestHandler), BindingFlags.NonPublic | BindingFlags.GetProperty | BindingFlags.Instance)!;
-        var originalResourceRequestHandler = (CefResourceRequestHandler)property.GetValue(originalRequestHandler)!;
-        ResourceRequestHandler = new InternalResourceRequestHandler(originalResourceRequestHandler);
-
-
-        _originalGetAuthCredentials = type.GetMethod(nameof(GetAuthCredentials), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        _onBeforeBrowse = type.GetMethod(nameof(OnBeforeBrowse), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        _onCertificateError = type.GetMethod(nameof(OnCertificateError), BindingFlags.NonPublic | BindingFlags.Instance)!;
-        _onRenderProcessTerminated = type.GetMethod(nameof(OnRenderProcessTerminated), BindingFlags.NonPublic | BindingFlags.Instance)!;
-    }
-
-    protected override bool GetAuthCredentials(CefBrowser browser, string originUrl, bool isProxy, string host, int port, string realm, string scheme, CefAuthCallback callback)
-    {
-        var result = _originalGetAuthCredentials.Invoke(_originalRequestHandler, [originUrl, isProxy, host, port, realm, scheme, callback])!;
-        return (bool)result;
-    }
-
-    protected override bool OnBeforeBrowse(CefBrowser browser, CefFrame frame, CefRequest request, bool userGesture, bool isRedirect)
-    {
-        return (bool)_onBeforeBrowse.Invoke(_originalRequestHandler, [browser, frame, request, userGesture, isRedirect])!;
-    }
-
-    protected override bool OnCertificateError(CefBrowser browser, CefErrorCode certError, string requestUrl, CefSslInfo sslInfo, CefCallback callback)
-    {
-        return (bool)_onCertificateError.Invoke(_originalRequestHandler, [browser, certError, requestUrl, sslInfo, callback])!;
-    }
-
-    protected override void OnRenderProcessTerminated(CefBrowser browser, CefTerminationStatus status)
-    {
-        _ = _onRenderProcessTerminated.Invoke(_originalRequestHandler, [browser, status]);
-    }
-
-    protected override CefResourceRequestHandler GetResourceRequestHandler(CefBrowser browser, CefFrame frame, CefRequest request, bool isNavigation, bool isDownload, string requestInitiator, ref bool disableDefaultHandling)
-    {
-        if (OwnerWebView.IsSecurityDisabled && HttpResourceHandler.AcceptedResources.Contains(request.ResourceType) && request.Url != null)
-        {
-            var uri = new Uri(request.Url);
-            if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
-            {
-                return HttpResourceRequestHandler.Value;
-            }
-        }
-
-        return ResourceRequestHandler;
-    }
-}
-
-internal class HttpResourceRequestHandler : CefResourceRequestHandler
-{
-    protected override CefCookieAccessFilter GetCookieAccessFilter(CefBrowser browser, CefFrame frame, CefRequest request)
-    {
-        return new CookiesAccessFilter();
-    }
-
-    protected override CefResourceHandler GetResourceHandler(CefBrowser browser, CefFrame frame, CefRequest request)
-    {
-        return new HttpResourceHandler();
-    }
-}
-
-
-internal static class UrlHelper
-{
-    public const string AboutBlankUrl = "about:blank";
-
-    public static ResourceUrl DefaultLocalUrl = new("local", "index.html");
-
-    public static bool IsChromeInternalUrl(string url)
-    {
-        return url?.StartsWith("devtools:", StringComparison.InvariantCultureIgnoreCase) ?? false;
-    }
-
-    public static bool IsInternalUrl(string url)
-    {
-        return IsChromeInternalUrl(url) || url.StartsWith(DefaultLocalUrl.ToString(), StringComparison.InvariantCultureIgnoreCase);
-    }
-
-    public static void OpenInExternalBrowser(string url)
-    {
-        _ = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? Process.Start("explorer", "\"" + url + "\"")
-            : Process.Start("open", url);
-    }
-}
-
-internal class CookiesAccessFilter : CefCookieAccessFilter
-{
-    protected override bool CanSaveCookie(CefBrowser browser, CefFrame frame, CefRequest request, CefResponse response, CefCookie cookie)
-    {
-        return true;
-    }
-
-    protected override bool CanSendCookie(CefBrowser browser, CefFrame frame, CefRequest request, CefCookie cookie)
-    {
-        return true;
-    }
-}
-
-internal class HttpResourceHandler : DefaultResourceHandler
-{
-
-    // A single client for every proxied request. HttpClient is intended to be long-lived; a new
-    // one per request leaks sockets in TIME_WAIT, which is exactly the failure mode the obsolete
-    // HttpWebRequest API used to hide.
-    private static readonly HttpClient SharedHttpClient = new();
-
-    internal static readonly CefResourceType[] AcceptedResources = new CefResourceType[3]
-    {
-    CefResourceType.SubFrame,
-    CefResourceType.FontResource,
-    CefResourceType.Stylesheet
-    };
-
-    protected override RequestHandlingFashion ProcessRequestAsync(CefRequest request, CefCallback callback)
-    {
-        _ = Task.Run(async delegate
-        {
-            try
-            {
-                using var httpRequest = new HttpRequestMessage(HttpMethod.Get, request.Url);
-                NameValueCollection headerMap = request.GetHeaderMap();
-                // AllKeys is string?[]: a NameValueCollection may hold one null-keyed entry.
-                foreach (var name in headerMap.AllKeys)
-                {
-                    if (name is null)
-                    {
-                        continue;
-                    }
-
-                    _ = httpRequest.Headers.TryAddWithoutValidation(name, headerMap[name]);
-                }
-
-                HttpResponseMessage httpResponse = await SharedHttpClient.SendAsync(
-                    httpRequest, HttpCompletionOption.ResponseHeadersRead);
-
-                var responseHeaders = new WebHeaderCollection();
-                foreach (KeyValuePair<string, IEnumerable<string>> pair in httpResponse.Headers)
-                {
-                    responseHeaders.Add(pair.Key, string.Join(", ", pair.Value));
-                }
-
-                foreach (KeyValuePair<string, IEnumerable<string>> pair in httpResponse.Content.Headers)
-                {
-                    responseHeaders.Add(pair.Key, string.Join(", ", pair.Value));
-                }
-
-                Response = await httpResponse.Content.ReadAsStreamAsync();
-                Headers = responseHeaders;
-                MimeType = httpResponse.Content.Headers.ContentType?.MediaType;
-                Status = (int)httpResponse.StatusCode;
-                StatusText = httpResponse.ReasonPhrase;
-                Headers.Remove("Access-Control-Allow-Origin");
-                Headers.Add("Access-Control-Allow-Origin", "*");
-            }
-            catch
-            {
-            }
-            finally
-            {
-                callback.Continue();
-            }
-        });
-        return RequestHandlingFashion.ContinueAsync;
-    }
-
-    protected override bool Read(Stream outResponse, int bytesToRead, out int bytesRead, CefResourceReadCallback callback)
-    {
-        var array = new byte[bytesToRead];
-        bytesRead = Response?.Read(array, 0, array.Length) ?? 0;
-        if (bytesRead == 0)
-        {
-            return false;
-        }
-
-        outResponse.Write(array, 0, bytesRead);
-        return bytesRead > 0;
-    }
 }

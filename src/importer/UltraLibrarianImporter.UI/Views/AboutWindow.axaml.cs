@@ -30,9 +30,6 @@ public partial class AboutWindow : Window
     public AboutWindow(ILogger logger, KiCad? kiCad = null)
     {
         InitializeComponent();
-#if DEBUG
-        this.AttachDevTools();
-#endif
 
         // Convert the generic logger to a typed logger
         _logger = logger as ILogger<AboutWindow> ??

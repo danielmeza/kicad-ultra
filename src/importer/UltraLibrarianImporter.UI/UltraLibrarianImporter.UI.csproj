@@ -30,20 +30,20 @@
     <PackageReference Include="Avalonia.Desktop" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Fonts.Inter" />
-    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-    <PackageReference Include="Avalonia.Diagnostics">
+    <!-- Avalonia 12's replacement for Avalonia.Diagnostics (App.Initialize attaches it in Debug).
+         The condition keeps it out of Release builds, as it did for Avalonia.Diagnostics. -->
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Avalonia.Xaml.Interactions" />
+    <PackageReference Include="CefGlue.Avalonia" />
+    <PackageReference Include="CefGlue.Common" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Lemon.Hosting.AvaloniauiDesktop" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="NLog.Extensions.Logging" />
     <PackageReference Include="System.Threading.RateLimiting" />
-    <PackageReference Include="WebViewControl-Avalonia" />
-    <!-- Removed Microsoft.Web.WebView2 package -->
   </ItemGroup>
 
   <ItemGroup>

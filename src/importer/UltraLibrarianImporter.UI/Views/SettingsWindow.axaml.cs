@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using KiCadSharp;
@@ -55,9 +56,6 @@ public partial class SettingsWindow : Window
     public SettingsWindow(SettingsViewModel viewModel, ILogger<SettingsWindow>? logger = null)
     {
         InitializeComponent();
-#if DEBUG
-        this.AttachDevTools();
-#endif
         _resultCompletionSource = new TaskCompletionSource<bool>();
         _logger = logger ?? LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsWindow>();
         _viewModel = viewModel;
@@ -72,9 +70,6 @@ public partial class SettingsWindow : Window
         IComponentProviderRegistry? providerRegistry = null)
     {
         InitializeComponent();
-#if DEBUG
-        this.AttachDevTools();
-#endif
 
         // Set up the task completion source for the dialog result
         _resultCompletionSource = new TaskCompletionSource<bool>();

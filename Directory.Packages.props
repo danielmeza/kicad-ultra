@@ -7,19 +7,33 @@
   </PropertyGroup>
 
   <ItemGroup Label="Avalonia">
-    <!-- Held on the 11.3 line on purpose. WebViewControl-Avalonia (the CEF browser the import flow
-         runs inside) and Lemon.Hosting.AvaloniauiDesktop are both built against Avalonia 11, so a
-         12.x bump is a port rather than an upgrade. Take 11.3 patches. -->
-    <PackageVersion Include="Avalonia" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Xaml.Interactions" Version="11.3.0.6" />
+    <!-- Avalonia 12 (#67). Avalonia.Diagnostics has no 12.x: AvaloniaUI.DiagnosticsSupport is its
+         replacement, used in Debug builds only (see the csproj). Avalonia.Xaml.Interactions has no
+         12.x either, and nothing here used it, so it was dropped rather than renamed to
+         Xaml.Behaviors.Avalonia. -->
+    <PackageVersion Include="Avalonia" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Embedded browser">
+    <!-- The CEF browser the import flow runs inside, used directly: WebViewControl-Avalonia, which
+         used to wrap it, has no Avalonia 12 build and its WebView constructor calls an Avalonia API
+         that 12 removed. CefGlue.Avalonia for Avalonia 12 is not published yet either; its version
+         comes from Directory.Build.props, which explains where the package comes from until it is.
+         CefGlue.Common is pinned here because that locally packed CefGlue.Avalonia declares a
+         dependency on a prerelease CefGlue.Common that does not exist: the pull request does not
+         change CefGlue.Common, so the published build of the same source is the one to use. -->
+    <PackageVersion Include="CefGlue.Avalonia" Version="$(CefGlueAvaloniaVersion)" />
+    <PackageVersion Include="CefGlue.Common" Version="120.6099.211" />
   </ItemGroup>
 
   <ItemGroup Label="Application">
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Built against Avalonia 11 and unmaintained since. Every method in it still JIT-compiles
+         against Avalonia 12.1.2 (checked for #67), so it stays until it gives trouble. -->
     <PackageVersion Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
@@ -29,7 +43,6 @@
          takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the
          Microsoft.Extensions packages above. -->
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.12" />
-    <PackageVersion Include="WebViewControl-Avalonia" Version="3.120.11" />
   </ItemGroup>
 
   <ItemGroup Label="Split-out libraries">

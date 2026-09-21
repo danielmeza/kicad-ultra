@@ -2,9 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:UltraLibrarianImporter.UI.ViewModels"
         xmlns:models="using:UltraLibrarianImporter.UI.Services.Interfaces"
+        xmlns:views="using:UltraLibrarianImporter.UI.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:webview="clr-namespace:WebViewControl;assembly=WebViewControl.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="UltraLibrarianImporter.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
@@ -60,7 +60,7 @@
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
                      Text="{Binding SearchQuery}" 
-                     Watermark="Search parts across all providers by MPN, keyword or value (e.g. STM32F401, NE555, ESP32, 10k 0805)..."
+                     PlaceholderText="Search parts across all providers by MPN, keyword or value (e.g. STM32F401, NE555, ESP32, 10k 0805)..."
                      VerticalContentAlignment="Center"
                      Height="38"
                      FontSize="14"
@@ -360,7 +360,9 @@
           <!-- WebView Container -->
           <Border Grid.Row="1" BorderThickness="1" BorderBrush="Gray">
             <Panel Name="WebViewContainer" Background="White">
-              <webview:WebView Name="OSWebView" AllowDeveloperTools="True" Address="{Binding WebviewUrl}" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
+              <!-- CefGlue's browser control, used directly since #67. Address is a plain CLR property
+                   on it, so MainWindow.axaml.cs keeps it in step with WebviewUrl. -->
+              <views:EmbeddedBrowser Name="OSWebView" Focusable="True" IsVisible="{Binding WebViewLoaded}" />
               <TextBlock Text="Loading component provider portal..."
                          VerticalAlignment="Center"
                          HorizontalAlignment="Center"
