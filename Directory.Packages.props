@@ -10,7 +10,7 @@
     <!-- Held on the 11.3 line on purpose. WebViewControl-Avalonia (the CEF browser the import flow
          runs inside) and Lemon.Hosting.AvaloniauiDesktop are both built against Avalonia 11, so a
          12.x bump is a port rather than an upgrade. Take 11.3 patches. -->
-    <PackageVersion Include="Avalonia" Version="11.3.21" />
+    <PackageVersion Include="Avalonia" Version="12.1.2" />
     <PackageVersion Include="Avalonia.Desktop" Version="11.3.21" />
     <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.21" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.21" />
@@ -30,7 +30,7 @@
          18: with ReactiveUI unified to 23 only its AvaloniaScheduler, the one type CefGlue uses,
          still binds. Its UseReactiveUI(), RoutedViewHost, ViewModelViewHost and AutoSuspendHelper do
          not, so use the ReactiveUI.Avalonia namespace, never Avalonia.ReactiveUI. -->
-    <PackageVersion Include="ReactiveUI.Avalonia" Version="11.4.13" />
+    <PackageVersion Include="ReactiveUI.Avalonia" Version="12.1.2" />
     <!-- The BCL token-bucket and partitioned rate limiters (#55). dotnet/runtime ships this assembly
          in the ASP.NET Core shared framework only, not in Microsoft.NETCore.App, so a desktop app
          takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the
