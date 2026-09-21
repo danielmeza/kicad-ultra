@@ -151,7 +151,17 @@ internal sealed class Program
             .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
             .AddUltraLibrarianKiCadServices()
-            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
+            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp)
+            // Replaces the IHostLifetime AddAvaloniauiDesktopApplication registered (#77). Lemon 1.1.1
+            // gave AvaloniauiApplicationLifetime<App> a second constructor that takes App itself, and
+            // DI picks it because it can satisfy more parameters. That builds App while the host
+            // starts, before Avalonia's platform setup: AvaloniaObject() then binds the UI dispatcher
+            // to NullDispatcherImpl, and Dispatcher.MainLoop throws PlatformNotSupportedException.
+            // The lazy constructor resolves App in WaitForStartAsync, after setup, as Lemon 1.0.0 did.
+            .AddSingleton<IHostLifetime>(provider => new AvaloniauiApplicationLifetime<App>(
+                provider.GetRequiredService<IHostApplicationLifetime>(),
+                provider,
+                provider.GetService<ILogger<AvaloniauiApplicationLifetime<App>>>()));
 #pragma warning restore CS0618
 
 
