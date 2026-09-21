@@ -12,7 +12,9 @@ namespace UltraLibrarianImporter.UI.Services;
 /// </summary>
 public class ImportOptions
 {
-    public bool AddToGlobalLibrary { get; set; } = true;
+    /// <summary>Which of KiCad's library tables imported libraries are registered in (#71).</summary>
+    public LibraryRegistrationScope RegistrationScope { get; set; } = LibraryRegistrationScope.Automatic;
+
     public bool CleanupAfterImport { get; set; } = true;
     public string TargetPath { get; set; } = string.Empty;
     public bool UseProjectPath { get; set; } = true;

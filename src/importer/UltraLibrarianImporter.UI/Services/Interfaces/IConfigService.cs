@@ -11,9 +11,10 @@ public interface IConfigService
     string DownloadDirectory { get; set; }
 
     /// <summary>
-    /// Whether to add components to the global library
+    /// Which of KiCad's library tables imported libraries are registered in: the project's, KiCad's
+    /// global ones, or the project's when there is a project and the global ones when there is not (#71)
     /// </summary>
-    bool AddToGlobalLibrary { get; set; }
+    LibraryRegistrationScope RegistrationScope { get; set; }
 
     /// <summary>
     /// Whether to clean up temporary files after import

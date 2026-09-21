@@ -11,6 +11,7 @@ using KiCadSharp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
@@ -54,8 +55,29 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _downloadDirectory = string.Empty;
 
+    /// <summary>Which of KiCad's library tables imported libraries are registered in (#71).</summary>
     [ObservableProperty]
-    private bool _addToGlobalLibrary;
+    [NotifyPropertyChangedFor(nameof(IsAutomaticRegistration), nameof(IsProjectRegistration), nameof(IsGlobalRegistration))]
+    private LibraryRegistrationScope _registrationScope;
+
+    // One per radio button. The button a new choice unchecks writes false, which changes nothing.
+    public bool IsAutomaticRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Automatic;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Automatic, value);
+    }
+
+    public bool IsProjectRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Project;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Project, value);
+    }
+
+    public bool IsGlobalRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Global;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Global, value);
+    }
 
     [ObservableProperty]
     private bool _cleanupAfterImport;
@@ -178,7 +200,7 @@ public partial class SettingsViewModel : ObservableObject
                      KiCadEnvironment.GenerateRandomClientName();
 
         DownloadDirectory = _configService.DownloadDirectory;
-        AddToGlobalLibrary = _configService.AddToGlobalLibrary;
+        RegistrationScope = _configService.RegistrationScope;
         CleanupAfterImport = _configService.CleanupAfterImport;
         TargetPath = _configService.TargetPath;
         UseProjectPath = _configService.UseProjectPath;
@@ -253,6 +275,14 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    private void SelectRegistrationScope(LibraryRegistrationScope scope, bool selected)
+    {
+        if (selected)
+        {
+            RegistrationScope = scope;
+        }
+    }
+
     private void AddFallbackProvider(string id, string name, bool directApi, string caps, bool reqKey, string key)
     {
         AvailableProviderIds.Add(id);
@@ -286,7 +316,7 @@ public partial class SettingsViewModel : ObservableObject
             currentSettings.Token = Token;
 
             _configService.DownloadDirectory = DownloadDirectory;
-            _configService.AddToGlobalLibrary = AddToGlobalLibrary;
+            _configService.RegistrationScope = RegistrationScope;
             _configService.CleanupAfterImport = CleanupAfterImport;
             _configService.TargetPath = TargetPath;
             _configService.UseProjectPath = UseProjectPath;

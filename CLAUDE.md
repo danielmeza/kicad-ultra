@@ -242,11 +242,19 @@ needed any more.
 **Registration in KiCad's library tables is real** (#66), by editing the table files; KiCad 10's IPC API
 has no library-table calls (they arrive in 11 — #72). `KiCadLibraryTable` parses with SExpressions but
 splices the new row into the original text, so existing bytes are untouched. It refuses tables outside
-KiCad's strict grammar, is idempotent, and writes through a temporary file. `AddToGlobalLibrary` off
-selects the project table (created if missing, `${KIPRJMOD}`-relative); on selects the global table,
-which is **never created**. `KiCadSettingsDirectory` resolves KiCad's config directory for the running
-version. The default scope is an open decision (#71). KiCad does not reload tables on its own, so
-the user must reopen the project or restart KiCad.
+KiCad's strict grammar, is idempotent, and writes through a temporary file. The project table is
+created if missing, `${KIPRJMOD}`-relative; the global table is **never created**.
+`KiCadSettingsDirectory` resolves KiCad's config directory for the running version. KiCad does not
+reload tables on its own, so the user must reopen the project or restart KiCad.
+
+**Which table is the `RegistrationScope` setting** (#71): **Automatic** (the default) picks the project
+table when the import goes into a KiCad project, and the global table only when it does not. **Project**
+always picks the project table, and with no project the import fails before any library is written.
+**Global** always picks the global table, by absolute path. "A project" means that the directory the
+libraries are written into holds a `.kicad_pro`. `KiCadImportEngine.SelectLibraryTable` resolves the scope
+once per import, for both paths; `--project-relative` follows the resolved table. `config.json` stores
+the scope by name. A pre-#71 `AddToGlobalLibrary` is migrated on load and the file is rewritten
+without it: `true`, the old default rather than a choice, becomes Automatic, and `false` becomes Project.
 
 **But symbols from the Ultra Librarian `.zip` path still do not load in KiCad 10** (#68): the
 `.kicad_sym` that KiCadSharp 0.1.1 writes is invalid for it (danielmeza/kicad-sharp#45). Footprints
@@ -307,7 +315,7 @@ A process that exits on its own under `timeout` is **not** a clean run. Exit 134
 
 Open: importing from the explorer for providers other than EasyEDA/LCSC (#47), CAD availability (#48),
 providers (#51, #52, #56, #57), Avalonia 12 (#67, draft #75), symbols KiCad cannot load (#68),
-duplicate symbols (#69), special-folder paths (#70), default registration scope (#71), KiCad 11 IPC
+duplicate symbols (#69), special-folder paths (#70), KiCad 11 IPC
 (#72 tables, #73 datasheets), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
 
 ## Release state

@@ -53,7 +53,7 @@ public class ConfigService : IConfigService
 
     // Configuration properties
     public string DownloadDirectory { get; set; } = DEFAULT_DOWNLOAD_DIR;
-    public bool AddToGlobalLibrary { get; set; } = true;
+    public LibraryRegistrationScope RegistrationScope { get; set; } = LibraryRegistrationScope.Automatic;
     public bool CleanupAfterImport { get; set; } = true;
     public string TargetPath { get; set; } = string.Empty;
     public bool UseProjectPath { get; set; } = true;
@@ -123,7 +123,11 @@ public class ConfigService : IConfigService
     private class ConfigData
     {
         public string? DownloadDirectory { get; set; }
-        public bool AddToGlobalLibrary { get; set; } = true;
+
+        // A LibraryRegistrationScope by name (#71). Kept as a string so that a value this version does
+        // not know costs only this setting, where an enum would fail the whole file.
+        public string? RegistrationScope { get; set; }
+
         public bool CleanupAfterImport { get; set; } = true;
         public string? TargetPath { get; set; }
         public bool UseProjectPath { get; set; } = true;
@@ -145,6 +149,11 @@ public class ConfigService : IConfigService
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? SamacSysApiKey { get; set; }
+
+        // Releases before #71 had this boolean where RegistrationScope is now. Load reads it only to
+        // migrate it (ReadRegistrationScope); Save leaves it null, so it is dropped from the file.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? AddToGlobalLibrary { get; set; }
     }
 
     /// <summary>
@@ -155,6 +164,7 @@ public class ConfigService : IConfigService
         ConfigData? config = null;
         var fileExists = File.Exists(_configFilePath);
         var droppedRelativeDownloadDirectory = false;
+        var scopeMigrated = false;
         try
         {
             if (fileExists)
@@ -182,7 +192,7 @@ public class ConfigService : IConfigService
                         DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
                     }
 
-                    AddToGlobalLibrary = config.AddToGlobalLibrary;
+                    RegistrationScope = ReadRegistrationScope(config, out scopeMigrated);
                     CleanupAfterImport = config.CleanupAfterImport;
                     TargetPath = config.TargetPath ?? string.Empty;
                     UseProjectPath = config.UseProjectPath;
@@ -216,6 +226,52 @@ public class ConfigService : IConfigService
         {
             Save();
         }
+        else if (scopeMigrated)
+        {
+            // Only the file needs rewriting: the credential store was just read, so it is not asked
+            // again, which could prompt to unlock a keyring a second time.
+            WriteFile();
+        }
+    }
+
+    /// <summary>
+    /// The library registration scope <paramref name="config"/> holds (#71).
+    /// </summary>
+    /// <remarks>
+    /// A file written before #71 has the <c>AddToGlobalLibrary</c> boolean instead, and
+    /// <paramref name="migrated"/> then asks for the file to be rewritten without it. Its <c>true</c>
+    /// was the default, not a choice anyone made, and meant the global table even with a project open,
+    /// the behaviour #71 replaces, so it becomes <see cref="LibraryRegistrationScope.Automatic"/>.
+    /// <c>false</c> did ask for the project's table, so it becomes
+    /// <see cref="LibraryRegistrationScope.Project"/>. No value at all is the default,
+    /// <see cref="LibraryRegistrationScope.Automatic"/>, and so is a name this version does not know.
+    /// </remarks>
+    private LibraryRegistrationScope ReadRegistrationScope(ConfigData config, out bool migrated)
+    {
+        migrated = config.AddToGlobalLibrary is not null;
+
+        if (config.RegistrationScope is { } name)
+        {
+            // By name only: Enum.TryParse would also take "1" or "Project, Global".
+            foreach (LibraryRegistrationScope scope in Enum.GetValues<LibraryRegistrationScope>())
+            {
+                if (string.Equals(scope.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return scope;
+                }
+            }
+
+            _logger.LogWarning("Unknown library registration scope '{Scope}' in the configuration file; using Automatic", name);
+            return LibraryRegistrationScope.Automatic;
+        }
+
+        LibraryRegistrationScope migratedScope = config.AddToGlobalLibrary == false ? LibraryRegistrationScope.Project : LibraryRegistrationScope.Automatic;
+        if (migrated)
+        {
+            _logger.LogInformation("Replacing AddToGlobalLibrary = {Old} in the configuration file with RegistrationScope = {New}", config.AddToGlobalLibrary, migratedScope);
+        }
+
+        return migratedScope;
     }
 
     /// <summary>
@@ -290,13 +346,20 @@ public class ConfigService : IConfigService
     public void Save()
     {
         SaveSecrets();
+        WriteFile();
+    }
 
+    /// <summary>
+    /// Writes everything but the API keys to the config file.
+    /// </summary>
+    private void WriteFile()
+    {
         try
         {
             var data = new ConfigData
             {
                 DownloadDirectory = DownloadDirectory,
-                AddToGlobalLibrary = AddToGlobalLibrary,
+                RegistrationScope = RegistrationScope.ToString(),
                 CleanupAfterImport = CleanupAfterImport,
                 TargetPath = TargetPath,
                 UseProjectPath = UseProjectPath,
@@ -487,7 +550,7 @@ public class ConfigService : IConfigService
     {
         return new ImportOptions
         {
-            AddToGlobalLibrary = AddToGlobalLibrary,
+            RegistrationScope = RegistrationScope,
             CleanupAfterImport = CleanupAfterImport,
             TargetPath = TargetPath,
             UseProjectPath = UseProjectPath,
