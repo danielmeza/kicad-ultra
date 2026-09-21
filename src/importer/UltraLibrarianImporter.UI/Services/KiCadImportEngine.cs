@@ -125,6 +125,31 @@ public class KiCadImportEngine : IKiCadImportEngine
 
     private void ResolveProjectContext(ImportOptions options, string defaultName, out string projectDirectory, out string projectName)
     {
+        ResolveConfiguredContext(options, defaultName, out projectDirectory, out projectName);
+
+        // A custom TargetPath may not exist yet. The footprint and 3D-model steps create their own
+        // directories, but the symbol step saves straight into this one, so create it here (#50).
+        // If it cannot be created, fall back to the default location, as the importer did before #34.
+        if (string.IsNullOrEmpty(projectDirectory) || Directory.Exists(projectDirectory))
+        {
+            return;
+        }
+
+        try
+        {
+            _ = Directory.CreateDirectory(projectDirectory);
+            _logger.LogInformation("Created target directory {Path}", projectDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Could not create target directory {Path}; importing into the default location instead.", projectDirectory);
+            projectDirectory = string.Empty;
+            projectName = defaultName;
+        }
+    }
+
+    private void ResolveConfiguredContext(ImportOptions options, string defaultName, out string projectDirectory, out string projectName)
+    {
         try
         {
             if (options.UseProjectPath)
