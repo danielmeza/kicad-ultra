@@ -30,6 +30,11 @@ namespace UltraLibrarianImporter.UI.Services.Providers;
 /// </list>
 /// A failure of either source throws. A failed official lookup never falls back to the unofficial
 /// endpoint, so a problem with the user's credentials cannot hide behind other data.
+/// <para>
+/// The official API is used only where the container's <see cref="JlcpcbSourcePolicy"/> allows it:
+/// the GUI does, the <c>--mcp</c> server never does, because JLCPCB's terms forbid passing API data
+/// to a third party such as the AI client the server answers.
+/// </para>
 /// </remarks>
 public sealed class EasyEdaProvider : BaseArchiveComponentProvider
 {
@@ -52,6 +57,7 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
 
     private readonly IConfigService _configService;
     private readonly TimeProvider _timeProvider;
+    private readonly JlcpcbSourcePolicy _sourcePolicy;
     private readonly ILogger<EasyEdaProvider> _logger;
 
     static EasyEdaProvider()
@@ -59,10 +65,11 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("kicad-ultra/1.0 (KiCad Component Importer; +https://github.com/danielmeza/kicad-ultra)");
     }
 
-    public EasyEdaProvider(IConfigService configService, TimeProvider timeProvider, ILogger<EasyEdaProvider> logger)
+    public EasyEdaProvider(IConfigService configService, TimeProvider timeProvider, JlcpcbSourcePolicy sourcePolicy, ILogger<EasyEdaProvider> logger)
     {
         _configService = configService;
         _timeProvider = timeProvider;
+        _sourcePolicy = sourcePolicy;
         _logger = logger;
     }
 
@@ -81,6 +88,13 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         if (keyword.Length == 0)
         {
             return [];
+        }
+
+        // Where the policy forbids the official API (the --mcp server), the stored credentials are not
+        // even read, so no LCSC number can reach it.
+        if (!_sourcePolicy.AllowsOfficialApi)
+        {
+            return await SearchWebsiteAsync(keyword, cancellationToken);
         }
 
         var credentials = JlcpcbApiCredentials.FromConfig(_configService);

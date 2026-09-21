@@ -16,6 +16,7 @@ using ReactiveUI.Avalonia;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Mcp;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 using UltraLibrarianImporter.UI.Services.Secrets;
 
 namespace UltraLibrarianImporter.UI;
@@ -159,12 +160,15 @@ internal sealed class Program
     }
 
     // No host and no Avalonia. ILogger goes to NLog alone, so only where ConfigureMcpLogging sends it.
+    // EasyEDA / LCSC search never uses JLCPCB's official API here, even with credentials stored:
+    // JLCPCB's API terms forbid passing API data to a third party, and every result goes to the AI
+    // client on the other end of stdio.
     private static ServiceProvider BuildMcpServiceProvider() =>
         new ServiceCollection()
             .AddLogging(logging => logging.ClearProviders().AddNLog())
             .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
-            .AddUltraLibrarianKiCadServices()
+            .AddUltraLibrarianKiCadServices(JlcpcbSourcePolicy.WebsiteEndpointOnly)
             .BuildServiceProvider();
 
     // Avalonia configuration, don't remove; also used by visual designer.
@@ -220,7 +224,8 @@ internal sealed class Program
             .AddTransient<ViewModels.AboutViewModel>()
             .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
-            .AddUltraLibrarianKiCadServices()
+            // The GUI shows results to the user whose credentials they are, so it may use the API (#51).
+            .AddUltraLibrarianKiCadServices(JlcpcbSourcePolicy.OfficialApiWhenConfigured)
             .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp)
             // Replaces the IHostLifetime AddAvaloniauiDesktopApplication registered (#77). Lemon 1.1.1
             // gave AvaloniauiApplicationLifetime<App> a second constructor that takes App itself, and

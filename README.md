@@ -147,7 +147,9 @@ routes. The app names the route beside each of those results.
   Component Providers. JLCPCB reviews applications for API access; see
   [its guide](https://jlcpcb.com/help/article/jlcpcb-online-api-available-now). The API looks parts
   up by LCSC number (such as `C2040`) and has no keyword search, so keyword searches take the
-  second route even with credentials.
+  second route even with credentials. The MCP server (`--mcp`) never uses it, even with credentials:
+  JLCPCB's API terms forbid passing API data to third parties, and the MCP server hands every result
+  to the connected AI client.
 - **An internal endpoint of JLCPCB's website**, otherwise. It is not a published API, so it can change
   or stop working at any time without notice, and the Part Explorer says so while it is in use. Each
   search asks for one page of 25 results, through the same cache and rate limit as every other

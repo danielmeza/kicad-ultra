@@ -196,6 +196,11 @@ needed any more.
     break without notice. The Part Explorer shows a notice while it is in use, and the MCP output lists
     it as a data source. It asks for one page of 25 results, never more.
   - A failed official lookup throws. It never falls back to the website endpoint.
+  - **`--mcp` never uses the official API**, even with credentials stored. JLCPCB's API terms (III.6(9))
+    forbid passing API data to third parties, and the MCP server hands every result to the AI client.
+    Each container passes a `JlcpcbSourcePolicy` to `AddUltraLibrarianKiCadServices` (a required
+    argument): the GUI passes `OfficialApiWhenConfigured`, the MCP container `WebsiteEndpointOnly`.
+    `McpServer` refuses to be built with any other, and its data-source line says so.
   - The tscircuit index is gone.
   - Neither source reports CAD availability, so the CAD flags stay false.
 - **Never fabricate.** A result or a CAD-availability flag appears only if the provider said so. A
@@ -309,8 +314,8 @@ valid JSON-RPC.
 (#51): `ISecretStore`, with `PlatformSecretStore` choosing Windows Credential Manager, the macOS
 Keychain, or libsecret on Linux (under Flatpak, libsecret goes through the Secret portal). A token
 found in an old `config.json` is migrated into the store, and the file is rewritten without it — only
-after the store write succeeds. With no working store, tokens are
-session-only and never written to the file. **Never log a token value.**
+after the store write succeeds. With no working store, tokens are session-only and never written to
+the file. **Never log a token value.**
 
 Caveat (#70): on Unix, `Environment.GetFolderPath` returns `""` for a folder that does not exist yet,
 and five call sites would then resolve relative to the working directory.
