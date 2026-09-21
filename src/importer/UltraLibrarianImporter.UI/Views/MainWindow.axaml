@@ -55,7 +55,7 @@
       
       <!-- TAB 1: Unified Multi-Provider Part Explorer -->
       <TabItem Header="🔍 Part Explorer (Aggregated Search)">
-        <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="10">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="10">
           <!-- Search Header -->
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
@@ -138,8 +138,42 @@
                        Height="3" 
                        Margin="0,0,0,8"/>
 
+          <!-- EasyEDA / LCSC import needs the user-installed easyeda2kicad (#76). Shown only once a
+               check has found it missing, with the command that installs it on this system. -->
+          <Border Grid.Row="3"
+                  IsVisible="{Binding IsEasyEda2KiCadMissing}"
+                  Background="#20F57C00"
+                  BorderBrush="#F57C00"
+                  BorderThickness="1"
+                  CornerRadius="4"
+                  Padding="10,8"
+                  Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="EasyEDA / LCSC import is unavailable: easyeda2kicad is not installed. It is an optional third-party tool (AGPL-3.0) that you install yourself; it is not part of this application. Install it with:"
+                         TextWrapping="Wrap"
+                         FontWeight="SemiBold"
+                         FontSize="12"/>
+              <SelectableTextBlock Grid.Row="1" Grid.Column="0"
+                                   Text="{Binding EasyEda2KiCadInstallCommand}"
+                                   FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                   FontSize="12"
+                                   Margin="0,6,0,0"/>
+              <TextBlock Grid.Row="2" Grid.Column="0"
+                         Text="{Binding EasyEda2KiCadInstallNote}"
+                         TextWrapping="Wrap"
+                         FontSize="11"
+                         Opacity="0.75"
+                         Margin="0,4,0,0"/>
+              <StackPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0,0,0">
+                <Button Content="Check again" Command="{Binding CheckEasyEda2KiCadCommand}" Padding="10,4" FontSize="11"/>
+                <Button Content="Settings..." Command="{Binding OpenSettingsCommand}" Padding="10,4" FontSize="11"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
           <!-- Results List / Table -->
-          <Border Grid.Row="3" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+          <Border Grid.Row="4" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
             <Grid RowDefinitions="Auto,*">
               <!-- Table Header -->
               <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
@@ -212,8 +246,14 @@
                         <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
                       </Border>
 
-                      <!-- MPN -->
-                      <TextBlock Grid.Column="1" Text="{Binding PartNumber}" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <!-- MPN, and the LCSC code when the provider reported one -->
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding PartNumber}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding LcscPartNumber, StringFormat='LCSC {0}'}"
+                                   IsVisible="{Binding LcscPartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   FontSize="10"
+                                   Opacity="0.7"/>
+                      </StackPanel>
 
                       <!-- Manufacturer -->
                       <TextBlock Grid.Column="2" Text="{Binding Manufacturer}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -241,15 +281,25 @@
                         </Border>
                       </StackPanel>
 
-                      <!-- Action Button -->
-                      <Button Grid.Column="6" 
-                              Content="Open &amp; Import" 
-                              Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                              CommandParameter="{Binding}"
-                              Padding="10,4" 
-                              VerticalContentAlignment="Center"
-                              FontSize="11"
-                              HorizontalAlignment="Left"/>
+                      <!-- Actions: import (results with an LCSC code, through easyeda2kicad), and open the part's page -->
+                      <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <Button Content="Import"
+                                Command="{Binding ((vm:MainViewModel)DataContext).ImportPartCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding LcscPartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                ToolTip.Tip="Convert this part with easyeda2kicad and add it to your KiCad libraries"
+                                ToolTip.ShowOnDisabled="True"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                        <Button Content="Open Page"
+                                Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                ToolTip.Tip="Open the part's page in the Web Browser tab"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                      </StackPanel>
 
                       <!-- Data source, when it is not the provider itself -->
                       <TextBlock Grid.Row="1"
@@ -380,9 +430,12 @@
     </Grid>
 
     <!-- Status Bar -->
-    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
       <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,4"/>
-      <ProgressBar Grid.Column="1" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+      <Button Grid.Column="1" Content="Cancel Import" Command="{Binding ImportPartCancelCommand}" IsVisible="{Binding IsImportingPart}"
+              Padding="8,2" FontSize="11" VerticalAlignment="Center"/>
+      <ProgressBar Grid.Column="2" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+                   IsIndeterminate="{Binding IsProgressIndeterminate}"
                    Value="{Binding ProgressValue}" Margin="10,0,10,0"/>
     </Grid>
   </Grid>

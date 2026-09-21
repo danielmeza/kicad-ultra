@@ -150,6 +150,35 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- easyeda2kicad (#76): the optional, user-installed converter behind EasyEDA / LCSC import -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="easyeda2kicad (EasyEDA / LCSC import)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="EasyEDA / LCSC parts are imported by easyeda2kicad, an optional third-party tool under the AGPL-3.0 licence. It is not part of this application and is never bundled with it: you install it yourself, and it is run as a separate program. Leave the path empty to look for it on PATH, then in KiCad's Python."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Text="Path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EasyEda2KiCadPath}" Watermark="easyeda2kicad, or a Python that has it installed (optional)"/>
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                    <Button Grid.Column="3" Content="Check" Command="{Binding CheckEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock Text="{Binding EasyEda2KiCadStatus}"
+                                           IsVisible="{Binding EasyEda2KiCadStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"/>
+                                <TextBlock Text="To install it:" FontSize="12" Margin="0,4,0,0"/>
+                                <SelectableTextBlock Text="{Binding EasyEda2KiCadInstallCommand}"
+                                                     FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                                     FontSize="12"/>
+                                <TextBlock Text="{Binding EasyEda2KiCadInstallNote}"
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
