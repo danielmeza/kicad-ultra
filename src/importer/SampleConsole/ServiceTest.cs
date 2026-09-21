@@ -1,8 +1,7 @@
 ﻿// See https://aka.ms/new-console-template for more information
 
-using Microsoft.Extensions.Hosting;
-
 using KiCadSharp;
+using Microsoft.Extensions.Hosting;
 
 internal class ServiceTest : BackgroundService
 {
@@ -17,22 +16,22 @@ internal class ServiceTest : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
 
-        var kicad = _factory.Create(ClientName);
+        KiCad kicad = _factory.Create(ClientName);
         //var documents = await kicad.GetOpenDocuments(Kiapi.Common.Types.DocumentType.DoctypeProject);
         //var project = kicad.GetProject(documents[0]);
         //var variables = await kicad.GetOpenDocuments();
         //var test = await kicad.GetPluginSettingsPath("com.github.danielmeza.kicad-ultralibrarian-importer");
-        var board = await kicad.GetBoard();
+        Board board = await kicad.GetBoard();
         //foreach (var varaible in variables)
         //{
         //    Console.WriteLine($"{varaible.Key}={varaible.Value}");
         //}
 
-        var project = board.GetProject();
-        var variables = await project.GetTextVariables();
-        var documents = kicad.GetOpenDocuments(Kiapi.Common.Types.DocumentType.DoctypeUnknown);
-        var kiCadvariables = await kicad.GetTextVariables();
-        var result = await project.ExpandTextVariables("${KIPRJMOD}");
-        
+        Project project = board.GetProject();
+        _ = await project.GetTextVariables();
+        _ = kicad.GetOpenDocuments(Kiapi.Common.Types.DocumentType.DoctypeUnknown);
+        _ = await kicad.GetTextVariables();
+        _ = await project.ExpandTextVariables("${KIPRJMOD}");
+
     }
 }
