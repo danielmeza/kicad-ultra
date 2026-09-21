@@ -101,7 +101,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             if (importType.HasFlag(ImportType.Model3D))
             {
-                var modelSuccess = await RunStepAsync("3D Model import", () => Import3DModelsAsync(extraction, projectDirectory, provider), result);
+                var modelSuccess = await RunStepAsync("3D Model import", () => Import3DModelsAsync(extraction, projectDirectory, provider, result), result);
                 result.Model3DImportSuccess = modelSuccess;
                 success |= modelSuccess;
                 result.Details.Add($"3D Model import: {(modelSuccess ? "Success" : "Failed")}");
@@ -474,6 +474,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
 
         var success = false;
+        var written = new List<string>();
         foreach (var symbolFile in extraction.SymbolFiles)
         {
             try
@@ -484,7 +485,14 @@ public class KiCadImportEngine : IKiCadImportEngine
                 foreach (KiCadSymbol symbol in sourceLibrary.Symbols)
                 {
                     symbol.Id = $"{provider.DefaultPrefix}{symbol.Id}";
+                    var replaced = RemoveSymbolsNamed(symbolLibrary, symbol.Id);
                     symbolLibrary.AddSymbol(symbol);
+                    written.Add(replaced switch
+                    {
+                        0 => $"Symbol {symbol.Id} added to {symbolLibPath}.",
+                        1 => $"Symbol {symbol.Id} replaced the one already in {symbolLibPath}.",
+                        _ => $"Symbol {symbol.Id} replaced the {replaced} copies already in {symbolLibPath}.",
+                    });
                     addedCount++;
                 }
 
@@ -513,7 +521,27 @@ public class KiCadImportEngine : IKiCadImportEngine
             return false;
         }
 
+        // Only now that the library is on disk: before the save, nothing was added or replaced.
+        result.Details.AddRange(written);
         return RegisterLibrary(LibraryTableKind.Symbol, symbolLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
+    }
+
+    /// <summary>
+    /// Removes every symbol the library has under <paramref name="id"/>, so that the one added next
+    /// replaces it, and returns how many were removed. Re-importing a part therefore replaces its symbol
+    /// rather than appending a second one of the same name (#69), as easyeda2kicad's
+    /// <c>--overwrite</c> does on the LCSC path. Removing every copy, not just the first, also repairs a
+    /// library that an import before this fix already left with duplicates.
+    /// </summary>
+    private static int RemoveSymbolsNamed(KiCadSymbolLibrary library, string id)
+    {
+        var previous = library.Symbols.Where(existing => existing.Id == id).ToList();
+        foreach (KiCadSymbol existing in previous)
+        {
+            _ = library.Symbols.Remove(existing);
+        }
+
+        return previous.Count;
     }
 
     private async Task<bool> ImportFootprintsAsync(
@@ -541,7 +569,7 @@ public class KiCadImportEngine : IKiCadImportEngine
                 var files = Directory.GetFiles(prettyDir, "*.kicad_mod");
                 foreach (var file in files)
                 {
-                    success |= SaveRenamedFootprint(file, footprintLibPath, provider.DefaultPrefix);
+                    success |= SaveRenamedFootprint(file, footprintLibPath, provider.DefaultPrefix, result);
                 }
             }
             catch (Exception ex)
@@ -553,7 +581,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         // 2. Process loose .kicad_mod files
         foreach (var file in extraction.FootprintFiles)
         {
-            success |= SaveRenamedFootprint(file, footprintLibPath, provider.DefaultPrefix);
+            success |= SaveRenamedFootprint(file, footprintLibPath, provider.DefaultPrefix, result);
         }
 
         return success
@@ -569,7 +597,7 @@ public class KiCadImportEngine : IKiCadImportEngine
             ? options.LibraryName
             : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
-    private bool SaveRenamedFootprint(string sourceFilePath, string targetPrettyDir, string prefix)
+    private bool SaveRenamedFootprint(string sourceFilePath, string targetPrettyDir, string prefix, ImportResult result)
     {
         try
         {
@@ -580,8 +608,15 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             var newFootprint = new KiCadFootprint(expr);
             var destPath = Path.Combine(targetPrettyDir, $"{newFootprintId}.kicad_mod");
+
+            // A .pretty library is one file per footprint, named after it, so a re-imported footprint
+            // replaces the old one rather than adding a second (#69). Say which happened.
+            var replaced = File.Exists(destPath);
             KiCadFootprintLibrary.SaveFootprint(newFootprint, destPath);
             _logger.LogDebug("Saved footprint to {DestPath}", destPath);
+            result.Details.Add(replaced
+                ? $"Footprint {newFootprintId} replaced the one already in {targetPrettyDir}."
+                : $"Footprint {newFootprintId} added to {targetPrettyDir}.");
             return true;
         }
         catch (Exception ex)
@@ -594,7 +629,8 @@ public class KiCadImportEngine : IKiCadImportEngine
     private async Task<bool> Import3DModelsAsync(
         ProviderExtractionResult extraction,
         string projectDirectory,
-        IComponentProvider provider)
+        IComponentProvider provider,
+        ImportResult result)
     {
         if (extraction.Model3DFiles.Count == 0)
         {
@@ -613,9 +649,16 @@ public class KiCadImportEngine : IKiCadImportEngine
         {
             try
             {
-                var destPath = Path.Combine(modelDir, Path.GetFileName(modelFile));
+                var modelName = Path.GetFileName(modelFile);
+                var destPath = Path.Combine(modelDir, modelName);
+
+                // Same file name, same model: a re-import overwrites it, as footprints do (#69).
+                var replaced = File.Exists(destPath);
                 File.Copy(modelFile, destPath, overwrite: true);
                 _logger.LogDebug("Copied 3D model to {DestPath}", destPath);
+                result.Details.Add(replaced
+                    ? $"3D model {modelName} replaced the one already in {modelDir}."
+                    : $"3D model {modelName} added to {modelDir}.");
                 success = true;
             }
             catch (Exception ex)
