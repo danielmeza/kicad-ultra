@@ -40,6 +40,12 @@ public class ConfigService : IConfigService
         public bool UseProjectPath { get; set; } = true;
         public bool AutoImportWhenDownloaded { get; set; } = true;
         public string LibraryName { get; set; } = string.Empty;
+
+        // Nullable so a config.json written before these existed deserializes cleanly; Load()
+        // maps null to empty. Still cleartext on disk - moving them to the OS store is #54.
+        public string? OctopartApiToken { get; set; }
+        public string? SnapEdaApiKey { get; set; }
+        public string? SamacSysApiKey { get; set; }
     }
 
     // Configuration properties
@@ -50,6 +56,9 @@ public class ConfigService : IConfigService
     public bool UseProjectPath { get; set; } = true;
     public bool AutoImportWhenDownloaded { get; set; } = true;
     public string LibraryName { get; set; } = string.Empty;
+    public string OctopartApiToken { get; set; } = string.Empty;
+    public string SnapEdaApiKey { get; set; } = string.Empty;
+    public string SamacSysApiKey { get; set; } = string.Empty;
 
     /// <summary>
     /// Creates a new instance of the configuration service
@@ -100,6 +109,9 @@ public class ConfigService : IConfigService
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                     LibraryName = config.LibraryName;
+                    OctopartApiToken = config.OctopartApiToken ?? string.Empty;
+                    SnapEdaApiKey = config.SnapEdaApiKey ?? string.Empty;
+                    SamacSysApiKey = config.SamacSysApiKey ?? string.Empty;
                 }
 
                 _logger.LogInformation("Configuration loaded from file");
@@ -132,6 +144,9 @@ public class ConfigService : IConfigService
                 UseProjectPath = UseProjectPath,
                 AutoImportWhenDownloaded = AutoImportWhenDownloaded,
                 LibraryName = LibraryName,
+                OctopartApiToken = OctopartApiToken,
+                SnapEdaApiKey = SnapEdaApiKey,
+                SamacSysApiKey = SamacSysApiKey,
             };
             var json = JsonSerializer.Serialize(data, s_serializerOptions);
             File.WriteAllText(_configFilePath, json);

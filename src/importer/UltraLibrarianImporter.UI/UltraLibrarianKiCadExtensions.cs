@@ -1,10 +1,10 @@
 ﻿using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers;
 
 namespace UltraLibrarianImporter.UI;
 
@@ -12,25 +12,24 @@ internal static class UltraLibrarianKiCadExtensions
 {
     public const string UltraLibrarianKiCadClientName = "com.ultralibrarian.kicad.importer";
 
-    public static IServiceCollection AddUltraLibrarianKiCadServices(this IServiceCollection services)
-    {
-        _ = services.AddKiCad(UltraLibrarianKiCadClientName)
-               .AddSingleton((provider) => provider.GetRequiredKeyedService<KiCad>(UltraLibrarianKiCadClientName));
-
-        // Register the UltraLibrarian importer
-        _ = services.AddTransient((provider) =>
-        {
-            KiCad kicad = provider.GetRequiredService<KiCad>();
-            ILogger<Services.UltraLibrarianImporter> logger = provider.GetRequiredService<ILogger<Services.UltraLibrarianImporter>>();
-            IConfigService configService = provider.GetRequiredService<IConfigService>();
-
-            ImportOptions options = configService.GetImportOptions();
-
-            return new Services.UltraLibrarianImporter(kicad, logger, options);
-        });
-
-        return services;
-    }
+    public static IServiceCollection AddUltraLibrarianKiCadServices(this IServiceCollection services) =>
+        services
+            .AddKiCad(UltraLibrarianKiCadClientName)
+            .AddSingleton(provider => provider.GetRequiredKeyedService<KiCad>(UltraLibrarianKiCadClientName))
+            // Core import engine & provider registry
+            .AddSingleton<IKiCadImportEngine, KiCadImportEngine>()
+            // Component providers
+            .AddSingleton<IComponentProvider, UltraLibrarianProvider>()
+            .AddSingleton<IComponentProvider, SnapEdaProvider>()
+            .AddSingleton<IComponentProvider, ComponentSearchEngineProvider>()
+            .AddSingleton<IComponentProvider, EasyEdaProvider>()
+            .AddSingleton<IComponentProvider, OctopartProvider>()
+            .AddSingleton<IComponentProviderRegistry, ComponentProviderRegistry>()
+            .AddSingleton<IPartAggregatorService, PartAggregatorService>()
+            // Legacy importer facade for backward compatibility
+            .AddTransient(provider => new Services.UltraLibrarianImporter(
+                provider.GetRequiredService<IKiCadImportEngine>(),
+                provider.GetRequiredService<IConfigService>().GetImportOptions()));
 
     public static KiCad GetUltraLibrarianKiCad(this IKiCadFactory factory) => factory.Create(UltraLibrarianKiCadClientName);
 }

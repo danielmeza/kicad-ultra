@@ -15,7 +15,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-
+using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 
 using WebViewControl;
@@ -50,6 +50,48 @@ public partial class MainWindow : Window
             };
             webView.DownloadCompleted += DownloadComplete;
         }
+
+        DataContextChanged += (s, e) =>
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.RequestBrowserBack += () =>
+                {
+                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    if (wv != null)
+                    {
+                        try { wv.GoBack(); } catch { }
+                    }
+                };
+                vm.RequestBrowserForward += () =>
+                {
+                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    if (wv != null)
+                    {
+                        try { wv.GoForward(); } catch { }
+                    }
+                };
+                vm.RequestBrowserReload += () =>
+                {
+                    WebView? wv = this.FindControl<WebView>("OSWebView");
+                    if (wv != null)
+                    {
+                        try { wv.Reload(); } catch { }
+                    }
+                };
+                vm.PropertyChanged += (sender, args) =>
+                {
+                    if (args.PropertyName == nameof(MainViewModel.WebviewUrl))
+                    {
+                        WebView? wv = this.FindControl<WebView>("OSWebView");
+                        if (wv != null && !string.IsNullOrEmpty(vm.WebviewUrl) && wv.Address != vm.WebviewUrl)
+                        {
+                            wv.Address = vm.WebviewUrl;
+                        }
+                    }
+                };
+            }
+        };
     }
 
     private void Initialize(WebView view)
@@ -60,8 +102,11 @@ public partial class MainWindow : Window
 
     private void DownloadComplete(string resourcePath)
     {
-        if (resourcePath.EndsWith(".zip"))
+        IComponentProvider provider = ViewModel.SelectedProvider;
+        if (provider != null ? provider.CanHandleDownload(resourcePath) : resourcePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
             ViewModel.LibraryDownloaded(resourcePath);
+        }
     }
 
 
@@ -90,14 +135,67 @@ public partial class MainWindow : Window
 
         protected override void OnBeforeDownload(CefBrowser browser, CefDownloadItem downloadItem, string suggestedName, CefBeforeDownloadCallback callback)
         {
-            var header = new ContentDisposition(downloadItem.ContentDisposition);
-            // FileName is null when the server sends a Content-Disposition without a filename
-            // parameter; fall back to the name CEF already suggested rather than crashing the
-            // download inside Path.Combine.
-            var fileName = string.IsNullOrEmpty(header.FileName) ? suggestedName : header.FileName;
-            var filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad", fileName);
-            callback.Continue(filePath, false);
-            _mainWindow.AsyncExecuteInUI(() => _mainWindow.DownloadStarted(filePath));
+            var candidateName = suggestedName;
+            if (!string.IsNullOrWhiteSpace(downloadItem.ContentDisposition))
+            {
+                try
+                {
+                    var header = new ContentDisposition(downloadItem.ContentDisposition);
+                    if (!string.IsNullOrWhiteSpace(header.FileName))
+                    {
+                        candidateName = header.FileName;
+                    }
+                }
+                catch
+                {
+                    // Fall back to suggestedName on malformed Content-Disposition header
+                }
+            }
+
+            var safeName = Path.GetFileName(candidateName);
+            if (string.IsNullOrWhiteSpace(safeName))
+            {
+                safeName = $"download-{Guid.NewGuid():N}.zip";
+            }
+
+            var defaultDownloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KiCadComponentDownloads");
+            var downloadDir = !string.IsNullOrWhiteSpace(_mainWindow.ViewModel.DownloadDirectory)
+                ? _mainWindow.ViewModel.DownloadDirectory
+                : defaultDownloadDir;
+
+            try
+            {
+                _ = Directory.CreateDirectory(downloadDir);
+            }
+            catch
+            {
+                downloadDir = defaultDownloadDir;
+                try
+                {
+                    _ = Directory.CreateDirectory(downloadDir);
+                }
+                catch
+                {
+                    callback.Continue(string.Empty, false);
+                    return;
+                }
+            }
+
+            var fullPath = Path.GetFullPath(Path.Combine(downloadDir, safeName));
+            var rootPath = Path.GetFullPath(downloadDir);
+            if (!rootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+            {
+                rootPath += Path.DirectorySeparatorChar;
+            }
+
+            if (!fullPath.StartsWith(rootPath, StringComparison.Ordinal))
+            {
+                callback.Continue(string.Empty, false); // Refuse rather than write outside target folder
+                return;
+            }
+
+            callback.Continue(fullPath, false);
+            _mainWindow.AsyncExecuteInUI(() => _mainWindow.DownloadStarted(fullPath));
         }
 
         protected override void OnDownloadUpdated(CefBrowser browser, CefDownloadItem downloadItem, CefDownloadItemCallback callback)
@@ -274,8 +372,7 @@ internal static class UrlHelper
 
     public static bool IsInternalUrl(string url)
     {
-        return IsChromeInternalUrl(url)
-            || url.StartsWith(DefaultLocalUrl.ToString(), StringComparison.InvariantCultureIgnoreCase);
+        return IsChromeInternalUrl(url) || url.StartsWith(DefaultLocalUrl.ToString(), StringComparison.InvariantCultureIgnoreCase);
     }
 
     public static void OpenInExternalBrowser(string url)

@@ -8,13 +8,12 @@
         x:DataType="vm:SettingsViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="UltraLibrarian Importer Settings"
-        Width="450" Height="350"
+        Width="480" Height="520"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
 
-    <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
-        <!-- KiCad IPC Settings removed as they shouldn't be manually configurable -->
-        
+    <ScrollViewer>
+      <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
         <!-- Download Settings -->
         <TextBlock Grid.Row="0" Text="Download Settings" FontWeight="Bold" Margin="0,0,0,10"/>
         
@@ -51,11 +50,30 @@
                 <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="5,0,0,0"/>
             </Grid>
         </StackPanel>
+
+        <!-- API Tokens & Credentials -->
+        <TextBlock Grid.Row="4" Text="API Tokens (For Multi-Provider Part Explorer)" FontWeight="Bold" Margin="0,15,0,10"/>
+
+        <StackPanel Grid.Row="5" Orientation="Vertical" Spacing="8">
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="Octopart / Nexar Token:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding OctopartApiToken}" PasswordChar="*" Watermark="Nexar API Bearer token..."/>
+            </Grid>
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="SnapMagic API Key:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding SnapEdaApiKey}" PasswordChar="*" Watermark="SnapEDA / SnapMagic API key..."/>
+            </Grid>
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="SamacSys API Key:" VerticalAlignment="Center"/>
+                <TextBox Grid.Column="1" Text="{Binding SamacSysApiKey}" PasswordChar="*" Watermark="Component Search Engine key..."/>
+            </Grid>
+        </StackPanel>
         
         <!-- Buttons -->
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
             <Button Content="Save" Command="{Binding SaveCommand}" Width="80"/>
             <Button Content="Cancel" Command="{Binding CancelCommand}" Width="80"/>
         </StackPanel>
-    </Grid>
+      </Grid>
+    </ScrollViewer>
 </Window>
