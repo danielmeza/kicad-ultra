@@ -23,7 +23,7 @@
     <PackageVersion Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.0" />
+    <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.1" />
     <!-- ReactiveUI 23.2.28 for the Part Explorer search (#49). 11.4.13 is the last ReactiveUI.Avalonia
          for Avalonia 11; 12.x (ReactiveUI 24) requires Avalonia 12, which is the #67 port.
          CefGlue.Avalonia still brings in the old Avalonia.ReactiveUI 11.0.9, built against ReactiveUI
