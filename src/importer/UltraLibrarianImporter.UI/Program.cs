@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
 using NLog.Targets;
+using ReactiveUI.Avalonia;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Mcp;
@@ -98,11 +99,19 @@ internal sealed class Program
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    //
+    // UseReactiveUI is ReactiveUI.Avalonia's (ReactiveUI 23): it initialises ReactiveUI and points
+    // RxSchedulers.MainThreadScheduler at Avalonia's dispatcher, which the Part Explorer search observes
+    // its results on (#49). CefGlue.Avalonia also brings in the older Avalonia.ReactiveUI 11.0.9, whose
+    // parameterless UseReactiveUI() lives in the Avalonia.ReactiveUI namespace and was built against
+    // ReactiveUI 18: it sets RxApp.MainThreadScheduler, and RxApp no longer exists in ReactiveUI 23. Do
+    // not import that namespace or call it.
     public static AppBuilder BuildAvaloniaApp(AppBuilder builder)
         => builder
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .UseReactiveUI(_ => { });
 
     // Create the host builder with all the services
     [SupportedOSPlatform("windows")]
