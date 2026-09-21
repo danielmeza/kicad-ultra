@@ -10,9 +10,6 @@ def launch_importer():
     candidate_paths = [
         os.path.join(script_dir, "bin", "UltraLibrarianImporter.UI.exe"),
         os.path.join(script_dir, "bin", "UltralibrarianImporter.exe"),
-        r"d:\proiecte Programare\KiCad-pluggin-discord-try\kicad-ultra-master\src\importer\UltraLibrarianImporter.UI\bin\Debug\net10.0\UltraLibrarianImporter.UI.exe",
-        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Debug", "net10.0", "UltraLibrarianImporter.UI.exe"),
-        os.path.join(script_dir, "..", "src", "importer", "UltraLibrarianImporter.UI", "bin", "Release", "net10.0", "UltraLibrarianImporter.UI.exe"),
     ]
     
     exe_path = next((p for p in candidate_paths if os.path.exists(p)), None)
