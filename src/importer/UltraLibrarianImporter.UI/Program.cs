@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
 using Avalonia;
 using Lemon.Hosting.AvaloniauiDesktop;
@@ -6,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NLog;
+using NLog.Config;
 using NLog.Extensions.Logging;
 using NLog.Targets;
 using ReactiveUI.Avalonia;
@@ -27,9 +30,6 @@ internal sealed class Program
     [SupportedOSPlatform("macos")]
     public static void Main(string[] args)
     {
-        // Initialize NLog
-        _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
-
         var isMcp = Array.Exists(args, a =>
             string.Equals(a, "--mcp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "-mcp", StringComparison.OrdinalIgnoreCase) ||
@@ -39,13 +39,7 @@ internal sealed class Program
         {
             try
             {
-                Target? consoleTarget = LogManager.Configuration?.FindTargetByName("console");
-                if (consoleTarget != null)
-                {
-                    LogManager.Configuration?.RemoveTarget("console");
-                    LogManager.ReconfigExistingLoggers();
-                }
-
+                ConfigureMcpLogging();
                 RunMcpHostAsync().GetAwaiter().GetResult();
             }
             catch (Exception ex)
@@ -59,6 +53,9 @@ internal sealed class Program
             }
             return;
         }
+
+        // Initialize NLog
+        _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
 
         // Before anything can start Avalonia or CEF: CEF's GTK brings in the system HarfBuzz, and
         // HarfBuzzSharp's own calls would bind to it and crash (#78). MCP mode loads neither, and must
@@ -88,23 +85,62 @@ internal sealed class Program
         }
     }
 
-    private static async System.Threading.Tasks.Task RunMcpHostAsync()
+    // MCP mode logs to nlog.config's log files and to stderr, never to stdout, which carries the
+    // JSON-RPC messages (#80). nlog.config stays the one place that names the log files and their
+    // folder, but only its file targets are kept: an allowlist, so a console target added to it later,
+    // or renamed, cannot reach stdout. autoReload is off, because a reload reads nlog.config again,
+    // stdout target included, while the server runs. If nlog.config is missing or unreadable, the
+    // server still runs, as the GUI does, and logs to stderr alone.
+    private static void ConfigureMcpLogging()
     {
-        var services = new ServiceCollection();
-        _ = services.AddLogging(builder =>
+        LoggingConfiguration config;
+        Exception? loadFailure = null;
+        try
         {
-            _ = builder.ClearProviders();
-            _ = builder.AddNLog();
+            config = new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "nlog.config"))
+            {
+                AutoReload = false
+            };
+        }
+        catch (Exception ex) when (ex is NLogConfigurationException or IOException or UnauthorizedAccessException)
+        {
+            config = new LoggingConfiguration();
+            loadFailure = ex;
+        }
+
+        foreach (Target target in config.AllTargets.Where(target => target is not FileTarget).ToList())
+        {
+            config.RemoveTarget(target.Name);
+        }
+
+        config.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, new ConsoleTarget("stderr")
+        {
+            StdErr = true,
+            Layout = "${time} | ${level:uppercase=true:padding=-5} | ${logger:shortName=true} | ${message} ${exception:format=tostring}"
         });
 
-        _ = services.AddSingleton(_ => PlatformSecretStore.Create());
-        _ = services.AddSingleton<IConfigService, ConfigService>();
-        _ = services.AddUltraLibrarianKiCadServices();
+        LogManager.Configuration = config;
 
-        using ServiceProvider serviceProvider = services.BuildServiceProvider();
-        McpServer mcpServer = serviceProvider.GetRequiredService<McpServer>();
-        await mcpServer.RunStdioAsync();
+        if (loadFailure != null)
+        {
+            LogManager.GetCurrentClassLogger().Warn(loadFailure, "nlog.config could not be loaded; MCP mode logs to stderr only");
+        }
     }
+
+    private static async System.Threading.Tasks.Task RunMcpHostAsync()
+    {
+        using ServiceProvider serviceProvider = BuildMcpServiceProvider();
+        await serviceProvider.GetRequiredService<McpServer>().RunStdioAsync();
+    }
+
+    // No host and no Avalonia. ILogger goes to NLog alone, so only where ConfigureMcpLogging sends it.
+    private static ServiceProvider BuildMcpServiceProvider() =>
+        new ServiceCollection()
+            .AddLogging(logging => logging.ClearProviders().AddNLog())
+            .AddSingleton(_ => PlatformSecretStore.Create())
+            .AddSingleton<IConfigService, ConfigService>()
+            .AddUltraLibrarianKiCadServices()
+            .BuildServiceProvider();
 
     // Avalonia configuration, don't remove; also used by visual designer.
     //
