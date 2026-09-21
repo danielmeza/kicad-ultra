@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 dotnet restore UltraLibrarianImporter.sln
 dotnet build   UltraLibrarianImporter.sln -c Release   # also the code-style gate; see below
+dotnet build   UltraLibrarianImporter.sln -c Debug     # CI builds both (#89)
 dotnet run --project src/importer/UltraLibrarianImporter.UI   # the app starts without KiCad
 ```
 
@@ -94,6 +95,11 @@ all of them.** CI therefore has two style gates, the Build step and a Format ste
 (`dotnet format --verify-no-changes`), and each catches something the other misses (#59). The tree
 is clean against both; keep it that way, and run both before pushing.
 
+CI also builds **Debug** (#89). Code under `#if DEBUG` compiles only there, so a Release build
+reports a `using` that only such code needs as IDE0005, and deleting it breaks Debug. Put that using
+inside its own `#if DEBUG` block, as `Views/AboutWindow.axaml.cs` and `Views/SettingsWindow.axaml.cs`
+do for `AttachDevTools()`.
+
 ```bash
 dotnet format UltraLibrarianImporter.sln --severity warn                      # fix
 dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes  # check (CI adds --no-restore)
@@ -163,10 +169,14 @@ every KiCad operation fails. `plugin/requirements.txt` is deliberately empty; it
 
 Still missing: **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
 
-**Known crash on Linux (#78):** right after the main window opens, a SIGSEGV (exit 139) in HarfBuzz.
-CEF's GTK stack loads the system `libharfbuzz.so.0`, and `libHarfBuzzSharp.so`'s calls get interposed
-onto it. To run the app on Linux until it is fixed:
-`LD_PRELOAD=<bin>/runtimes/linux-x64/native/libHarfBuzzSharp.so`.
+**`HarfBuzzPreload.Apply()` must stay the first thing on `Main`'s GUI path (#78).** CEF loads GTK
+with `RTLD_GLOBAL`, which brings in the system `libharfbuzz.so.0`. `libHarfBuzzSharp.so` calls its own
+`hb_*` functions through lazily bound slots, so those calls land in the system copy and the app dies
+with SIGSEGV (exit 139) right after the main window opens. The preload `dlopen`s HarfBuzzSharp with
+`RTLD_NOW` before anything else touches it, binding every slot to itself. It deliberately stays
+`RTLD_LOCAL`; the file's remarks explain why `RTLD_GLOBAL` or the old `LD_PRELOAD` workaround is wrong.
+It only looks in the app's own native directories, never the working directory. No `LD_PRELOAD` is
+needed any more.
 
 ### Providers, search and the import engine
 
@@ -195,10 +205,36 @@ onto it. To run the app on Linux until it is fixed:
 ### Import flow
 
 `MainWindow` has two tabs.
-- **Part Explorer** searches, but **cannot import** yet: `PackageDownloadUrl` is never read (#47). The
-  first provider able to import will be EasyEDA/LCSC through the user-installed `easyeda2kicad` CLI
-  (#76). It is AGPL-3.0, so it runs **only as a separate process**: never `import` it, never distribute
-  it, and never copy its code.
+- **Part Explorer** imports **EasyEDA / LCSC** results that carry an LCSC code
+  (`PartSearchResult.LcscPartNumber`) through the user-installed `easyeda2kicad` CLI (#76). Other
+  providers still cannot import: `PackageDownloadUrl` is never read (#47).
+  - **easyeda2kicad is AGPL-3.0, so it runs only as a separate process.** Start it through
+    `Services/EasyEda2KiCad/ExternalProcess`, which uses `ArgumentList` and never a command string.
+    Never `import` it, and never distribute it: not in `plugin/requirements.txt`, not in
+    `plugin/bin/`, not in the PCM bundle. Never copy its code, and use only its documented flags plus
+    KiCad's file formats. The LCSC id is validated (`^C[0-9]+\z`) before it reaches the command line.
+  - `EasyEda2KiCadLocator` looks in three places, in order:
+    1. the Settings path (the tool itself, or a Python interpreter run with `-m`);
+    2. `PATH`;
+    3. `<api.interpreter_path> -m easyeda2kicad`.
+
+    A candidate counts only if `-h` exits 0 and its help lists `--lcsc_id`. Inside KiCad's Flatpak
+    the locator also sets `PYTHONUSERBASE=$XDG_DATA_HOME/python` and puts that `bin` on `PATH`, as
+    the Flathub manifest's `pip3` wrapper does. Without them, the documented `pip3 install --user` is
+    invisible.
+  - `KiCadImportEngine.ImportLcscPartAsync` runs the tool **straight into the final library**
+    (`--output <dir>/<name> --overwrite`), not a temp dir. Its footprints point at 3D models by path,
+    and its symbols at `<name>:<footprint>`.
+    - `--project-relative` is passed only for project-table libraries. It resolves against the working
+      directory, so that run's cwd is the project.
+    - The output **never** goes through `ImportSymbolsAsync` / `ImportFootprintsAsync`: a KiCadSharp
+      re-save hits #68, and prefix renaming breaks the links.
+    - A non-zero exit, a timeout or a cancel rolls back: the symbol library is restored from a copy,
+      created files are removed, and nothing is registered.
+    - Both import paths share one `_importGate` in the engine.
+
+    #88 checked that kicad-cli 10.0.6 loads the output through the registered tables and resolves
+    the 3D models. It has not been checked in the KiCad GUI.
 - **Web Browser** hosts CEF. `InternalDownloadHandler` (`Views/MainWindow.axaml.cs`) reduces the
   server-supplied file name with `Path.GetFileName` and refuses anything that would resolve outside
   the download directory — keep that containment check.
@@ -212,9 +248,10 @@ which is **never created**. `KiCadSettingsDirectory` resolves KiCad's config dir
 version. The default scope is an open decision (#71). KiCad does not reload tables on its own, so
 the user must reopen the project or restart KiCad.
 
-**But imported symbols still do not load in KiCad 10** (#68): the `.kicad_sym` KiCadSharp 0.1.1 writes
-is invalid for it (danielmeza/kicad-sharp#45). Footprints load. Re-importing appends a duplicate
-symbol (#69).
+**But symbols from the Ultra Librarian `.zip` path still do not load in KiCad 10** (#68): the
+`.kicad_sym` that KiCadSharp 0.1.1 writes is invalid for it (danielmeza/kicad-sharp#45). Footprints
+load. Re-importing appends a duplicate symbol (#69). Neither affects the easyeda2kicad path, which
+never re-saves through KiCadSharp.
 
 ### DI wiring — one trap
 
@@ -261,18 +298,17 @@ check. To run it:
 - a temp `HOME` and `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME`, plus a `Documents` folder in
   it (see #70);
 - `DBUS_SESSION_BUS_ADDRESS` pointed at a dead socket, so the libsecret store cannot read or write the
-  user's real keyring;
-- `LD_PRELOAD` for HarfBuzz on Linux (#78).
+  user's real keyring.
 
 A process that exits on its own under `timeout` is **not** a clean run. Exit 134 or 139, or
 "dumped core", means it crashed — SIGTERM from `timeout` does not dump core.
 
 ### Tracked work
 
-Open: importing from the explorer (#47, #76), CAD availability (#48), providers (#51, #52, #56, #57),
-Avalonia 12 (#67), symbols KiCad cannot load (#68), duplicate symbols (#69), special-folder paths
-(#70), default registration scope (#71), KiCad 11 IPC (#72 tables, #73 datasheets), the Linux
-HarfBuzz crash (#78), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
+Open: importing from the explorer for providers other than EasyEDA/LCSC (#47), CAD availability (#48),
+providers (#51, #52, #56, #57), Avalonia 12 (#67, draft #75), symbols KiCad cannot load (#68),
+duplicate symbols (#69), special-folder paths (#70), default registration scope (#71), KiCad 11 IPC
+(#72 tables, #73 datasheets), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
 
 ## Release state
 
