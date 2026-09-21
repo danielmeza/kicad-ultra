@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,11 +14,29 @@ using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
 
+public partial class ProviderConfigItemViewModel : ObservableObject
+{
+    public string Id { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public string SearchUrl { get; init; } = string.Empty;
+    public bool SupportsDirectApi { get; init; }
+    public string CapabilitiesDescription { get; init; } = string.Empty;
+    public bool RequiresApiKey { get; init; }
+    public string ApiKeyPlaceholder { get; init; } = string.Empty;
+
+    [ObservableProperty]
+    private bool _isEnabled = true;
+
+    [ObservableProperty]
+    private string _apiKey = string.Empty;
+}
+
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IConfigService _configService;
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IOptionsMonitor<KiCadClientSettings> _kicadSettings;
+    private readonly IComponentProviderRegistry? _providerRegistry;
     private readonly KiCadClientSettings _originalSettings;
 
     [ObservableProperty]
@@ -49,63 +69,86 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _libraryName = string.Empty;
 
-    [ObservableProperty]
-    private string _octopartApiToken = string.Empty;
+    // Provider configuration
+    public ObservableCollection<ProviderConfigItemViewModel> ConfiguredProviders { get; } = [];
+    public ObservableCollection<string> AvailableProviderIds { get; } = [];
 
     [ObservableProperty]
-    private string _snapEdaApiKey = string.Empty;
+    private string _selectedDefaultProviderId = "ultralibrarian";
 
+    // AI & MCP Properties
     [ObservableProperty]
-    private string _samacSysApiKey = string.Empty;
+    private string _mcpCopyStatusMessage = string.Empty;
 
-    // Event for folder browsing (will be handled by the view)
+    public string McpExecutablePath
+    {
+        get
+        {
+            try
+            {
+                return System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                    ?? Environment.ProcessPath
+                    ?? "UltraLibrarianImporter.UI.exe";
+            }
+            catch
+            {
+                return Environment.ProcessPath ?? "UltraLibrarianImporter.UI.exe";
+            }
+        }
+    }
+
+    public string McpConfigSnippet
+    {
+        get
+        {
+            var safePath = McpExecutablePath.Replace('\\', '/');
+            return "{\n" +
+                   "  \"mcpServers\": {\n" +
+                   "    \"kicad-component-explorer\": {\n" +
+                   $"      \"command\": \"{safePath}\",\n" +
+                   "      \"args\": [\"--mcp\"]\n" +
+                   "    }\n" +
+                   "  }\n" +
+                   "}";
+        }
+    }
+
+    // Events
     public event EventHandler<EventArgs>? BrowseForFolderRequested;
-
-    // Event for target path browsing
     public event EventHandler<EventArgs>? BrowseForTargetPathRequested;
-
-    // Events for dialog closing
     public event EventHandler<bool>? SettingsSaved;
+    public event EventHandler<string>? CopyToClipboardRequested;
 
-    /// <summary>
-    /// Creates a new instance of the settings view model
-    /// </summary>
-    /// <param name="configService">Configuration service</param>
-    /// <param name="logger">Logger for recording operations</param>
-    /// <param name="kicadSettings">KiCad client settings</param>
     public SettingsViewModel(
         IConfigService configService,
         ILogger<SettingsViewModel> logger,
-        IOptionsMonitor<KiCadClientSettings> kicadSettings)
+        IOptionsMonitor<KiCadClientSettings> kicadSettings,
+        IComponentProviderRegistry? providerRegistry = null)
     {
         _configService = configService;
         _logger = logger;
         _kicadSettings = kicadSettings;
+        _providerRegistry = providerRegistry;
 
-        // Store original settings for comparison on save
         _originalSettings = new KiCadClientSettings
         {
             PipeName = _kicadSettings.CurrentValue.PipeName,
             Token = _kicadSettings.CurrentValue.Token,
         };
 
-        // Initialize properties from settings
         InitializeSettings();
-
         _logger.LogInformation("SettingsViewModel initialized");
     }
 
     private void InitializeSettings()
     {
-        // Initialize KiCad client settings
         PipeName = _kicadSettings.CurrentValue.PipeName ??
                   KiCadEnvironment.GetDefaultSocketPath();
         Token = _kicadSettings.CurrentValue.Token ??
                KiCadEnvironment.GetApiToken() ?? string.Empty;
         ClientName = _kicadSettings.CurrentValue.ClientName ??
-                    KiCadEnvironment.GenerateRandomClientName();
+                     KiCadEnvironment.GenerateRandomClientName();
 
-        // Initialize app configuration settings
         DownloadDirectory = _configService.DownloadDirectory;
         AddToGlobalLibrary = _configService.AddToGlobalLibrary;
         CleanupAfterImport = _configService.CleanupAfterImport;
@@ -113,9 +156,95 @@ public partial class SettingsViewModel : ObservableObject
         UseProjectPath = _configService.UseProjectPath;
         AutoImportWhenDownloaded = _configService.AutoImportWhenDownloaded;
         LibraryName = _configService.LibraryName;
-        OctopartApiToken = _configService.OctopartApiToken;
-        SnapEdaApiKey = _configService.SnapEdaApiKey;
-        SamacSysApiKey = _configService.SamacSysApiKey;
+
+        SelectedDefaultProviderId = string.IsNullOrEmpty(_configService.DefaultProviderId)
+            ? "ultralibrarian"
+            : _configService.DefaultProviderId;
+
+        // Initialize Provider list
+        ConfiguredProviders.Clear();
+        AvailableProviderIds.Clear();
+
+        IReadOnlyList<IComponentProvider>? providers = _providerRegistry?.AllProviders;
+        if (providers != null && providers.Count > 0)
+        {
+            foreach (IComponentProvider p in providers)
+            {
+                AvailableProviderIds.Add(p.Id);
+
+                var reqKey = p.Id is "octopart" or "snapeda" or "samacsys";
+                var key = p.Id switch
+                {
+                    "octopart" => _configService.OctopartApiToken,
+                    "snapeda" => _configService.SnapEdaApiKey,
+                    "samacsys" => _configService.SamacSysApiKey,
+                    _ => string.Empty
+                };
+
+                var caps = p.Id switch
+                {
+                    "easyeda" => "Direct API: Yes • JLCPCB / LCSC Stock & Pricing • Symbols, Footprints, 3D Models",
+                    "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
+                    "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
+                    "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
+                    "ultralibrarian" => "Browser-Assisted • Official UltraLibrarian CAD Models & 3D Assets",
+                    _ => "Component Library Provider"
+                };
+
+                var placeholder = p.Id switch
+                {
+                    "octopart" => "Nexar API Bearer token...",
+                    "snapeda" => "SnapEDA / SnapMagic API key...",
+                    "samacsys" => "SamacSys / Component Search Engine key...",
+                    _ => "API Key / Token..."
+                };
+
+                ConfiguredProviders.Add(new ProviderConfigItemViewModel
+                {
+                    Id = p.Id,
+                    DisplayName = p.DisplayName,
+                    SearchUrl = p.SearchUrl,
+                    SupportsDirectApi = p.SupportsDirectApi,
+                    CapabilitiesDescription = caps,
+                    RequiresApiKey = reqKey,
+                    ApiKeyPlaceholder = placeholder,
+                    IsEnabled = _configService.IsProviderEnabled(p.Id),
+                    ApiKey = key
+                });
+            }
+        }
+        else
+        {
+            // Fallback default list if no registry provided
+            AddFallbackProvider("ultralibrarian", "UltraLibrarian", false, "Browser-Assisted • CAD Models & 3D Assets", false, "");
+            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • JLCPCB / LCSC Stock & Pricing", false, "");
+            AddFallbackProvider("octopart", "Octopart (Nexar)", true, "Direct API • Multi-Distributor Stock & Pricing", true, _configService.OctopartApiToken);
+            AddFallbackProvider("snapeda", "SnapEDA / SnapMagic", true, "Direct API • CAD Models & Footprints", true, _configService.SnapEdaApiKey);
+            AddFallbackProvider("samacsys", "Component Search Engine", true, "Direct API • SamacSys CAD Models", true, _configService.SamacSysApiKey);
+        }
+    }
+
+    private void AddFallbackProvider(string id, string name, bool directApi, string caps, bool reqKey, string key)
+    {
+        AvailableProviderIds.Add(id);
+        ConfiguredProviders.Add(new ProviderConfigItemViewModel
+        {
+            Id = id,
+            DisplayName = name,
+            SupportsDirectApi = directApi,
+            CapabilitiesDescription = caps,
+            RequiresApiKey = reqKey,
+            ApiKeyPlaceholder = $"{name} API key...",
+            IsEnabled = _configService.IsProviderEnabled(id),
+            ApiKey = key
+        });
+    }
+
+    [RelayCommand]
+    private void CopyMcpConfig()
+    {
+        CopyToClipboardRequested?.Invoke(this, McpConfigSnippet);
+        McpCopyStatusMessage = "✓ MCP configuration copied to clipboard!";
     }
 
     [RelayCommand]
@@ -123,12 +252,10 @@ public partial class SettingsViewModel : ObservableObject
     {
         try
         {
-            // Update KiCad client settings
             KiCadClientSettings currentSettings = _kicadSettings.CurrentValue;
             currentSettings.PipeName = PipeName;
             currentSettings.Token = Token;
 
-            // Update app configuration
             _configService.DownloadDirectory = DownloadDirectory;
             _configService.AddToGlobalLibrary = AddToGlobalLibrary;
             _configService.CleanupAfterImport = CleanupAfterImport;
@@ -136,17 +263,23 @@ public partial class SettingsViewModel : ObservableObject
             _configService.UseProjectPath = UseProjectPath;
             _configService.AutoImportWhenDownloaded = AutoImportWhenDownloaded;
             _configService.LibraryName = LibraryName;
-            _configService.OctopartApiToken = OctopartApiToken;
-            _configService.SnapEdaApiKey = SnapEdaApiKey;
-            _configService.SamacSysApiKey = SamacSysApiKey;
 
-            // Save to file
+            _configService.DefaultProviderId = SelectedDefaultProviderId;
+
+            foreach (ProviderConfigItemViewModel p in ConfiguredProviders)
+            {
+                _configService.SetProviderEnabled(p.Id, p.IsEnabled);
+                if (p.Id == "octopart") _configService.OctopartApiToken = p.ApiKey ?? string.Empty;
+                if (p.Id == "snapeda") _configService.SnapEdaApiKey = p.ApiKey ?? string.Empty;
+                if (p.Id == "samacsys") _configService.SamacSysApiKey = p.ApiKey ?? string.Empty;
+            }
+
             _configService.Save();
             _configService.EnsureDownloadDirectoryExists();
 
-            _logger.LogInformation("Settings saved");
+            _providerRegistry?.RefreshProviders();
 
-            // Trigger dialog close with success
+            _logger.LogInformation("Settings saved successfully.");
             SettingsSaved?.Invoke(this, true);
         }
         catch (Exception ex)
@@ -158,26 +291,22 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void BrowseDownloadDir()
     {
-        // Raise an event for the view to handle
         BrowseForFolderRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
     private void BrowseTargetPath()
     {
-        // Raise an event for the view to handle
         BrowseForTargetPathRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]
     private void Cancel()
     {
-        // Revert any changes to KiCad settings
         KiCadClientSettings currentSettings = _kicadSettings.CurrentValue;
         currentSettings.PipeName = _originalSettings.PipeName;
         currentSettings.Token = _originalSettings.Token;
 
-        // Trigger dialog close without saving
         SettingsSaved?.Invoke(this, false);
     }
 }

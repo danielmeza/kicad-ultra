@@ -14,7 +14,6 @@ using KiCadSharp;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Views;
@@ -158,6 +157,15 @@ public partial class MainViewModel : ObservableObject
         _configService.EnsureDownloadDirectoryExists();
         _logger.LogInformation("MainViewModel initialized for provider {Provider}. Watching for downloads in {Dir}",
             SelectedProvider.DisplayName, _configService.DownloadDirectory);
+
+        _providerRegistry.RegistryUpdated += () =>
+        {
+            OnPropertyChanged(nameof(AvailableProviders));
+            if (!AvailableProviders.Contains(SelectedProvider))
+            {
+                SelectedProvider = _providerRegistry.SelectedProvider;
+            }
+        };
     }
 
     partial void OnSelectedProviderChanged(IComponentProvider value)
@@ -398,8 +406,7 @@ public partial class MainViewModel : ObservableObject
             if (serviceProvider != null)
             {
                 SettingsViewModel viewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
-                IOptionsMonitor<KiCadClientSettings> options = serviceProvider.GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
-                settingsWindow = new SettingsWindow(_configService, _logger, options) { DataContext = viewModel };
+                settingsWindow = new SettingsWindow(viewModel);
             }
             else
             {

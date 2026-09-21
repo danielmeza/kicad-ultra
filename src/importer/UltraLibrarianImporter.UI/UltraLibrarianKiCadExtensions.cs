@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Mcp;
 using UltraLibrarianImporter.UI.Services.Providers;
 
 namespace UltraLibrarianImporter.UI;
@@ -26,6 +27,8 @@ internal static class UltraLibrarianKiCadExtensions
             .AddSingleton<IComponentProvider, OctopartProvider>()
             .AddSingleton<IComponentProviderRegistry, ComponentProviderRegistry>()
             .AddSingleton<IPartAggregatorService, PartAggregatorService>()
+            // Resolved only in `--mcp` mode (Program.RunMcpHostAsync), which builds its own container
+            .AddSingleton<McpServer>()
             // Legacy importer facade for backward compatibility
             .AddTransient(provider => new Services.UltraLibrarianImporter(
                 provider.GetRequiredService<IKiCadImportEngine>(),

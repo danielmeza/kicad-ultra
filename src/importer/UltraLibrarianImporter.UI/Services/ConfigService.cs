@@ -14,39 +14,8 @@ public class ConfigService : IConfigService
     private readonly ILogger<ConfigService> _logger;
     private readonly string _configFilePath;
 
-    private static readonly JsonSerializerOptions s_serializerOptions = new() { WriteIndented = true };
-
     // Default values
     private const string DEFAULT_DOWNLOAD_DIR = "";
-
-    /// <summary>
-    /// The on-disk shape of the configuration.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="ConfigService"/> cannot serialize itself. System.Text.Json binds a type's single
-    /// public constructor by parameter name, and this one takes an <see cref="ILogger"/> that
-    /// matches no property, so <c>Deserialize&lt;ConfigService&gt;</c> threw
-    /// <see cref="InvalidOperationException"/> on every launch that found an existing file. The
-    /// catch in <see cref="Load"/> swallowed it, which turned a hard failure into settings that
-    /// silently reverted to their defaults on restart. The property names here match what the old
-    /// code wrote, so existing config.json files still load.
-    /// </remarks>
-    private sealed class ConfigData
-    {
-        public string DownloadDirectory { get; set; } = string.Empty;
-        public bool AddToGlobalLibrary { get; set; } = true;
-        public bool CleanupAfterImport { get; set; } = true;
-        public string TargetPath { get; set; } = string.Empty;
-        public bool UseProjectPath { get; set; } = true;
-        public bool AutoImportWhenDownloaded { get; set; } = true;
-        public string LibraryName { get; set; } = string.Empty;
-
-        // Nullable so a config.json written before these existed deserializes cleanly; Load()
-        // maps null to empty. Still cleartext on disk - moving them to the OS store is #54.
-        public string? OctopartApiToken { get; set; }
-        public string? SnapEdaApiKey { get; set; }
-        public string? SamacSysApiKey { get; set; }
-    }
 
     // Configuration properties
     public string DownloadDirectory { get; set; } = DEFAULT_DOWNLOAD_DIR;
@@ -59,6 +28,20 @@ public class ConfigService : IConfigService
     public string OctopartApiToken { get; set; } = string.Empty;
     public string SnapEdaApiKey { get; set; } = string.Empty;
     public string SamacSysApiKey { get; set; } = string.Empty;
+    public string DefaultProviderId { get; set; } = "ultralibrarian";
+    public System.Collections.Generic.Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool IsProviderEnabled(string providerId)
+    {
+        // Unknown providers default to enabled; an empty id never is.
+        return !string.IsNullOrEmpty(providerId) && (!EnabledProviders.TryGetValue(providerId, out var enabled) || enabled);
+    }
+
+    public void SetProviderEnabled(string providerId, bool isEnabled)
+    {
+        if (string.IsNullOrEmpty(providerId)) return;
+        EnabledProviders[providerId] = isEnabled;
+    }
 
     /// <summary>
     /// Creates a new instance of the configuration service
@@ -88,6 +71,22 @@ public class ConfigService : IConfigService
         Load();
     }
 
+    private class ConfigData
+    {
+        public string? DownloadDirectory { get; set; }
+        public bool AddToGlobalLibrary { get; set; } = true;
+        public bool CleanupAfterImport { get; set; } = true;
+        public string? TargetPath { get; set; }
+        public bool UseProjectPath { get; set; } = true;
+        public bool AutoImportWhenDownloaded { get; set; } = true;
+        public string? LibraryName { get; set; }
+        public string? OctopartApiToken { get; set; }
+        public string? SnapEdaApiKey { get; set; }
+        public string? SamacSysApiKey { get; set; }
+        public string? DefaultProviderId { get; set; }
+        public System.Collections.Generic.Dictionary<string, bool>? EnabledProviders { get; set; }
+    }
+
     /// <summary>
     /// Loads the configuration from the config file
     /// </summary>
@@ -98,20 +97,27 @@ public class ConfigService : IConfigService
             if (File.Exists(_configFilePath))
             {
                 var json = File.ReadAllText(_configFilePath);
-                ConfigData? config = JsonSerializer.Deserialize<ConfigData>(json);
+                ConfigData? config = JsonSerializer.Deserialize<ConfigData>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
 
                 if (config != null)
                 {
-                    DownloadDirectory = config.DownloadDirectory;
+                    DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
                     AddToGlobalLibrary = config.AddToGlobalLibrary;
                     CleanupAfterImport = config.CleanupAfterImport;
-                    TargetPath = config.TargetPath;
+                    TargetPath = config.TargetPath ?? string.Empty;
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
-                    LibraryName = config.LibraryName;
+                    LibraryName = config.LibraryName ?? string.Empty;
                     OctopartApiToken = config.OctopartApiToken ?? string.Empty;
                     SnapEdaApiKey = config.SnapEdaApiKey ?? string.Empty;
                     SamacSysApiKey = config.SamacSysApiKey ?? string.Empty;
+                    DefaultProviderId = string.IsNullOrEmpty(config.DefaultProviderId) ? "ultralibrarian" : config.DefaultProviderId;
+                    EnabledProviders = config.EnabledProviders != null
+                        ? new System.Collections.Generic.Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
+                        : new System.Collections.Generic.Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
                 }
 
                 _logger.LogInformation("Configuration loaded from file");
@@ -147,8 +153,11 @@ public class ConfigService : IConfigService
                 OctopartApiToken = OctopartApiToken,
                 SnapEdaApiKey = SnapEdaApiKey,
                 SamacSysApiKey = SamacSysApiKey,
+                DefaultProviderId = DefaultProviderId,
+                EnabledProviders = EnabledProviders
             };
-            var json = JsonSerializer.Serialize(data, s_serializerOptions);
+
+            var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_configFilePath, json);
             _logger.LogInformation("Configuration saved to file");
         }
