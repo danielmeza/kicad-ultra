@@ -1,7 +1,12 @@
 # Intentionally empty.
 #
-# importer_launcher.py is the whole Python side of this plugin and imports only the standard
-# library (os, subprocess, sys). Everything else runs in the .NET importer in bin/.
+# Nothing in this plugin needs a package installed from PyPI:
+#   - importer_launcher.py (the IPC API entrypoint) imports only the standard library
+#     (os, subprocess, sys).
+#   - __init__.py imports pcbnew and wx, but only for the legacy pcbnew ActionPlugin. KiCad
+#     provides both from its own embedded interpreter when it loads that plugin; neither is
+#     installable from here, and the import is guarded so the file still loads without them.
+# Everything else runs in the .NET importer in bin/.
 #
 # This file previously listed requests, wxPython and watchdog, left over from an earlier wxPython
 # implementation. Nothing imported them, and KiCad installs this file's contents into the plugin's
