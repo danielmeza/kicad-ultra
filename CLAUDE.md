@@ -164,8 +164,12 @@ on the child by default (the IPC API runs it as its own process); `__init__.py`'
 
 It passes the environment through: KiCad exports the IPC socket path, the API token and the project
 directory, and `KiCadSharp` reads them from there (`KiCadEnvironment.GetApiToken()` /
-`GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any other way, the app starts fine and
-every KiCad operation fails. `plugin/requirements.txt` is deliberately empty; its comment explains why.
+`GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any other way, there is no project
+directory, because it comes only from that environment. The connection itself still works since
+KiCadSharp 0.3.1 (#99): with no token in the environment, it dials KiCad's default socket
+(`/tmp/kicad/api.sock`, or `%TEMP%\kicad\api.sock`) with an empty token. So an importer started by
+hand reaches a running KiCad whose API server is on, and otherwise falls back to reading the disk.
+`plugin/requirements.txt` is deliberately empty; its comment explains why.
 
 Still missing: **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
 
@@ -202,7 +206,17 @@ needed any more.
     argument): the GUI passes `OfficialApiWhenConfigured`, the MCP container `WebsiteEndpointOnly`.
     `McpServer` refuses to be built with any other, and its data-source line says so.
   - The tscircuit index is gone.
-  - Neither source reports CAD availability, so the CAD flags stay false.
+  - Neither source reports CAD availability, so the CAD flags stay `Unknown`.
+- **CAD availability is tri-state** (#48, #107): `CadAvailability` is `Unknown` (the default),
+  `Available` or `NotAvailable`, and `HasSymbol`, `HasFootprint` and `Has3DModel` use it. "Unknown" and
+  "none" are different answers, so never collapse them back to `bool`.
+  - Octopart reads Nexar's public `cad { hasKicad has3dModel }`. Do not use `cadModels`: the schema
+    marks it **Internal**, and master's misspelled `cadModels { has3DModel }` made Nexar reject every
+    Octopart query.
+  - `hasKicad` answers for both symbol and footprint.
+  - A null `cad` means "none" only in a response without `errors`, because a field outside the token's
+    plan can null it too (#109).
+  - After an easyeda2kicad import, the row marks the assets that import produced as `Available`.
 - **Never fabricate.** A result or a CAD-availability flag appears only if the provider said so. A
   provider that cannot answer is absent — it does not appear with invented values.
 - **Failures are not "no results".** Providers use narrow catches that log, and then **rethrow**
@@ -226,9 +240,17 @@ needed any more.
 ### Import flow
 
 `MainWindow` has two tabs.
-- **Part Explorer** imports **EasyEDA / LCSC** results that carry an LCSC code
-  (`PartSearchResult.LcscPartNumber`) through the user-installed `easyeda2kicad` CLI (#76). Other
-  providers still cannot import: `PackageDownloadUrl` is never read (#47).
+- **Part Explorer.** Every row has an import route, or a disabled button whose tip says why (#47):
+  - **A result with an LCSC code** imports through the user-installed `easyeda2kicad` CLI (#76),
+    always into the EasyEDA library. The code is `PartSearchResult.LcscPartNumber`: JLCPCB's own code
+    for EasyEDA / LCSC results, or LCSC's offer SKU, read from the query's `allSellers`, for Octopart.
+  - **A result with a manufacturer part number** gets **Find on Ultra Librarian**. It selects the
+    UltraLibrarian provider and opens `app.ultralibrarian.com/search?queryText=<MPN>` in the Web
+    Browser tab, whose download interception then imports what the user downloads.
+  - A provider never fills the part number with the search text. When the source has none, it is
+    empty, and Find on Ultra Librarian is disabled.
+  - `PackageDownloadUrl` is gone: no provider had a direct CAD archive. Nexar's
+    `cad.downloadUrlKicad` exists but is unverified.
   - **easyeda2kicad is AGPL-3.0, so it runs only as a separate process.** Start it through
     `Services/EasyEda2KiCad/ExternalProcess`, which uses `ArgumentList` and never a command string.
     Never `import` it, and never distribute it: not in `plugin/requirements.txt`, not in
@@ -258,7 +280,15 @@ needed any more.
     the 3D models. It has not been checked in the KiCad GUI.
 - **Web Browser** hosts CEF. `InternalDownloadHandler` (`Views/MainWindow.axaml.cs`) reduces the
   server-supplied file name with `Path.GetFileName` and refuses anything that would resolve outside
-  the download directory — keep that containment check.
+  the download directory — keep that containment check. Three rules around it:
+  - **Refusing means never calling `Continue`** (#97, #106). `Continue("")` is not a refusal: it
+    downloads to CEF's temp directory. A download whose callback is merely released stays pending, so
+    the handler also cancels a refused id on its next `OnDownloadUpdated`.
+  - **Only downloads the handler accepted can become an import,** and only at the exact path it
+    accepted.
+  - **Never read Avalonia state on CEF's thread** (#108, #111). The download folder comes from
+    `IConfigService`, passed in from `App`. Reading `ViewModel`/`DataContext` there throws, and it
+    silently sent every download to the fallback folder.
 
 **Registration in KiCad's library tables is real** (#66), by editing the table files; KiCad 10's IPC API
 has no library-table calls (they arrive in 11 — #72). `KiCadLibraryTable` parses with SExpressions but
@@ -277,31 +307,61 @@ once per import, for both paths; `--project-relative` follows the resolved table
 the scope by name. A pre-#71 `AddToGlobalLibrary` is migrated on load and the file is rewritten
 without it: `true`, the old default rather than a choice, becomes Automatic, and `false` becomes Project.
 
-**But symbols from the Ultra Librarian `.zip` path still do not load in KiCad 10** (#68): the
-`.kicad_sym` that KiCadSharp 0.1.1 writes is invalid for it (danielmeza/kicad-sharp#45). Footprints
-load. Re-importing appends a duplicate symbol (#69). Neither affects the easyeda2kicad path, which
-never re-saves through KiCadSharp.
+**The Ultra Librarian `.zip` path writes symbols through KiCadSharp, and two 0.3.1 traps are worked
+around in `ImportSymbolsAsync` (#99):**
+- **`AddSymbol` moves the node** out of its source library (0.2.0+). The loop therefore iterates a
+  snapshot (`.ToList()`); iterating the live view silently skipped every other symbol, 18 of 35.
+- **Setting `KiCadSymbol.Id` does not rename the symbol's sub-units.** KiCad 10 refuses the whole
+  library over one mismatched `NAME_1_1`, so `RenameSymbol` renames them too.
+
+With those, kicad-cli 10.0.6 loads the imported libraries. The exception is a symbol that
+`(extends …)` another: that reference is not renamed, and KiCad refuses the library (#68).
+danielmeza/kicad-sharp#48 fixes both renames upstream, and kicad-sharp#53 fixes the enumeration.
+Once a KiCadSharp release carries them, delete `RenameSymbol` and the `.ToList()`.
+
+The rest of this path:
+- **Re-importing replaces** symbols, footprints and 3D models by name and says so (#69).
+- **A `.kicad_sym` that exists but fails to load is never overwritten** (#94). The symbol step fails
+  with the reason. A new library is started only when the file does not exist.
+
+The easyeda2kicad path never re-saves through KiCadSharp.
 
 ### DI wiring — one trap
 
 `Program.ConfigureLogging` and `Program.ConfigureServices` build the GUI container;
-`AddUltraLibrarianKiCadServices()` (`UltraLibrarianKiCadExtensions.cs`) registers KiCadSharp under the
+`AddUltraLibrarianKiCadServices(JlcpcbSourcePolicy)` (`UltraLibrarianKiCadExtensions.cs`) registers KiCadSharp under the
 **keyed** client name `com.ultralibrarian.kicad.importer` (re-exposed unkeyed), the providers, registry,
 aggregator, cache, rate limiter, import engine and MCP server. `ISecretStore` is registered in **both**
 the GUI and `--mcp` containers. `Services/ServiceConfigurator.cs` is an older registration path that
 **nothing calls**. Registrations added there have no effect.
 
-`ConfigureLogging` bridges `ILogger` into NLog (`AddNLog()`), so `nlog.config`'s file targets under
-`<app data>/UltraLibrarianImporter/logs/` receive output. `KiCadClientSettings` is bound only in the dead
+**Logging goes through NLog alone.** `ConfigureLogging` is `ClearProviders().AddNLog()`.
+`AddConsole()` is gone because it printed every line twice next to `nlog.config`'s console target
+(#98). The log folder is computed in code, never by `nlog.config` itself:
+- `Program.SetLogDirectory` sets NLog's global diagnostics context `logDirectory` from
+  `SpecialFolders.GetPath(ApplicationData)`, and `nlog.config` reads it as `${gdc:item=logDirectory}`.
+- NLog's own `${specialfolder}` rendered `""` on a fresh Linux account for the whole session.
+- The internal log (`nlog-internal.log`, errors only) is set there too.
+- The `Microsoft.*` and `System.Net.Http.*` `final` rules sit first in `<rules>`, because `final` only
+  stops the rules below it. `KiCadClientSettings` is bound only in the dead
 path, so KiCad connection settings entered in Settings are lost on restart.
 
 ### The MCP server (`--mcp`)
 
 `Program.RunMcpHostAsync` builds its own container and serves MCP over **stdio** (no network port)
 with three read-only tools: `search_components`, `list_providers` and `get_component_details`. **stdout
-is the protocol channel**: nothing in MCP mode may write to it. Today it stays clean only because MCP
-mode logs **nothing at all** (#80). `nlog.config`'s `ColoredConsole` target writes Info to stdout, so
-making MCP logging work means routing it to a file or stderr first. Verify any change by piping
+is the protocol channel**: nothing in MCP mode may write to it.
+
+`Program.ConfigureMcpLogging` builds MCP mode's logging (#80, #95):
+- It keeps **only the `FileTarget`s** from `nlog.config`. This is an allowlist, so a console target
+  added or renamed later cannot reach stdout.
+- It turns `autoReload` off. A reload would re-read the stdout target.
+- It adds a stderr target at Info.
+- If the log folder or `nlog.config` is unusable, it logs to stderr alone.
+- Never let NLog load `nlog.config` by itself in MCP mode, for example through a `GetCurrentClassLogger()`
+  before a configuration is assigned.
+
+Verify any change by piping
 `initialize`, `notifications/initialized` and a `tools/call`, and checking that every stdout line is
 valid JSON-RPC.
 
@@ -317,28 +377,45 @@ found in an old `config.json` is migrated into the store, and the file is rewrit
 after the store write succeeds. With no working store, tokens are session-only and never written to
 the file. **Never log a token value.**
 
-Caveat (#70): on Unix, `Environment.GetFolderPath` returns `""` for a folder that does not exist yet,
-and five call sites would then resolve relative to the working directory.
+**Never call `Environment.GetFolderPath` directly; use `SpecialFolders.GetPath`** (#70, #93). On Unix,
+`GetFolderPath` returns `""` for a folder that does not exist yet, such as `~/.config` on a fresh account,
+and `Path.Combine("", …)` then lands in the working directory. The helper uses `DoNotVerify`,
+creates nothing, and throws when there is no absolute path (a relative `HOME`). A relative
+`DownloadDirectory` already saved in `config.json` is dropped on load, and the file is rewritten.
 
 ### Running the app during development — without touching the user's machine
 
 Runtime checks matter here: two real defects (#77, #78) passed every build, format and unit-level
 check. To run it:
 - a headless display — Xvfb, not the user's `DISPLAY`;
-- a temp `HOME` and `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME`, plus a `Documents` folder in
-  it (see #70);
+- a temp `HOME` and `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME`. Since #93 they do not
+  need to exist, and leaving them missing is a useful check;
 - `DBUS_SESSION_BUS_ADDRESS` pointed at a dead socket, so the libsecret store cannot read or write the
-  user's real keyring.
+  user's real keyring;
+- a **short** `TMPDIR` of your own. CEF puts its `SingletonSocket` under it, and a Unix socket path must
+  fit in 108 bytes. A long `TMPDIR`, such as one deep inside a scratch directory, aborts the app at
+  startup (exit 133, dumped core) on every run. Point it at a short symlink instead of `/tmp`, so CEF's
+  temp files don't land in the real `/tmp` either.
 
-A process that exits on its own under `timeout` is **not** a clean run. Exit 134 or 139, or
+A process that exits on its own under `timeout` is **not** a clean run. Exit 133, 134 or 139, or
 "dumped core", means it crashed — SIGTERM from `timeout` does not dump core.
 
 ### Tracked work
 
-Open: importing from the explorer for providers other than EasyEDA/LCSC (#47), CAD availability (#48),
-providers (#51 until the official API is checked with real credentials, #56, #57), Avalonia 12
-(#67, draft #75), symbols KiCad cannot load (#68), duplicate symbols (#69), special-folder paths (#70), KiCad 11 IPC
-(#72 tables, #73 datasheets), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
+Open, and each of these waits on something outside this repo:
+- **Real credentials or plans:**
+  - #48: Octopart's `cad` has not been seen in a live, authenticated response;
+  - #51: the official JLCPCB API has not been called with real credentials;
+  - #109: Nexar plan-restricted fields.
+- **No usable API:** #56 (SnapEDA) and #57 (SamacSys). Research is posted on each; both need access
+  granted by the vendor.
+- **Upstream code:**
+  - #67 / #75: Avalonia 12, waiting on OutSystems/CefGlue#249;
+  - #68: `extends` rename, waiting on a KiCadSharp release with kicad-sharp#48;
+  - #72 and #73: KiCad 11's IPC library commands are declared on KiCad master, but nothing handles them.
+- **In progress:** #110 (JLCPCB rate limiting) and #112 (Settings save).
+
+Upstream: danielmeza/kicad-sharp#46 and #47, danielmeza/sexpressions#24.
 
 ## Release state
 
