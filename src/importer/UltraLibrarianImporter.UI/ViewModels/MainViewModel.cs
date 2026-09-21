@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Avalonia.Threading;
@@ -21,6 +22,7 @@ using Microsoft.Extensions.Logging;
 using ReactiveUI;
 
 using UltraLibrarianImporter.UI.Services;
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Views;
 
@@ -34,12 +36,16 @@ public partial class MainViewModel : ObservableObject
     private readonly IKiCadImportEngine _importEngine;
     private readonly IComponentProviderRegistry _providerRegistry;
     private readonly IPartAggregatorService _aggregatorService;
+    private readonly EasyEda2KiCadLocator _easyEda2KiCadLocator;
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
 
     [ObservableProperty]
     private bool _isProgressVisible;
+
+    [ObservableProperty]
+    private bool _isProgressIndeterminate;
 
     [ObservableProperty]
     private int _progressValue;
@@ -166,7 +172,8 @@ public partial class MainViewModel : ObservableObject
         KiCad kiCad,
         IKiCadImportEngine importEngine,
         IComponentProviderRegistry providerRegistry,
-        IPartAggregatorService aggregatorService)
+        IPartAggregatorService aggregatorService,
+        EasyEda2KiCadLocator easyEda2KiCadLocator)
     {
         _logger = logger;
         _configService = configService;
@@ -174,6 +181,7 @@ public partial class MainViewModel : ObservableObject
         _importEngine = importEngine;
         _providerRegistry = providerRegistry;
         _aggregatorService = aggregatorService;
+        _easyEda2KiCadLocator = easyEda2KiCadLocator;
 
         _selectedProvider = _providerRegistry.SelectedProvider;
         _webviewUrl = SelectedProvider.SearchUrl;
@@ -212,6 +220,10 @@ public partial class MainViewModel : ObservableObject
             .Select(query => SearchProviders(query, uiThread))
             .Switch()
             .Subscribe(ApplySearchUpdate, ex => _logger.LogError(ex, "The Part Explorer search pipeline stopped"));
+
+        // Posted rather than run here, so that it starts once the dispatcher is running and every
+        // continuation of the check comes back to the UI thread.
+        Dispatcher.UIThread.Post(() => CheckEasyEda2KiCadCommand.Execute(null));
     }
 
     partial void OnSelectedProviderChanged(IComponentProvider value)
@@ -506,6 +518,124 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Navigating to {part.PartNumber} on {part.ProviderName}...";
     }
 
+    // EasyEDA / LCSC import through the user-installed easyeda2kicad (#76). Ordinary CommunityToolkit
+    // commands: an import is one awaited operation, not a stream like the search above.
+
+    /// <summary>True when the last check found a working easyeda2kicad.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportPartCommand))]
+    private bool _isEasyEda2KiCadAvailable;
+
+    /// <summary>
+    /// True when the last check found no easyeda2kicad, which shows the install instructions. False
+    /// until a check has finished, so they do not flash up at start-up.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isEasyEda2KiCadMissing;
+
+    /// <summary>True while a part is being imported with easyeda2kicad; shows the Cancel button.</summary>
+    [ObservableProperty]
+    private bool _isImportingPart;
+
+    /// <summary>The command that installs easyeda2kicad on this system.</summary>
+    public string EasyEda2KiCadInstallCommand => EasyEda2KiCadLocator.InstallHelp.Command;
+
+    public string EasyEda2KiCadInstallNote => EasyEda2KiCadLocator.InstallHelp.Note;
+
+    /// <summary>
+    /// Looks for easyeda2kicad again: at start-up, after Settings are saved, and from the "Check again"
+    /// button once the user has installed it.
+    /// </summary>
+    [RelayCommand]
+    private async Task CheckEasyEda2KiCad()
+    {
+        EasyEda2KiCadDetection detection;
+        try
+        {
+            detection = await _easyEda2KiCadLocator.LocateAsync(_configService.EasyEda2KiCadPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error looking for easyeda2kicad");
+            IsEasyEda2KiCadAvailable = false;
+            IsEasyEda2KiCadMissing = true;
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Could not look for easyeda2kicad: {ex.Message}");
+            return;
+        }
+
+        IsEasyEda2KiCadAvailable = detection.IsAvailable;
+        IsEasyEda2KiCadMissing = !detection.IsAvailable;
+        var status = detection.Command is { } command
+            ? $"EasyEDA / LCSC import: using {command.Description}."
+            : "EasyEDA / LCSC parts cannot be imported: easyeda2kicad was not found.";
+
+        ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] {status}");
+        if (!detection.IsAvailable)
+        {
+            foreach (var attempt in detection.Attempts)
+            {
+                ImportMessages.Add($"  - {attempt}");
+            }
+
+            ImportMessages.Add($"  - Install it with: {EasyEda2KiCadInstallCommand}");
+        }
+    }
+
+    /// <summary>
+    /// A row's Import button: converts the part with easyeda2kicad and registers the library. Enabled
+    /// for results that carry an LCSC part number, once easyeda2kicad has been found.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanImportPart), IncludeCancelCommand = true)]
+    private async Task ImportPart(PartSearchResult? part, CancellationToken cancellationToken)
+    {
+        if (part?.LcscPartNumber is not { } lcscPartNumber)
+        {
+            return;
+        }
+
+        IComponentProvider? provider = _providerRegistry.GetProvider(part.ProviderId);
+        if (provider is null)
+        {
+            StatusMessage = $"Cannot import {part.PartNumber}: {part.ProviderName} is not available.";
+            return;
+        }
+
+        var label = $"{part.PartNumber} ({lcscPartNumber})";
+        StatusMessage = $"Importing {label} with easyeda2kicad...";
+        ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] [{part.ProviderName}] Importing {label} with easyeda2kicad...");
+        IsImportingPart = true;
+        IsProgressIndeterminate = true;
+        IsProgressVisible = true;
+
+        try
+        {
+            ImportResult result = await _importEngine.ImportLcscPartAsync(
+                provider, lcscPartNumber, SelectedImportType, _configService.GetImportOptions(), cancellationToken);
+
+            var outcome = result.Cancelled ? "cancelled" : result.Success ? "succeeded" : "failed";
+            StatusMessage = $"Import of {label} {outcome}";
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import {outcome} ({label})");
+            foreach (var detail in result.Details)
+            {
+                ImportMessages.Add($"  - {detail}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing {Part}", label);
+            StatusMessage = $"Error: {ex.Message}";
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Error: {ex.Message}");
+        }
+        finally
+        {
+            IsImportingPart = false;
+            IsProgressIndeterminate = false;
+            IsProgressVisible = false;
+        }
+    }
+
+    private bool CanImportPart(PartSearchResult? part) => IsEasyEda2KiCadAvailable && part?.LcscPartNumber is not null;
+
     public void LibraryDownloaded(string filePath)
     {
         if (!SelectedProvider.CanHandleDownload(filePath) && !filePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
@@ -561,6 +691,9 @@ public partial class MainViewModel : ObservableObject
             if (result)
             {
                 _logger.LogInformation("Settings saved successfully.");
+
+                // The easyeda2kicad path may have changed.
+                await CheckEasyEda2KiCadCommand.ExecuteAsync(null);
             }
         }
         catch (Exception ex)

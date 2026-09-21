@@ -41,6 +41,12 @@ public interface IConfigService
     string LibraryName { get; set; }
 
     /// <summary>
+    /// Path to the user-installed easyeda2kicad executable, or to a Python interpreter that has it
+    /// installed. Empty to look for it on PATH and then in KiCad's Python interpreter (#76).
+    /// </summary>
+    string EasyEda2KiCadPath { get; set; }
+
+    /// <summary>
     /// API token for Octopart / Nexar part search. Persisted in the OS credential store, never in
     /// config.json; see <see cref="SecretStorage"/>.
     /// </summary>

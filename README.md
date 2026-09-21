@@ -36,6 +36,44 @@ Needs KiCad 9.0 or newer, Python 3.8+ and wxPython.
 3. Choose what you want — symbol, footprint, 3D model.
 4. **Import.** It goes into your project's libraries.
 
+## EasyEDA / LCSC parts (optional: easyeda2kicad)
+
+Search results from **EasyEDA / LCSC** that carry an LCSC part number (`C2040`, …) have an **Import**
+button. It converts the part with [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) and adds the
+symbol, footprint and 3D model to your KiCad libraries.
+
+**easyeda2kicad is an optional third-party tool, licensed under AGPL-3.0. It is not part of this project**,
+and this project does not bundle, vendor, install or modify it. You install it yourself; kicad-ultra only
+runs it as a separate program, through its documented command-line flags, and reads back the KiCad library
+files it writes. Without it, everything else works and the Import button stays disabled.
+
+Install it (it needs Python 3.9 or newer):
+
+| KiCad installed as | Command, in a terminal |
+|---|---|
+| a native package (Windows, macOS, Linux) | `pipx install easyeda2kicad` |
+| the **Flatpak** (Linux) | `flatpak run --command=pip3 org.kicad.KiCad install --user easyeda2kicad` |
+
+Under the Flatpak, KiCad — and this importer, which KiCad starts — run inside KiCad's sandbox, so a copy
+installed with `pip` or `pipx` on the host is invisible to them. The command above installs it inside the
+sandbox, where KiCad's own `pip3` puts user packages.
+
+The importer looks for it in this order, and **Settings → Component Providers → easyeda2kicad** shows what
+it found:
+
+1. the path set there — `easyeda2kicad` itself, or a Python interpreter that has it installed;
+2. `easyeda2kicad` on `PATH`;
+3. `python -m easyeda2kicad` with KiCad's Python interpreter (`api.interpreter_path` in `kicad_common.json`).
+
+The part is converted straight into the same library the other imports use (`<project>_EasyEDA` in the
+project folder, or `EasyEDA` next to KiCad's global tables), then registered in the library table.
+Re-importing a part replaces it rather than adding a second copy. When an import fails, times out or is
+cancelled, nothing is registered, the symbol library is restored and the files the run created are removed;
+the log names anything it could not undo.
+
+easyeda2kicad downloads the part's data from EasyEDA itself; that traffic comes from the tool you
+installed, not from kicad-ultra.
+
 ## How it works
 
 Two pieces:
@@ -91,6 +129,9 @@ isn't affiliated with or endorsed by any of them.
 Part search results labelled **EasyEDA / LCSC** come from
 [jlcsearch](https://github.com/tscircuit/jlcsearch), an independent index of JLCPCB's parts list
 run by tscircuit — not from JLCPCB or LCSC directly. The app says so beside each of those results.
+
+easyeda2kicad is © its authors and licensed under AGPL-3.0; it is a separate program that you install, not
+a part or a dependency of this MIT-licensed project.
 
 ## Contributing
 

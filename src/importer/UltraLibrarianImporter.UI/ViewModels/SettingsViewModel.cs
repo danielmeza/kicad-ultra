@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Threading.Tasks;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,6 +11,7 @@ using KiCadSharp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
@@ -37,6 +39,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IOptionsMonitor<KiCadClientSettings> _kicadSettings;
     private readonly IComponentProviderRegistry? _providerRegistry;
+    private readonly EasyEda2KiCadLocator? _easyEda2KiCadLocator;
     private readonly KiCadClientSettings _originalSettings;
 
     [ObservableProperty]
@@ -68,6 +71,22 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _libraryName = string.Empty;
+
+    /// <summary>
+    /// easyeda2kicad, or a Python interpreter that has it installed (#76). Empty to look on PATH and
+    /// then in KiCad's Python.
+    /// </summary>
+    [ObservableProperty]
+    private string _easyEda2KiCadPath = string.Empty;
+
+    /// <summary>What the last "Check" found, for the path as typed (saved or not).</summary>
+    [ObservableProperty]
+    private string _easyEda2KiCadStatus = string.Empty;
+
+    /// <summary>The command that installs easyeda2kicad on this system.</summary>
+    public string EasyEda2KiCadInstallCommand => EasyEda2KiCadLocator.InstallHelp.Command;
+
+    public string EasyEda2KiCadInstallNote => EasyEda2KiCadLocator.InstallHelp.Note;
 
     // Provider configuration
     public ObservableCollection<ProviderConfigItemViewModel> ConfiguredProviders { get; } = [];
@@ -122,6 +141,7 @@ public partial class SettingsViewModel : ObservableObject
     // Events
     public event EventHandler<EventArgs>? BrowseForFolderRequested;
     public event EventHandler<EventArgs>? BrowseForTargetPathRequested;
+    public event EventHandler<EventArgs>? BrowseForEasyEda2KiCadRequested;
     public event EventHandler<bool>? SettingsSaved;
     public event EventHandler<string>? CopyToClipboardRequested;
 
@@ -129,12 +149,14 @@ public partial class SettingsViewModel : ObservableObject
         IConfigService configService,
         ILogger<SettingsViewModel> logger,
         IOptionsMonitor<KiCadClientSettings> kicadSettings,
-        IComponentProviderRegistry? providerRegistry = null)
+        IComponentProviderRegistry? providerRegistry = null,
+        EasyEda2KiCadLocator? easyEda2KiCadLocator = null)
     {
         _configService = configService;
         _logger = logger;
         _kicadSettings = kicadSettings;
         _providerRegistry = providerRegistry;
+        _easyEda2KiCadLocator = easyEda2KiCadLocator;
 
         _originalSettings = new KiCadClientSettings
         {
@@ -162,6 +184,7 @@ public partial class SettingsViewModel : ObservableObject
         UseProjectPath = _configService.UseProjectPath;
         AutoImportWhenDownloaded = _configService.AutoImportWhenDownloaded;
         LibraryName = _configService.LibraryName;
+        EasyEda2KiCadPath = _configService.EasyEda2KiCadPath;
 
         SelectedDefaultProviderId = string.IsNullOrEmpty(_configService.DefaultProviderId)
             ? "ultralibrarian"
@@ -189,7 +212,7 @@ public partial class SettingsViewModel : ObservableObject
 
                 var caps = p.Id switch
                 {
-                    "easyeda" => "Direct API: Yes • Stock & Pricing from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts • Symbols, Footprints, 3D Models",
+                    "easyeda" => "Direct API: Yes • Stock & Pricing from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts • Symbols, footprints and 3D models through easyeda2kicad, an optional third-party tool (below)",
                     "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
                     "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
                     "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
@@ -269,6 +292,7 @@ public partial class SettingsViewModel : ObservableObject
             _configService.UseProjectPath = UseProjectPath;
             _configService.AutoImportWhenDownloaded = AutoImportWhenDownloaded;
             _configService.LibraryName = LibraryName;
+            _configService.EasyEda2KiCadPath = EasyEda2KiCadPath.Trim();
 
             _configService.DefaultProviderId = SelectedDefaultProviderId;
 
@@ -304,6 +328,37 @@ public partial class SettingsViewModel : ObservableObject
     private void BrowseTargetPath()
     {
         BrowseForTargetPathRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void BrowseEasyEda2KiCad()
+    {
+        BrowseForEasyEda2KiCadRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Looks for easyeda2kicad with the path as it is typed now, before it is saved.</summary>
+    [RelayCommand]
+    private async Task CheckEasyEda2KiCad()
+    {
+        if (_easyEda2KiCadLocator is null)
+        {
+            EasyEda2KiCadStatus = "easyeda2kicad cannot be checked from here.";
+            return;
+        }
+
+        EasyEda2KiCadStatus = "Looking for easyeda2kicad...";
+        try
+        {
+            EasyEda2KiCadDetection detection = await _easyEda2KiCadLocator.LocateAsync(EasyEda2KiCadPath);
+            EasyEda2KiCadStatus = detection.Command is { } command
+                ? $"Found: {command.Description}."
+                : $"Not found. {string.Join(" ", detection.Attempts)}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error looking for easyeda2kicad");
+            EasyEda2KiCadStatus = $"Could not look for easyeda2kicad: {ex.Message}";
+        }
     }
 
     [RelayCommand]

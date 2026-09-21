@@ -102,6 +102,7 @@ public partial class SettingsWindow : Window
     {
         _viewModel.BrowseForFolderRequested += OnBrowseForFolderRequested;
         _viewModel.BrowseForTargetPathRequested += OnBrowseForTargetPathRequested;
+        _viewModel.BrowseForEasyEda2KiCadRequested += OnBrowseForEasyEda2KiCadRequested;
         _viewModel.SettingsSaved += OnSettingsSaved;
         _viewModel.CopyToClipboardRequested += async (s, text) =>
         {
@@ -164,6 +165,28 @@ public partial class SettingsWindow : Window
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error browsing for target path");
+        }
+    }
+
+    private async void OnBrowseForEasyEda2KiCadRequested(object? sender, EventArgs e)
+    {
+        try
+        {
+            IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Select easyeda2kicad, or a Python interpreter that has it installed",
+                AllowMultiple = false
+            });
+
+            if (files.Count > 0)
+            {
+                _viewModel.EasyEda2KiCadPath = files[0].Path.LocalPath;
+                _logger.LogInformation("User selected easyeda2kicad path: {Path}", _viewModel.EasyEda2KiCadPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error browsing for easyeda2kicad");
         }
     }
 

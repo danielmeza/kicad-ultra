@@ -119,8 +119,12 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
                     }
                 }
 
-                var datasheetUrl = lcscCode > 0
-                    ? $"https://jlcpcb.com/parts/componentSearch?searchTxt=C{lcscCode}"
+                // The LCSC code as the index reported it, and nothing when it reported none: this is
+                // what the easyeda2kicad import converts (#76), so it is never derived from the MPN.
+                var lcscPartNumber = lcscCode > 0 ? string.Create(CultureInfo.InvariantCulture, $"C{lcscCode}") : null;
+
+                var datasheetUrl = lcscPartNumber is not null
+                    ? $"https://jlcpcb.com/parts/componentSearch?searchTxt={lcscPartNumber}"
                     : $"https://jlcpcb.com/parts/componentSearch?searchTxt={Uri.EscapeDataString(mpn)}";
 
                 results.Add(new PartSearchResult(
@@ -138,7 +142,8 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
                     DatasheetUrl: datasheetUrl,
                     PackageDownloadUrl: null,
                     ProviderColor: ProviderColor,
-                    Attribution: DataAttribution
+                    Attribution: DataAttribution,
+                    LcscPartNumber: lcscPartNumber
                 ));
             }
         }

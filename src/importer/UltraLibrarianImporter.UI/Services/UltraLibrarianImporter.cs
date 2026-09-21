@@ -18,6 +18,12 @@ public class ImportOptions
     public bool UseProjectPath { get; set; } = true;
     public bool AutoImportWhenDownloaded { get; set; } = true;
     public string LibraryName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The easyeda2kicad executable, or a Python interpreter to run it with <c>-m</c>, chosen in Settings.
+    /// Empty to look for it on <c>PATH</c> and then in KiCad's Python (#76).
+    /// </summary>
+    public string EasyEda2KiCadPath { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -41,6 +47,10 @@ public class ImportResult
     public bool SymbolImportSuccess { get; set; }
     public bool FootprintImportSuccess { get; set; }
     public bool Model3DImportSuccess { get; set; }
+
+    /// <summary>The user cancelled the import before it finished. <see cref="Success"/> is then false.</summary>
+    public bool Cancelled { get; set; }
+
     public List<string> Details { get; } = [];
 }
 
