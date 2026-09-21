@@ -850,7 +850,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
         if (OperatingSystem.IsWindows())
         {
-            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var programFiles = SpecialFolders.GetPath(Environment.SpecialFolder.ProgramFiles);
             var modelDir = Path.Combine(programFiles, "KiCad", "7.0", "share", "kicad", "3dmodels");
             if (Directory.Exists(modelDir))
             {

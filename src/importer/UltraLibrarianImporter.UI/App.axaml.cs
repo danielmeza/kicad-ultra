@@ -11,6 +11,7 @@ using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
+using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 using UltraLibrarianImporter.UI.Views;
@@ -71,11 +72,13 @@ public partial class App : Application
 
             if (_serviceProvider != null)
             {
-                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad");
+                // CEF rejects a relative cache path and falls back to in-memory storage (#70).
+                var directory = Path.Combine(SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData), "UltralibrarianKicad");
                 var browserPath = Path.Combine(directory, "browser");
                 var cachePath = Path.Combine(browserPath, "cache");
                 var cacheRootPath = Path.Combine(browserPath, "root");
                 var resourcesPath = Path.Combine(browserPath, "resources");
+                _logger.LogInformation("Browser cache: {CachePath}", cachePath);
 
 
                 if (!CefRuntimeLoader.IsLoaded)
