@@ -36,11 +36,23 @@ Needs KiCad 9.0 or newer, Python 3.8+ and wxPython.
 3. Choose what you want — symbol, footprint, 3D model.
 4. **Import.** It goes into your project's libraries.
 
+The **Part Explorer** tab searches EasyEDA / LCSC and, with your Nexar token, Octopart at once. Each
+result has the ways it can be imported:
+
+- **Import**, for a result with an LCSC part number: see
+  [EasyEDA / LCSC parts](#easyeda--lcsc-parts-optional-easyeda2kicad).
+- **Find on Ultra Librarian**, for a result with a manufacturer part number: it opens Ultra Librarian's
+  search for that part number in the Web Browser tab. Sign in, download the part's KiCad model, and it is
+  imported as above.
+
+A button that cannot be used says why when you hover over it.
+
 ## EasyEDA / LCSC parts (optional: easyeda2kicad)
 
-Search results from **EasyEDA / LCSC** that carry an LCSC part number (`C2040`, …) have an **Import**
-button. It converts the part with [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) and adds the
-symbol, footprint and 3D model to your KiCad libraries.
+Search results that carry an LCSC part number (`C2040`, …) have an **Import** button: those from
+**EasyEDA / LCSC**, and those from **Octopart** when LCSC sells the part (its LCSC SKU). It converts the
+part with [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) and adds the symbol, footprint and
+3D model to your KiCad libraries.
 
 **easyeda2kicad is an optional third-party tool, licensed under AGPL-3.0. It is not part of this project**,
 and this project does not bundle, vendor, install or modify it. You install it yourself; kicad-ultra only

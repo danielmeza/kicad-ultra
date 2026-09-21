@@ -140,7 +140,6 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
                     HasFootprint: false,
                     Has3DModel: false,
                     DatasheetUrl: datasheetUrl,
-                    PackageDownloadUrl: null,
                     ProviderColor: ProviderColor,
                     Attribution: DataAttribution,
                     LcscPartNumber: lcscPartNumber

@@ -55,7 +55,7 @@
       
       <!-- TAB 1: Unified Multi-Provider Part Explorer -->
       <TabItem Header="🔍 Part Explorer (Aggregated Search)">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="10">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="10">
           <!-- Search Header -->
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
@@ -281,17 +281,41 @@
                         </Border>
                       </StackPanel>
 
-                      <!-- Actions: import (results with an LCSC code, through easyeda2kicad), and open the part's page -->
-                      <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left" VerticalAlignment="Center">
+                      <!-- Actions: the import routes this result has (#47), and open the part's page. A
+                           disabled route says why in its tip; a result with no route at all says so. -->
+                      <WrapPanel Grid.Column="6" ItemSpacing="6" LineSpacing="4" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <!-- Results with an LCSC code, through easyeda2kicad (#76) -->
                         <Button Content="Import"
                                 Command="{Binding ((vm:MainViewModel)DataContext).ImportPartCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}"
                                 IsVisible="{Binding LcscPartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                ToolTip.Tip="Convert this part with easyeda2kicad and add it to your KiCad libraries"
+                                ToolTip.Tip="{Binding ((vm:MainViewModel)DataContext).ImportPartToolTip, RelativeSource={RelativeSource AncestorType=Window}}"
                                 ToolTip.ShowOnDisabled="True"
                                 Padding="10,4"
                                 VerticalContentAlignment="Center"
                                 FontSize="11"/>
+                        <!-- Results with a manufacturer part number, through the Web Browser tab's Ultra Librarian download -->
+                        <Button Content="Find on Ultra Librarian"
+                                Command="{Binding ((vm:MainViewModel)DataContext).FindOnUltraLibrarianCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding PartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                ToolTip.Tip="{Binding ((vm:MainViewModel)DataContext).FindOnUltraLibrarianToolTip, RelativeSource={RelativeSource AncestorType=Window}}"
+                                ToolTip.ShowOnDisabled="True"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                        <TextBlock Text="No import route"
+                                   ToolTip.Tip="This result has neither an LCSC code nor a manufacturer part number to look up."
+                                   FontSize="11"
+                                   Opacity="0.6"
+                                   VerticalAlignment="Center">
+                          <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                              <Binding Path="LcscPartNumber" Converter="{x:Static StringConverters.IsNullOrEmpty}"/>
+                              <Binding Path="PartNumber" Converter="{x:Static StringConverters.IsNullOrEmpty}"/>
+                            </MultiBinding>
+                          </TextBlock.IsVisible>
+                        </TextBlock>
                         <Button Content="Open Page"
                                 Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                 CommandParameter="{Binding}"
@@ -299,7 +323,7 @@
                                 Padding="10,4"
                                 VerticalContentAlignment="Center"
                                 FontSize="11"/>
-                      </StackPanel>
+                      </WrapPanel>
 
                       <!-- Data source, when it is not the provider itself -->
                       <TextBlock Grid.Row="1"
@@ -335,6 +359,15 @@
               </StackPanel>
             </Grid>
           </Border>
+
+          <!-- Enabled providers the search above does not reach, so that their absence says why -->
+          <TextBlock Grid.Row="5"
+                     Text="{Binding BrowserOnlyProviders}"
+                     IsVisible="{Binding BrowserOnlyProviders, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap"
+                     FontSize="11"
+                     Opacity="0.65"
+                     Margin="0,6,0,0"/>
         </Grid>
       </TabItem>
 

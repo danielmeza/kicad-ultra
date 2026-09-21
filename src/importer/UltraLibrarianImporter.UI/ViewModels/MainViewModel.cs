@@ -24,6 +24,7 @@ using ReactiveUI;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers;
 using UltraLibrarianImporter.UI.Views;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
@@ -162,6 +163,22 @@ public partial class MainViewModel : ObservableObject
 
     public IReadOnlyList<IComponentProvider> AvailableProviders => _providerRegistry.Providers;
 
+    /// <summary>
+    /// Names the enabled providers the Part Explorer does not search, so that their absence from the
+    /// results says why: UltraLibrarian is browser-only by design, and SnapEDA (#56) and SamacSys (#57)
+    /// have no search yet. Empty when every enabled provider is searched.
+    /// </summary>
+    public string BrowserOnlyProviders
+    {
+        get
+        {
+            var names = AvailableProviders.Where(p => !p.SupportsDirectApi).Select(p => p.DisplayName).ToList();
+            return names.Count == 0
+                ? string.Empty
+                : $"Not searched here, only in the Web Browser tab: {string.Join(", ", names)}.";
+        }
+    }
+
     public string DownloadDirectory => _configService.DownloadDirectory;
 
     public ObservableCollection<string> ImportMessages { get; } = [];
@@ -193,6 +210,9 @@ public partial class MainViewModel : ObservableObject
         _providerRegistry.RegistryUpdated += () =>
         {
             OnPropertyChanged(nameof(AvailableProviders));
+            OnPropertyChanged(nameof(BrowserOnlyProviders));
+            OnPropertyChanged(nameof(FindOnUltraLibrarianToolTip));
+            FindOnUltraLibrarianCommand.NotifyCanExecuteChanged();
             if (!AvailableProviders.Contains(SelectedProvider))
             {
                 SelectedProvider = _providerRegistry.SelectedProvider;
@@ -524,6 +544,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>True when the last check found a working easyeda2kicad.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ImportPartCommand))]
+    [NotifyPropertyChangedFor(nameof(ImportPartToolTip))]
     private bool _isEasyEda2KiCadAvailable;
 
     /// <summary>
@@ -531,7 +552,14 @@ public partial class MainViewModel : ObservableObject
     /// until a check has finished, so they do not flash up at start-up.
     /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ImportPartToolTip))]
     private bool _isEasyEda2KiCadMissing;
+
+    /// <summary>A row's Import button tip, which also says why the button is disabled.</summary>
+    public string ImportPartToolTip =>
+        IsEasyEda2KiCadAvailable ? "Convert this part with easyeda2kicad and add it to your KiCad libraries"
+        : IsEasyEda2KiCadMissing ? "Unavailable: easyeda2kicad is not installed. The notice above says how to install it."
+        : "Looking for easyeda2kicad...";
 
     /// <summary>True while a part is being imported with easyeda2kicad; shows the Cancel button.</summary>
     [ObservableProperty]
@@ -593,7 +621,10 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        IComponentProvider? provider = _providerRegistry.GetProvider(part.ProviderId);
+        // easyeda2kicad converts EasyEDA's data whichever search found the LCSC code, so the part goes into
+        // the EasyEDA library, also when it is an Octopart result (#47).
+        IComponentProvider? provider = _providerRegistry.AllProviders.OfType<EasyEdaProvider>().FirstOrDefault()
+            ?? _providerRegistry.GetProvider(part.ProviderId);
         if (provider is null)
         {
             StatusMessage = $"Cannot import {part.PartNumber}: {part.ProviderName} is not available.";
@@ -635,6 +666,50 @@ public partial class MainViewModel : ObservableObject
     }
 
     private bool CanImportPart(PartSearchResult? part) => IsEasyEda2KiCadAvailable && part?.LcscPartNumber is not null;
+
+    // Any result with a manufacturer part number, from whichever provider, can also be imported the way
+    // the Web Browser tab always could (#47): open Ultra Librarian's search for it there, and the KiCad
+    // model the user downloads is intercepted and imported like any other Ultra Librarian download.
+
+    /// <summary>
+    /// UltraLibrarian's provider, or <c>null</c> when it is turned off in Settings. Its downloads are
+    /// the ones Find on Ultra Librarian imports.
+    /// </summary>
+    private UltraLibrarianProvider? UltraLibrarian => AvailableProviders.OfType<UltraLibrarianProvider>().FirstOrDefault();
+
+    /// <summary>A row's Find on Ultra Librarian button tip, which also says why the button is disabled.</summary>
+    public string FindOnUltraLibrarianToolTip => UltraLibrarian is null
+        ? "Unavailable: UltraLibrarian is turned off in Settings."
+        : "Search Ultra Librarian for this part number in the Web Browser tab. Download its KiCad model there to import it.";
+
+    /// <summary>
+    /// A row's Find on Ultra Librarian button: selects the UltraLibrarian provider and opens its search
+    /// for the part number in the Web Browser tab. The import itself is the browser's download flow
+    /// (<see cref="LibraryDownloaded"/>).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanFindOnUltraLibrarian))]
+    private void FindOnUltraLibrarian(PartSearchResult? part)
+    {
+        if (part is null || string.IsNullOrWhiteSpace(part.PartNumber) || UltraLibrarian is not { } ultraLibrarian)
+        {
+            return;
+        }
+
+        var partNumber = part.PartNumber.Trim();
+        var searchUrl = UltraLibrarianProvider.PartSearchUrl(partNumber);
+        _logger.LogInformation("Finding {Part} ({Provider} result) on Ultra Librarian: {Url}", partNumber, part.ProviderName, searchUrl);
+
+        // A finished download is imported with the selected provider, so it must be UltraLibrarian's by
+        // then. Switching to it also sends the browser to its start page, which the search replaces at once.
+        SelectedProvider = ultraLibrarian;
+        WebviewUrl = searchUrl;
+        SelectedTabIndex = 1;
+        StatusMessage = $"Searching Ultra Librarian for {partNumber}. Download its KiCad model there to import it.";
+        ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] [{ultraLibrarian.DisplayName}] Searching for {partNumber} ({part.ProviderName} result). Download its KiCad model to import it.");
+    }
+
+    private bool CanFindOnUltraLibrarian(PartSearchResult? part) =>
+        UltraLibrarian is not null && !string.IsNullOrWhiteSpace(part?.PartNumber);
 
     public void LibraryDownloaded(string filePath)
     {
