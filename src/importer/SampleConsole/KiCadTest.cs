@@ -62,7 +62,7 @@ internal class KiCadTest
                     // Create a clone with a new name
                     KiCadSymbol clonedSymbol = KiCadUtils.CloneSymbol(symbol, "STUSB4500_CLONE");
                     var newLibrary = new KiCadSymbolLibrary();
-                    newLibrary.AddSymbol(clonedSymbol);
+                    _ = newLibrary.AddSymbol(clonedSymbol);
                     newLibrary.Save(outputPath);
 
                     Console.WriteLine($"Modified symbol saved to: {outputPath}");
@@ -98,21 +98,21 @@ internal class KiCadTest
             _ = symbol.AddProperty("Description", "Test Component for Parser Demo");
 
             // Add pins
-            symbol.AddPin(new KiCadPin("input", "line",
+            _ = symbol.AddPin(new KiCadPin("input", "line",
                 new KiCadPosition(0, 0, 0), 2.54, "VCC", "1"));
 
-            symbol.AddPin(new KiCadPin("output", "line",
+            _ = symbol.AddPin(new KiCadPin("output", "line",
                 new KiCadPosition(0, -2.54, 0), 2.54, "OUT", "2"));
 
-            symbol.AddPin(new KiCadPin("power_in", "line",
+            _ = symbol.AddPin(new KiCadPin("power_in", "line",
                 new KiCadPosition(0, -5.08, 0), 2.54, "GND", "3"));
 
             // Add a rectangle to represent the symbol body
             var rect = new KiCadRectangle(2.54, 2.54, 12.7, -7.62);
-            symbol.AddGraphicalItem(rect);
+            _ = symbol.AddGraphicalItem(rect);
 
             // Add the symbol to the library
-            library.AddSymbol(symbol);
+            _ = library.AddSymbol(symbol);
 
             // Save the library
             var outputPath = Path.Combine(Path.GetTempPath(), "test_created_symbol.kicad_sym");
@@ -135,8 +135,9 @@ internal class KiCadTest
             // Create a new footprint
             var footprint = new KiCadFootprint("TEST_FOOTPRINT");
 
-            // Add attributes for SMD
-            footprint.Attributes.Add("smd");
+            // Add attributes for SMD. KiCadSharp 0.2 made Attributes a read-only snapshot of the
+            // (attr ...) form, so the attribute is written through the footprint's node instead.
+            _ = footprint.Node.SetChildValue(KiCadTokens.Footprint.Attr, "smd", SQuoteStyle.Bare);
 
             // KiCadFootprint's Add* methods return the element they just created - KiCadPad,
             // KiCadFpLine, KiCadModel - rather than the footprint, so they cannot be chained
