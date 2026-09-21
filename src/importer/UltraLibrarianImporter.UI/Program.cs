@@ -1,26 +1,20 @@
-using System;
-using System.Diagnostics;
+﻿using System;
 using System.Runtime.Versioning;
-
 using Avalonia;
-
 using Lemon.Hosting.AvaloniauiDesktop;
-
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-
 using NLog;
 using NLog.Extensions.Logging;
-
-using KiCadSharp;
+using NLog.Targets;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Mcp;
 
 namespace UltraLibrarianImporter.UI;
 
-sealed class Program
+internal sealed class Program
 {
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
@@ -32,9 +26,9 @@ sealed class Program
     public static void Main(string[] args)
     {
         // Initialize NLog
-        LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
+        _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
 
-        bool isMcp = Array.Exists(args, a =>
+        var isMcp = Array.Exists(args, a =>
             string.Equals(a, "--mcp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "-mcp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "mcp", StringComparison.OrdinalIgnoreCase));
@@ -43,14 +37,14 @@ sealed class Program
         {
             try
             {
-                var consoleTarget = LogManager.Configuration?.FindTargetByName("console");
+                Target? consoleTarget = LogManager.Configuration?.FindTargetByName("console");
                 if (consoleTarget != null)
                 {
                     LogManager.Configuration?.RemoveTarget("console");
                     LogManager.ReconfigExistingLoggers();
                 }
 
-                RunMcpHostAsync(args).GetAwaiter().GetResult();
+                RunMcpHostAsync().GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -69,8 +63,7 @@ sealed class Program
             // Create the host
             using IHost host = CreateApplicationBuilder(args).Build();
 
-            host.RunAvaloniauiApplication(args);
-
+            _ = host.RunAvaloniaAppAsync();
         }
         catch (Exception ex)
         {
@@ -85,20 +78,20 @@ sealed class Program
         }
     }
 
-    private static async System.Threading.Tasks.Task RunMcpHostAsync(string[] args)
+    private static async System.Threading.Tasks.Task RunMcpHostAsync()
     {
         var services = new ServiceCollection();
-        services.AddLogging(builder =>
+        _ = services.AddLogging(builder =>
         {
-            builder.ClearProviders();
-            builder.AddNLog();
+            _ = builder.ClearProviders();
+            _ = builder.AddNLog();
         });
 
-        services.AddSingleton<IConfigService, ConfigService>();
-        services.AddUltraLibrarianKiCadServices();
+        _ = services.AddSingleton<IConfigService, ConfigService>();
+        _ = services.AddUltraLibrarianKiCadServices();
 
-        using var serviceProvider = services.BuildServiceProvider();
-        var mcpServer = serviceProvider.GetRequiredService<Services.Mcp.McpServer>();
+        using ServiceProvider serviceProvider = services.BuildServiceProvider();
+        McpServer mcpServer = serviceProvider.GetRequiredService<McpServer>();
         await mcpServer.RunStdioAsync();
     }
 
@@ -115,36 +108,39 @@ sealed class Program
     [SupportedOSPlatform("macos")]
     private static HostApplicationBuilder CreateApplicationBuilder(string[] args)
     {
-        var builder = Host.CreateApplicationBuilder(args);
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-        builder.Logging.AddNLog();
-
-        ConfigureServices(builder.Services, builder.Environment, builder.Configuration);
+        ConfigureLogging(builder.Logging);
+        ConfigureServices(builder.Services);
         return builder;
     }
+
+    // Console for `dotnet run`; NLog so the file targets declared in nlog.config actually receive
+    // ILogger output. Before #34 nothing bridged ILogger into NLog.
+    private static void ConfigureLogging(ILoggingBuilder logging) =>
+        logging
+            .ClearProviders()
+            .AddConsole()
+            .AddNLog();
 
     [SupportedOSPlatform("windows")]
     [SupportedOSPlatform("linux")]
     [SupportedOSPlatform("macos")]
-    private static void ConfigureServices(IServiceCollection services, IHostEnvironment environment, ConfigurationManager configuration)
-    {
-        // Register App as a singleton
-        services.AddSingleton<App>(p => new App(p));
-
-        // Register ViewModels
-        services.AddTransient<ViewModels.MainViewModel>();
-        services.AddTransient<ViewModels.SettingsViewModel>();
-        services.AddTransient<ViewModels.AboutViewModel>();
-
-        services.AddSingleton<IConfigService, ConfigService>();
-
-        //Register KiCad
-        services.AddUltraLibrarianKiCadServices();
-
-        services.AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
-    }
+#pragma warning disable CS0618 // AddAvaloniauiDesktopApplication is obsolete in favour of AddAppBuilder.
+    // AddAppBuilder invokes its Func<AppBuilder> eagerly, with no service provider in scope. App's
+    // constructor requires the container, so it cannot be constructed at that point;
+    // AddAvaloniauiDesktopApplication resolves App lazily from the provider, which is the behaviour
+    // this app depends on. Revisit if AddAppBuilder gains a provider-aware overload.
+    private static void ConfigureServices(IServiceCollection services) =>
+        services
+            .AddSingleton(p => new App(p))
+            .AddTransient<ViewModels.MainViewModel>()
+            .AddTransient<ViewModels.SettingsViewModel>()
+            .AddTransient<ViewModels.AboutViewModel>()
+            .AddSingleton<IConfigService, ConfigService>()
+            .AddUltraLibrarianKiCadServices()
+            .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp);
+#pragma warning restore CS0618
 
 
 }

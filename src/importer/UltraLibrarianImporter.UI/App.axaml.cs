@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -81,10 +81,10 @@ public partial class App : Application
                 if (!CefRuntimeLoader.IsLoaded)
                 {
 
-                    Directory.CreateDirectory(cachePath);
-                    Directory.CreateDirectory(cacheRootPath);
-                    Directory.CreateDirectory(resourcesPath);
-                    CefSettings settings2 = new CefSettings
+                    _ = Directory.CreateDirectory(cachePath);
+                    _ = Directory.CreateDirectory(cacheRootPath);
+                    _ = Directory.CreateDirectory(resourcesPath);
+                    var settings2 = new CefSettings
                     {
                         LogSeverity = CefLogSeverity.Disable,
                         UncaughtExceptionStackSize = 100,
@@ -117,8 +117,8 @@ public partial class App : Application
                 }
 
                 // Use dependency injection to create the main window and view model
-                var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
-                var configService = _serviceProvider.GetRequiredService<IConfigService>();
+                MainViewModel viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+                IConfigService configService = _serviceProvider.GetRequiredService<IConfigService>();
                 // Configure WebView settings before loading XAML
                 WebView.Settings.PersistCache = true;
                 WebView.Settings.CachePath = cachePath;
@@ -148,13 +148,13 @@ public partial class App : Application
     private void DisableAvaloniaDataAnnotationValidation()
     {
         // Get an array of plugins to remove
-        var dataValidationPluginsToRemove =
+        DataAnnotationsValidationPlugin[] dataValidationPluginsToRemove =
             BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
 
         // remove each entry found
-        foreach (var plugin in dataValidationPluginsToRemove)
+        foreach (DataAnnotationsValidationPlugin? plugin in dataValidationPluginsToRemove)
         {
-            BindingPlugins.DataValidators.Remove(plugin);
+            _ = BindingPlugins.DataValidators.Remove(plugin);
         }
     }
 

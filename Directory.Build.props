@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
 
   <!-- Shared build settings for every project in the repository. -->
   <PropertyGroup>
@@ -9,6 +9,17 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Security-audit findings (vulnerable packages) must fail the build/CI, not just warn. -->
     <NuGetAuditMode>all</NuGetAuditMode>
+    <!-- Without this the IDE* code-style rules in .editorconfig are reported by the IDE and by
+         `dotnet format` but never by `dotnet build`, so CI cannot see them. With it they are
+         ordinary build diagnostics, which TreatWarningsAsErrors above then promotes to errors. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- IDE0005 (remove unnecessary usings) is only reported during a build when the compiler is
+         also producing a documentation file: https://github.com/dotnet/roslyn/issues/41640.
+         CS1591 is suppressed with it - the doc file exists to unlock the analyzer, and nothing here
+         ships as a documented public API, so demanding an XML comment on every public member would
+         be noise that TreatWarningsAsErrors turns into a build break. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <!-- Nothing in this repository is a NuGet package any more. The two libraries and the CLI that
          used to be packed here now live in danielmeza/sexpressions and danielmeza/kicad-sharp and
          are consumed from nuget.org. What is left is the Avalonia importer and the KiCad plugin. -->
@@ -19,8 +30,8 @@
        line to build against a locally packed build; see README, "Developing against local library
        sources". -->
   <PropertyGroup>
-    <SExpressionsVersion Condition="'$(SExpressionsVersion)' == ''">0.1.0</SExpressionsVersion>
-    <KiCadSharpVersion Condition="'$(KiCadSharpVersion)' == ''">0.1.0</KiCadSharpVersion>
+    <SExpressionsVersion Condition="'$(SExpressionsVersion)' == ''">0.1.1</SExpressionsVersion>
+    <KiCadSharpVersion Condition="'$(KiCadSharpVersion)' == ''">0.1.1</KiCadSharpVersion>
   </PropertyGroup>
 
 </Project>

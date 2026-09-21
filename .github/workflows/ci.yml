@@ -28,6 +28,12 @@ jobs:
       # `UltraLibrarianImporter.KiCadBindings` namespace were repointed at KiCadSharp, and the
       # nullable/analyzer diagnostics that `TreatWarningsAsErrors` promotes were fixed at source.
       # This step is what keeps it that way.
+      #
+      # It is also the code-style gate. Directory.Build.props sets EnforceCodeStyleInBuild=true, so
+      # the IDE* rules in .editorconfig are reported by the compiler and promoted to errors by
+      # TreatWarningsAsErrors. There is deliberately no separate `dotnet format` step: it would
+      # duplicate this one and still miss IDE0005, which needs the documentation file the build
+      # produces. Run `dotnet format --severity warn` locally to fix what this reports.
       - name: Build
         run: dotnet build UltraLibrarianImporter.sln -c Release --no-restore
 

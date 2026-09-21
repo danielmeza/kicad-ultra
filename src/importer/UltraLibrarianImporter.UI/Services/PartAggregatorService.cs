@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -8,63 +8,62 @@ using Microsoft.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
-namespace UltraLibrarianImporter.UI.Services
+namespace UltraLibrarianImporter.UI.Services;
+
+public class PartAggregatorService : IPartAggregatorService
 {
-    public class PartAggregatorService : IPartAggregatorService
+    private readonly IComponentProviderRegistry _registry;
+    private readonly ILogger<PartAggregatorService> _logger;
+
+    public PartAggregatorService(IComponentProviderRegistry registry, ILogger<PartAggregatorService> logger)
     {
-        private readonly IComponentProviderRegistry _registry;
-        private readonly ILogger<PartAggregatorService> _logger;
+        _registry = registry;
+        _logger = logger;
+    }
 
-        public PartAggregatorService(IComponentProviderRegistry registry, ILogger<PartAggregatorService> logger)
+    public async Task<IReadOnlyList<PartSearchResult>> SearchAllProvidersAsync(string query, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
         {
-            _registry = registry;
-            _logger = logger;
+            return Array.Empty<PartSearchResult>();
         }
 
-        public async Task<IReadOnlyList<PartSearchResult>> SearchAllProvidersAsync(string query, CancellationToken cancellationToken = default)
+        _logger.LogInformation("Querying component providers for query: '{Query}'", query);
+
+        var apiProviders = _registry.Providers.Where(p => p.SupportsDirectApi).ToList();
+        if (apiProviders.Count == 0)
         {
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                return Array.Empty<PartSearchResult>();
-            }
-
-            _logger.LogInformation("Querying component providers for query: '{Query}'", query);
-
-            var apiProviders = _registry.Providers.Where(p => p.SupportsDirectApi).ToList();
-            if (apiProviders.Count == 0)
-            {
-                _logger.LogWarning("No providers support direct API search.");
-                return Array.Empty<PartSearchResult>();
-            }
-
-            var tasks = apiProviders.Select(provider => Task.Run(async () =>
-            {
-                try
-                {
-                    return await provider.SearchPartsAsync(query, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Provider {Provider} search failed for query '{Query}': {Message}",
-                        provider.DisplayName, query, ex.Message);
-                    return (IReadOnlyList<PartSearchResult>)Array.Empty<PartSearchResult>();
-                }
-            }, cancellationToken));
-
-            var providerResults = await Task.WhenAll(tasks);
-
-            var consolidated = providerResults
-                .SelectMany(r => r)
-                .OrderByDescending(r => r.Stock ?? 0)
-                .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
-                .ToList();
-
-            _logger.LogInformation("Consolidated {Count} parts across providers for: '{Query}'", consolidated.Count, query);
-            return consolidated;
+            _logger.LogWarning("No providers support direct API search.");
+            return Array.Empty<PartSearchResult>();
         }
+
+        IEnumerable<Task<IReadOnlyList<PartSearchResult>>> tasks = apiProviders.Select(provider => Task.Run(async () =>
+        {
+            try
+            {
+                return await provider.SearchPartsAsync(query, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Provider {Provider} search failed for query '{Query}': {Message}",
+                    provider.DisplayName, query, ex.Message);
+                return Array.Empty<PartSearchResult>();
+            }
+        }, cancellationToken));
+
+        IReadOnlyList<PartSearchResult>[] providerResults = await Task.WhenAll(tasks);
+
+        var consolidated = providerResults
+            .SelectMany(r => r)
+            .OrderByDescending(r => r.Stock ?? 0)
+            .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
+            .ToList();
+
+        _logger.LogInformation("Consolidated {Count} parts across providers for: '{Query}'", consolidated.Count, query);
+        return consolidated;
     }
 }
