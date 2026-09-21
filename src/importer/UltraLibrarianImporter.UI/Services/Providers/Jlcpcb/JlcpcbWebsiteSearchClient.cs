@@ -1,12 +1,16 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+
+using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
@@ -19,7 +23,8 @@ namespace UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 /// Used when no official API credentials are configured, and for keyword searches, which the
 /// official API cannot answer (<see cref="JlcpcbOpenApiClient"/>). Each search asks for the first
 /// page of <see cref="PageSize"/> results and never pages further, and it goes through the provider
-/// cache and rate limiter like every other search. The User-Agent stays the honest
+/// cache and rate limiter like every other search, with a slower bucket of its own (#110, see
+/// <see cref="ProviderSearchOptions.ProviderRateLimits"/>). The User-Agent stays the honest
 /// <c>kicad-ultra/1.0</c> one; it never impersonates a browser.
 /// </remarks>
 public static class JlcpcbWebsiteSearchClient
@@ -29,11 +34,15 @@ public static class JlcpcbWebsiteSearchClient
     /// <summary>Results asked for per search: the first page only.</summary>
     public const int PageSize = 25;
 
+    /// <summary>What the user is told when the endpoint turns a search down as too frequent (#110).</summary>
+    public const string RateLimitedMessage = "JLCPCB is rate-limiting; try again shortly";
+
     /// <summary>
     /// Searches for <paramref name="keyword"/>. Returns the parts the endpoint listed, which is
     /// empty only when it listed none; throws for anything short of an answer.
     /// </summary>
-    /// <exception cref="HttpRequestException">A non-success HTTP status, or no response.</exception>
+    /// <exception cref="ProviderRateLimitedException">HTTP 403 or 429: the endpoint turned the search down as too frequent.</exception>
+    /// <exception cref="HttpRequestException">Any other non-success HTTP status, or no response.</exception>
     /// <exception cref="JlcpcbApiException">The endpoint reported an error in the body.</exception>
     /// <exception cref="JsonException">The body is not the expected shape.</exception>
     public static async Task<IReadOnlyList<JlcpcbPart>> SearchAsync(HttpClient httpClient, string keyword, CancellationToken cancellationToken)
@@ -45,6 +54,15 @@ public static class JlcpcbWebsiteSearchClient
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
         using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        // JLCPCB's website turned quick searches down with 403 (#110), and 429 is the standard status for
+        // too many requests. The endpoint documents neither, so both are read as "too frequent". A 403
+        // for some other reason is reported the same way, and shows itself when the provider is asked
+        // again after the back-off.
+        if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
+        {
+            throw new ProviderRateLimitedException(RateLimitedMessage, response.StatusCode, GetRetryAfter(response));
+        }
+
         // Anything short of an answer throws, so the aggregator leaves it out and does not cache it.
         _ = response.EnsureSuccessStatusCode();
 
@@ -77,6 +95,13 @@ public static class JlcpcbWebsiteSearchClient
             .Select(ReadPart)
             .Where(part => part.LcscPartNumber is not null || part.ManufacturerPartNumber is not null)];
     }
+
+    // The Retry-After header, when there is one. A date is measured against the response's own Date,
+    // so that the local clock does not matter; without one it is ignored.
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response) =>
+        response.Headers.RetryAfter is { } retryAfter
+            ? retryAfter.Delta ?? (retryAfter.Date - response.Headers.Date)
+            : null;
 
     private static JlcpcbPart ReadPart(JsonElement item) => new(
         LcscPartNumber: JlcpcbJson.GetLcscPartNumber(item, "componentCode"),

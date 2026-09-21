@@ -160,6 +160,10 @@ public partial class MainViewModel : ObservableObject
     // null when no search is running. Only touched on the UI thread, by the search pipeline.
     private string? _activeSearchQuery;
 
+    // The providers the current search left out because they were rate-limiting (#110), for its status
+    // line. Only touched on the UI thread, by the search pipeline.
+    private readonly List<ProviderRateLimited> _rateLimitedInSearch = [];
+
     private string? _downloadedFilePath;
 
     public IReadOnlyList<IComponentProvider> AvailableProviders => _providerRegistry.Providers;
@@ -287,7 +291,8 @@ public partial class MainViewModel : ObservableObject
         _activeSearchQuery is not null && string.Equals(query, _activeSearchQuery, StringComparison.OrdinalIgnoreCase);
 
     // One search, as the updates the UI thread applies in order: SearchStarted, a PartFound per part as
-    // its provider answers, then SearchCompleted or SearchFailed.
+    // its provider answers or a ProviderLeftOut for a provider that was rate-limiting (#110), then
+    // SearchCompleted or SearchFailed.
     //
     // Why a superseded search's result cannot land in the new list: the list is cleared by
     // SearchStarted, an update in the same ordered stream as the results, emitted synchronously when
@@ -305,13 +310,20 @@ public partial class MainViewModel : ObservableObject
             // completing: "Found N results" would claim a finished search. ApplySearchUpdate reports it
             // as cancelled, not as an error.
             .ToObservable(whenCancelled: AsyncStreamCancellation.Error)
-            .Select<PartSearchResult, SearchUpdate>(part => new PartFound(query, part))
+            .SelectMany(outcome => ToSearchUpdates(query, outcome))
             .Append(new SearchCompleted(query))
             // A provider that fails is already left out by the aggregator, so an error here means the
             // search as a whole failed. It must not look like "no results".
             .Catch((Exception ex) => Observable.Return<SearchUpdate>(new SearchFailed(query, ex)))
             .ObserveOn(uiThread)
             .StartWith(new SearchStarted(query));
+
+    private static IEnumerable<SearchUpdate> ToSearchUpdates(string query, ProviderSearchOutcome outcome) => outcome switch
+    {
+        ProviderResults answer => answer.Parts.Select<PartSearchResult, SearchUpdate>(part => new PartFound(query, part)),
+        ProviderRateLimited rateLimited => [new ProviderLeftOut(query, rateLimited)],
+        _ => throw new System.Diagnostics.UnreachableException($"Unknown provider outcome {outcome.GetType().Name}"),
+    };
 
     // Runs on the UI thread, and only for the current search.
     private void ApplySearchUpdate(SearchUpdate update)
@@ -320,6 +332,7 @@ public partial class MainViewModel : ObservableObject
         {
             case SearchStarted:
                 _activeSearchQuery = update.Query;
+                _rateLimitedInSearch.Clear();
                 IsSearching = true;
                 SearchResults.Clear();
                 StatusMessage = $"Searching all component providers for '{update.Query}'...";
@@ -330,9 +343,31 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = $"Searching all component providers for '{update.Query}'... {SearchResults.Count} result(s) so far.";
                 break;
 
+            case ProviderLeftOut leftOut:
+                _rateLimitedInSearch.Add(leftOut.RateLimited);
+                if (leftOut.RateLimited.ProviderId == EasyEdaProvider.ProviderId)
+                {
+                    _jlcpcbRateLimit = (update.Query, leftOut.RateLimited);
+                    UpdateJlcpcbNotice();
+                }
+
+                break;
+
             case SearchCompleted:
-                StatusMessage = $"Found {SearchResults.Count} results across providers for '{update.Query}'. ({SortStatusSummary})";
+                // A provider that was rate-limiting is named, so that its missing results do not read as
+                // "no matches" (#110).
+                var leftOutNote = _rateLimitedInSearch.Count == 0
+                    ? string.Empty
+                    : $" Left out: {string.Join("; ", _rateLimitedInSearch.Select(l => $"{l.ProviderName} ({l.Reason})"))}.";
+                StatusMessage = $"Found {SearchResults.Count} results across providers for '{update.Query}'.{leftOutNote} ({SortStatusSummary})";
                 _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", update.Query, SearchResults.Count);
+                if (_jlcpcbRateLimit is not null && !_rateLimitedInSearch.Any(l => l.ProviderId == EasyEdaProvider.ProviderId))
+                {
+                    // EasyEDA / LCSC was not turned down this time, so the notice about it no longer applies.
+                    _jlcpcbRateLimit = null;
+                    UpdateJlcpcbNotice();
+                }
+
                 EndSearch();
                 break;
 
@@ -364,6 +399,8 @@ public partial class MainViewModel : ObservableObject
     private sealed record SearchStarted(string Query) : SearchUpdate(Query);
 
     private sealed record PartFound(string Query, PartSearchResult Part) : SearchUpdate(Query);
+
+    private sealed record ProviderLeftOut(string Query, ProviderRateLimited RateLimited) : SearchUpdate(Query);
 
     private sealed record SearchCompleted(string Query) : SearchUpdate(Query);
 
@@ -742,9 +779,16 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _jlcpcbNoticeText = string.Empty;
 
+    [ObservableProperty]
+    private string _jlcpcbNoticeHideToolTip = string.Empty;
+
     // The credential state the notice was hidden in. Hiding lasts until the app closes or the state
     // changes, so a notice about new credentials is not swallowed by an old dismissal.
     private JlcpcbApiCredentialState? _hiddenJlcpcbNoticeState;
+
+    // The last search's EasyEDA / LCSC refusal (#110), with that search's query, while it applies: until
+    // a search completes without one, or the notice is hidden.
+    private (string Query, ProviderRateLimited RateLimited)? _jlcpcbRateLimit;
 
     /// <summary>JLCPCB's guide to applying for API access.</summary>
     public Uri JlcpcbApiGuideUri { get; } = new(JlcpcbApiCredentials.ApiGuideUrl);
@@ -753,11 +797,28 @@ public partial class MainViewModel : ObservableObject
     private void HideJlcpcbNotice()
     {
         _hiddenJlcpcbNoticeState = JlcpcbApiCredentials.GetState(_configService);
+        _jlcpcbRateLimit = null;
         IsJlcpcbNoticeVisible = false;
     }
 
     private void UpdateJlcpcbNotice()
     {
+        var easyEdaEnabled = _providerRegistry.Providers.Any(p => p.Id == EasyEdaProvider.ProviderId);
+
+        // A refusal takes the notice over, even where it was hidden: results are missing from the search
+        // just made, and a failure must not look like "no results" (#110).
+        if (_jlcpcbRateLimit is { } rateLimit && easyEdaEnabled)
+        {
+            JlcpcbNoticeTitle = rateLimit.RateLimited.Reason;
+            JlcpcbNoticeText =
+                $"The search for '{rateLimit.Query}' has no EasyEDA / LCSC results because JLCPCB turned a request down as too frequent, not because nothing matched. " +
+                $"The app leaves JLCPCB alone until {rateLimit.RateLimited.RetryAt.ToLocalTime():T}; search again after that. The other providers are not affected.";
+            JlcpcbNoticeHideToolTip = "Hide this notice until a later search is turned down too";
+            IsJlcpcbNoticeVisible = true;
+            return;
+        }
+
+        JlcpcbNoticeHideToolTip = "Hide this notice until the app restarts or the JLCPCB API settings change";
         JlcpcbApiCredentialState state = JlcpcbApiCredentials.GetState(_configService);
         (JlcpcbNoticeTitle, JlcpcbNoticeText) = state switch
         {
@@ -776,8 +837,7 @@ public partial class MainViewModel : ObservableObject
             _ => throw new System.Diagnostics.UnreachableException($"Unknown JLCPCB credential state {state}"),
         };
 
-        IsJlcpcbNoticeVisible = state != _hiddenJlcpcbNoticeState
-            && _providerRegistry.Providers.Any(p => p.Id == EasyEdaProvider.ProviderId);
+        IsJlcpcbNoticeVisible = state != _hiddenJlcpcbNoticeState && easyEdaEnabled;
     }
 
     // Search cannot tell whether an EasyEDA part has a symbol, footprint or 3D model, but an import

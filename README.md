@@ -152,8 +152,10 @@ routes. The app names the route beside each of those results.
   to the connected AI client.
 - **An internal endpoint of JLCPCB's website**, otherwise. It is not a published API, so it can change
   or stop working at any time without notice, and the Part Explorer says so while it is in use. Each
-  search asks for one page of 25 results, through the same cache and rate limit as every other
-  provider, with an honest `kicad-ultra/1.0` User-Agent.
+  search asks for one page of 25 results, through the same cache as every other provider but a slower
+  rate limit of its own, with an honest `kicad-ultra/1.0` User-Agent. When JLCPCB turns searches down
+  as too frequent, the app says "JLCPCB is rate-limiting; try again shortly" and leaves it alone for a
+  while, at most two minutes.
 
 easyeda2kicad is © its authors and licensed under AGPL-3.0; it is a separate program that you install, not
 a part or a dependency of this MIT-licensed project.
