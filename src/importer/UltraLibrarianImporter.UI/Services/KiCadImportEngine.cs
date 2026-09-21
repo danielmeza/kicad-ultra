@@ -476,8 +476,14 @@ public class KiCadImportEngine : IKiCadImportEngine
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to load existing symbol library at {Path}. Creating a new one.", symbolLibPath);
-                symbolLibrary = new KiCadSymbolLibrary($"KiCad Importer {DateTime.Now:yyyy-MM-dd}");
+                // Never start a new library in place of one that exists (#94): saving it would replace
+                // the file and lose every symbol in it. A load can fail for reasons that say nothing
+                // about the file's worth, such as a newer format, a hand edit or a gap in KiCadSharp's
+                // parser, so the file is left exactly as it is and nothing is registered.
+                _logger.LogError(ex, "Could not load the existing symbol library {Path}; it was left unchanged", symbolLibPath);
+                result.Details.Add($"The symbol library {symbolLibPath} already exists but could not be loaded, so it was left unchanged and nothing was imported into it: {ex.Message}");
+                result.Details.Add("Repair or move that file, or set a different library name in Settings, and import again.");
+                return false;
             }
         }
         else
@@ -530,6 +536,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save symbol library to {Path}: {Message}", symbolLibPath, ex.Message);
+            result.Details.Add($"The symbol library {symbolLibPath} could not be saved: {ex.Message}");
             return false;
         }
 
