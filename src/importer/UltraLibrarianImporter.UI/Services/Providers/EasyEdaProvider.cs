@@ -20,6 +20,11 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         Timeout = TimeSpan.FromSeconds(10)
     };
 
+    // Search goes through tscircuit's independent index of JLCPCB's parts list (#52), not through
+    // JLCPCB or LCSC, so every result says so rather than implying either served it (#58).
+    private const string DataAttribution =
+        "Data from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts, not from JLCPCB or LCSC directly";
+
     private readonly ILogger<EasyEdaProvider> _logger;
 
     static EasyEdaProvider()
@@ -148,7 +153,8 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
                     Has3DModel: false,
                     DatasheetUrl: datasheetUrl,
                     PackageDownloadUrl: null,
-                    ProviderColor: ProviderColor
+                    ProviderColor: ProviderColor,
+                    Attribution: DataAttribution
                 ));
             }
         }

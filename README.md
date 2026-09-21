@@ -82,9 +82,25 @@ packages work, and the packages are what break.
 This repository doesn't publish packages any more — the four it used to push moved to their own
 repositories. What it should release instead is still open: see [docs/releasing.md](docs/releasing.md).
 
+## Data sources and trademarks
+
+UltraLibrarian, EasyEDA, LCSC, JLCPCB, Octopart, SnapEDA and SamacSys are trademarks of their
+owners. They're named only to identify the services and data this plugin works with; this project
+isn't affiliated with or endorsed by any of them.
+
+Part search results labelled **EasyEDA / LCSC** come from
+[jlcsearch](https://github.com/tscircuit/jlcsearch), an independent index of JLCPCB's parts list
+run by tscircuit — not from JLCPCB or LCSC directly. The app says so beside each of those results.
+
 ## Contributing
 
 Issues and pull requests welcome.
+
+Name a supplier only to identify where data comes from, and credit the actual source wherever its
+data is shown. JLCPCB's API terms forbid its trademark or logo in a partner's advertising and "JLC"
+in its website URLs, and breaking them ends API access. So: no JLCPCB or LCSC logos in this
+repository, no JLCPCB in the plugin's name, icon or Plugin and Content Manager listing, and no "JLC"
+in any URL this project controls ([#58](https://github.com/danielmeza/kicad-ultra/issues/58)).
 
 ## License
 

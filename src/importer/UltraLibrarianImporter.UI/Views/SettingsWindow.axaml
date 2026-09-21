@@ -115,6 +115,7 @@
                                             </Grid>
 
                                             <TextBlock Text="{Binding CapabilitiesDescription}" 
+                                                       TextWrapping="Wrap"
                                                        FontSize="11" 
                                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
                                                        Margin="26,0,0,2"/>

@@ -174,7 +174,7 @@ public class McpServer
             new()
             {
                 Name = "search_components",
-                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA/LCSC/JLCPCB, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad.",
+                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from; cite it when presenting that result.",
                 InputSchema = new
                 {
                     type = "object",

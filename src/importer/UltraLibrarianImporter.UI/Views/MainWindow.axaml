@@ -201,7 +201,7 @@
               <ListBox Grid.Row="1" ItemsSource="{Binding SearchResults}" SelectedItem="{Binding SelectedSearchResult}">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="models:PartSearchResult">
-                    <Grid ColumnDefinitions="140,160,130,105,105,120,*" Margin="0,4">
+                    <Grid ColumnDefinitions="140,160,130,105,105,120,*" RowDefinitions="Auto,Auto" Margin="0,4">
                       <!-- Provider Badge -->
                       <Border Grid.Column="0" 
                               Background="{Binding ProviderColor, Converter={StaticResource HexToBrushConverter}}" 
@@ -250,6 +250,17 @@
                               VerticalContentAlignment="Center"
                               FontSize="11"
                               HorizontalAlignment="Left"/>
+
+                      <!-- Data source, when it is not the provider itself -->
+                      <TextBlock Grid.Row="1"
+                                 Grid.Column="1"
+                                 Grid.ColumnSpan="6"
+                                 Text="{Binding Attribution}"
+                                 IsVisible="{Binding Attribution, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                 FontSize="10"
+                                 Opacity="0.6"
+                                 Margin="0,2,0,0"
+                                 TextTrimming="CharacterEllipsis"/>
                     </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
