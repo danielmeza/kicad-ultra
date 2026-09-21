@@ -494,11 +494,13 @@ public class KiCadImportEngine : IKiCadImportEngine
                 var sourceLibrary = KiCadSymbolLibrary.Load(symbolFile);
                 var addedCount = 0;
 
-                foreach (KiCadSymbol symbol in sourceLibrary.Symbols)
+                // Copied out of the live view first: AddSymbol moves each form out of sourceLibrary,
+                // and moving while enumerating the view would skip every other symbol.
+                foreach (KiCadSymbol symbol in sourceLibrary.Symbols.ToList())
                 {
-                    symbol.Id = $"{provider.DefaultPrefix}{symbol.Id}";
+                    RenameSymbol(symbol, $"{provider.DefaultPrefix}{symbol.Id}");
                     var replaced = RemoveSymbolsNamed(symbolLibrary, symbol.Id);
-                    symbolLibrary.AddSymbol(symbol);
+                    _ = symbolLibrary.AddSymbol(symbol);
                     written.Add(replaced switch
                     {
                         0 => $"Symbol {symbol.Id} added to {symbolLibPath}.",
@@ -554,6 +556,25 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
 
         return previous.Count;
+    }
+
+    /// <summary>
+    /// Renames a symbol together with its sub-units, the nested <c>(symbol "NAME_1_1" ...)</c> forms
+    /// that hold its pins and drawing. KiCad 10 refuses a library in which a sub-unit's name does not
+    /// start with its symbol's name. The Value property keeps the original name.
+    /// </summary>
+    private static void RenameSymbol(KiCadSymbol symbol, string newId)
+    {
+        var oldId = symbol.Id;
+        foreach (KiCadSymbolUnit unit in symbol.Units)
+        {
+            if (unit.Id.StartsWith($"{oldId}_", StringComparison.Ordinal))
+            {
+                unit.Id = $"{newId}{unit.Id[oldId.Length..]}";
+            }
+        }
+
+        symbol.Id = newId;
     }
 
     private async Task<bool> ImportFootprintsAsync(
@@ -835,9 +856,9 @@ public class KiCadImportEngine : IKiCadImportEngine
 
         try
         {
-            // KiCadSharp 0.1.1 blocks the calling thread on the socket read, and the caller is the UI
-            // thread when the import comes from MainViewModel. Run it on the pool and stop waiting
-            // after a few seconds rather than hang the import on a KiCad that never answers.
+            // KiCadSharp 0.3.1 still connects and sends on the calling thread, blocking, and the caller
+            // is the UI thread when the import comes from MainViewModel. Run it on the pool and stop
+            // waiting after a few seconds rather than hang the import on a KiCad that never answers.
             KiCadVersion version = await Task.Run(() => _kicad.GetVersion().AsTask()).WaitAsync(KiCadQueryTimeout);
             var directory = KiCadSettingsDirectory.ForVersion(version.Major, version.Minor);
             _logger.LogDebug("KiCad {Version} is running; its settings directory is {Directory}", version, directory);
@@ -845,12 +866,11 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
         catch (Exception ex)
         {
-            // Deliberately broad. KiCadSharp 0.1.1 surfaces a failed request as unrelated types: its
-            // public KiCadConnectionException, its internal ApiException (KiCad answered with an
-            // error), nng.NngException straight from the dial when nothing listens on the socket, and
-            // ArgumentNullException when there is no API token because KiCad did not launch the
-            // importer. With the timeout above, every one of them means the same thing here: KiCad
-            // cannot be asked, so fall back to looking at the disk.
+            // Deliberately broad. KiCadSharp 0.3.1 throws KiCadConnectionException when there is no
+            // socket to dial or its native nng library cannot be loaded, and ApiException when KiCad
+            // answers with an error; a KiCad that does not answer in time is a TimeoutException from
+            // the wait above. Every one of them means the same thing here: KiCad cannot be asked, so
+            // fall back to looking at the disk.
             _logger.LogWarning(ex, "Could not ask KiCad for its version; looking for its settings directory on disk instead");
         }
 
