@@ -15,6 +15,7 @@ using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 
@@ -158,20 +159,24 @@ public partial class MainWindow : Window
                 safeName = $"download-{Guid.NewGuid():N}.zip";
             }
 
-            var defaultDownloadDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KiCadComponentDownloads");
-            var downloadDir = !string.IsNullOrWhiteSpace(_mainWindow.ViewModel.DownloadDirectory)
-                ? _mainWindow.ViewModel.DownloadDirectory
-                : defaultDownloadDir;
+            // Resolved inside the try blocks: SpecialFolders.GetPath throws when there is no absolute
+            // path, and an exception must not escape this CEF callback.
+            static string DefaultDownloadDir() =>
+                Path.Combine(SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData), "KiCadComponentDownloads");
 
+            string downloadDir;
             try
             {
+                downloadDir = !string.IsNullOrWhiteSpace(_mainWindow.ViewModel.DownloadDirectory)
+                    ? _mainWindow.ViewModel.DownloadDirectory
+                    : DefaultDownloadDir();
                 _ = Directory.CreateDirectory(downloadDir);
             }
             catch
             {
-                downloadDir = defaultDownloadDir;
                 try
                 {
+                    downloadDir = DefaultDownloadDir();
                     _ = Directory.CreateDirectory(downloadDir);
                 }
                 catch

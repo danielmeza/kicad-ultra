@@ -100,17 +100,19 @@ public class ConfigService : IConfigService
         _secretStore = secretStore;
 
         var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData),
             "UltraLibrarianImporter");
 
         _ = Directory.CreateDirectory(appDataDir);
         _configFilePath = Path.Combine(appDataDir, "config.json");
+        _logger.LogInformation("Configuration file: {ConfigFile}", _configFilePath);
 
-        // Set default download directory if not specified
+        // Set default download directory if not specified. ~/Documents is not created here; it is
+        // created with the download directory, by EnsureDownloadDirectoryExists or a download.
         if (string.IsNullOrEmpty(DownloadDirectory))
         {
             DownloadDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                SpecialFolders.GetPath(Environment.SpecialFolder.MyDocuments),
                 "UltraLibrarianDownloads");
         }
 
@@ -152,6 +154,7 @@ public class ConfigService : IConfigService
     {
         ConfigData? config = null;
         var fileExists = File.Exists(_configFilePath);
+        var droppedRelativeDownloadDirectory = false;
         try
         {
             if (fileExists)
@@ -164,7 +167,21 @@ public class ConfigService : IConfigService
 
                 if (config != null)
                 {
-                    DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
+                    if (config.DownloadDirectory is { Length: > 0 } savedDownloadDirectory
+                        && !Path.IsPathFullyQualified(savedDownloadDirectory))
+                    {
+                        // Until #70 the default became the relative path "UltraLibrarianDownloads"
+                        // when ~/Documents did not exist yet, and Save wrote it here. A relative
+                        // directory resolves against whatever the working directory is, so keep the
+                        // default, and rewrite the file with it below.
+                        _logger.LogWarning("Ignoring the relative download directory {SavedDirectory} in config.json; using {DownloadDirectory}", savedDownloadDirectory, DownloadDirectory);
+                        droppedRelativeDownloadDirectory = true;
+                    }
+                    else
+                    {
+                        DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
+                    }
+
                     AddToGlobalLibrary = config.AddToGlobalLibrary;
                     CleanupAfterImport = config.CleanupAfterImport;
                     TargetPath = config.TargetPath ?? string.Empty;
@@ -193,8 +210,9 @@ public class ConfigService : IConfigService
         var migrated = LoadSecrets(config);
 
         // Create the default config file, or rewrite one whose cleartext keys were just moved into
-        // the credential store. A file that exists but failed to parse is left alone.
-        if (!fileExists || migrated)
+        // the credential store or whose relative download directory was dropped. A file that
+        // exists but failed to parse is left alone.
+        if (!fileExists || migrated || droppedRelativeDownloadDirectory)
         {
             Save();
         }
