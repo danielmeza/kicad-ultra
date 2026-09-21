@@ -64,9 +64,28 @@ public interface IConfigService
     string SamacSysApiKey { get; set; }
 
     /// <summary>
-    /// Whether the three API keys above are being persisted in the OS credential store or, because
-    /// that store could not be used, held for this session only. Updated by <see cref="Load"/> and
-    /// <see cref="Save"/>.
+    /// App ID of the user's own application on JLCPCB's API platform, for the official Components
+    /// API (#51). Persisted like <see cref="OctopartApiToken"/>. With <see cref="JlcpcbAccessKey"/>
+    /// and <see cref="JlcpcbSecretKey"/>; empty, all three, to search the unofficial endpoint.
+    /// </summary>
+    string JlcpcbAppId { get; set; }
+
+    /// <summary>
+    /// Access key of the user's JLCPCB API key, sent with every request. Persisted like
+    /// <see cref="OctopartApiToken"/>.
+    /// </summary>
+    string JlcpcbAccessKey { get; set; }
+
+    /// <summary>
+    /// Secret key of the user's JLCPCB API key, which signs requests and is never sent. Persisted
+    /// like <see cref="OctopartApiToken"/>.
+    /// </summary>
+    string JlcpcbSecretKey { get; set; }
+
+    /// <summary>
+    /// Whether the API keys and credentials above are being persisted in the OS credential store
+    /// or, because that store could not be used, held for this session only. Updated by
+    /// <see cref="Load"/> and <see cref="Save"/>.
     /// </summary>
     SecretStorageStatus SecretStorage { get; }
 

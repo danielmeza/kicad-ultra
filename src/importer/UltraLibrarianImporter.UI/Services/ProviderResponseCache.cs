@@ -73,6 +73,20 @@ public sealed class ProviderResponseCache
         }
     }
 
+    /// <summary>
+    /// Forgets every answer. Settings call it on Save, because an answer can depend on them: with
+    /// JLCPCB API credentials entered, the EasyEDA / LCSC provider answers an LCSC number from the
+    /// official API instead of the unofficial endpoint (#51), and an answer cached before the change
+    /// would otherwise keep being served, under the old source's label, until it expired.
+    /// </summary>
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _entries.Clear();
+        }
+    }
+
     // Called under _gate. Drops everything expired; if that frees nothing, drops the oldest entry.
     private void MakeRoom(DateTimeOffset now)
     {

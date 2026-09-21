@@ -14,8 +14,9 @@ namespace UltraLibrarianImporter.UI.Services;
 /// </summary>
 /// <remarks>
 /// Two stores, split by sensitivity. Everything that is not a secret goes to <c>config.json</c>
-/// through the <see cref="ConfigData"/> DTO. The three provider API keys go to the OS credential
-/// store through <see cref="ISecretStore"/> and are never added to the file (#54): <c>config.json</c>
+/// through the <see cref="ConfigData"/> DTO. The provider API keys and the JLCPCB API credentials
+/// (#51) go to the OS credential store through <see cref="ISecretStore"/> and are never added to the
+/// file (#54): <c>config.json</c>
 /// gets shared for troubleshooting, and the Settings dialog masking the keys implied a protection
 /// the file never had. <see cref="LoadSecrets"/> moves keys an earlier version left in the file;
 /// <see cref="SaveSecrets"/> describes what happens when the credential store cannot be used.
@@ -31,7 +32,17 @@ public class ConfigService : IConfigService
     /// <summary>The name the SamacSys key is filed under in the credential store.</summary>
     public const string SamacSysApiKeyKey = "samacsys-api-key";
 
-    private static readonly string[] s_secretKeys = [OctopartApiTokenKey, SnapEdaApiKeyKey, SamacSysApiKeyKey];
+    /// <summary>The name the JLCPCB API App ID is filed under in the credential store.</summary>
+    public const string JlcpcbAppIdKey = "jlcpcb-app-id";
+
+    /// <summary>The name the JLCPCB API access key is filed under in the credential store.</summary>
+    public const string JlcpcbAccessKeyKey = "jlcpcb-access-key";
+
+    /// <summary>The name the JLCPCB API secret key is filed under in the credential store.</summary>
+    public const string JlcpcbSecretKeyKey = "jlcpcb-secret-key";
+
+    private static readonly string[] s_secretKeys =
+        [OctopartApiTokenKey, SnapEdaApiKeyKey, SamacSysApiKeyKey, JlcpcbAppIdKey, JlcpcbAccessKeyKey, JlcpcbSecretKeyKey];
 
     private readonly ILogger<ConfigService> _logger;
     private readonly ISecretStore _secretStore;
@@ -63,6 +74,9 @@ public class ConfigService : IConfigService
     public string OctopartApiToken { get; set; } = string.Empty;
     public string SnapEdaApiKey { get; set; } = string.Empty;
     public string SamacSysApiKey { get; set; } = string.Empty;
+    public string JlcpcbAppId { get; set; } = string.Empty;
+    public string JlcpcbAccessKey { get; set; } = string.Empty;
+    public string JlcpcbSecretKey { get; set; } = string.Empty;
     public SecretStorageStatus SecretStorage { get; private set; } = new(false, "API keys have not been loaded yet.");
     public string DefaultProviderId { get; set; } = "ultralibrarian";
     public Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -476,6 +490,9 @@ public class ConfigService : IConfigService
         OctopartApiTokenKey => OctopartApiToken,
         SnapEdaApiKeyKey => SnapEdaApiKey,
         SamacSysApiKeyKey => SamacSysApiKey,
+        JlcpcbAppIdKey => JlcpcbAppId,
+        JlcpcbAccessKeyKey => JlcpcbAccessKey,
+        JlcpcbSecretKeyKey => JlcpcbSecretKey,
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key"),
     };
 
@@ -491,6 +508,15 @@ public class ConfigService : IConfigService
                 break;
             case SamacSysApiKeyKey:
                 SamacSysApiKey = value;
+                break;
+            case JlcpcbAppIdKey:
+                JlcpcbAppId = value;
+                break;
+            case JlcpcbAccessKeyKey:
+                JlcpcbAccessKey = value;
+                break;
+            case JlcpcbSecretKeyKey:
+                JlcpcbSecretKey = value;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key");

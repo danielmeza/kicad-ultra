@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
 namespace UltraLibrarianImporter.UI.Services.Mcp;
 
@@ -28,12 +30,30 @@ public class McpServer
         WriteIndented = false
     };
 
+    /// <summary>
+    /// Said beside EasyEDA / LCSC results: they never come from JLCPCB's official Components API here,
+    /// whatever credentials are stored, and why.
+    /// </summary>
+    public const string NoOfficialJlcpcbApiNote =
+        "EasyEDA / LCSC results from this MCP server never come from JLCPCB's official Components API, even when API credentials are configured: " +
+        "JLCPCB's API terms forbid passing data obtained through the API to third parties, and this server hands every result to the connected AI client.";
+
+    // jlcpcbSources must be JlcpcbSourcePolicy.WebsiteEndpointOnly: every result this server returns
+    // goes to a third party, the AI client, which JLCPCB's API terms forbid for data from its official
+    // API (#51). Refused here as well as chosen in Program, so a change to either cannot undo it.
     public McpServer(
         IPartAggregatorService aggregatorService,
         IComponentProviderRegistry providerRegistry,
         IConfigService configService,
+        JlcpcbSourcePolicy jlcpcbSources,
         ILogger<McpServer> logger)
     {
+        if (jlcpcbSources.AllowsOfficialApi)
+        {
+            throw new InvalidOperationException(
+                "The MCP server must be built with JlcpcbSourcePolicy.WebsiteEndpointOnly: it would otherwise pass data from JLCPCB's official API to the AI client.");
+        }
+
         _aggregatorService = aggregatorService;
         _providerRegistry = providerRegistry;
         _configService = configService;
@@ -174,7 +194,7 @@ public class McpServer
             new()
             {
                 Name = "search_components",
-                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from; cite it when presenting that result.",
+                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from, including when that source is unofficial and may be unreliable; cite it when presenting that result.",
                 InputSchema = new
                 {
                     type = "object",
@@ -319,10 +339,24 @@ public class McpServer
             [
                 new()
                 {
-                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{json}"
+                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{DescribeSources(finalResults)}{json}"
                 }
             ]
         };
+    }
+
+    // The distinct Attributions ahead of the JSON, so a client reads where the data comes from before
+    // the data itself - above all when a source is unofficial and can break without notice (#52) -
+    // and, with EasyEDA / LCSC results, that this server never uses JLCPCB's official API (#51).
+    private static string DescribeSources(IReadOnlyCollection<PartSearchResult> results)
+    {
+        // EasyEDA / LCSC results always carry an Attribution, so the note never appears without a list.
+        var sources = results.Select(r => r.Attribution).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var note = results.Any(r => r.ProviderId == EasyEdaProvider.ProviderId) ? NoOfficialJlcpcbApiNote + "\n" : string.Empty;
+        return sources.Count == 0
+            ? string.Empty
+            : "Data sources (each result's Attribution says which one applies to it; cite it with the result):\n" +
+              string.Concat(sources.Select(source => $"- {source}\n")) + note + "\n";
     }
 
     private McpToolCallResult ExecuteListProviders()
@@ -375,7 +409,7 @@ public class McpServer
         return new McpToolCallResult
         {
             IsError = false,
-            Content = [new() { Text = json }]
+            Content = [new() { Text = DescribeSources([bestMatch]) + json }]
         };
     }
 }

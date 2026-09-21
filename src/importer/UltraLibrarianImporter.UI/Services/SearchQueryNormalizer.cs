@@ -10,8 +10,9 @@ public static class SearchQueryNormalizer
     /// <summary>
     /// Trims the query and collapses every run of whitespace to a single space. The result is what
     /// is sent to the providers, so a cached answer is the answer to exactly that text. The cache
-    /// additionally compares it case-insensitively; every direct-API provider today (jlcsearch,
-    /// Nexar) matches case-insensitively, so "ne555" and "NE555" are the same question.
+    /// additionally compares it case-insensitively; every direct-API provider today (JLCPCB's
+    /// search, which upper-cases an LCSC number before looking it up, and Nexar) matches
+    /// case-insensitively, so "ne555" and "NE555" are the same question.
     /// </summary>
     public static string Normalize(string? query) =>
         string.IsNullOrWhiteSpace(query)

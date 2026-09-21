@@ -188,6 +188,33 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <!-- The user's own JLCPCB API credentials (#51). Without them EasyEDA / LCSC search
+                             uses the unofficial JLCPCB website endpoint (#52). -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="JLCPCB API access (EasyEDA / LCSC search)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="Optional. Without credentials, EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint. It is not a published API and can change or stop working at any time without notice. With your own credentials from JLCPCB's API platform, LCSC part numbers (such as C2040) are looked up through JLCPCB's official Components API instead. That API has no keyword search, so other searches still use the unofficial endpoint."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <HyperlinkButton NavigateUri="{Binding JlcpcbApiGuideUri}" Padding="0" FontSize="12">
+                                    <TextBlock Text="{Binding JlcpcbApiGuideUri, StringFormat='How to apply for API access: {0}'}" TextWrapping="Wrap"/>
+                                </HyperlinkButton>
+                                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="App ID:" VerticalAlignment="Center" FontSize="12"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding JlcpcbAppId}" Watermark="The application's App ID"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Access Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JlcpcbAccessKey}" PasswordChar="*" Watermark="The API key's access key" Margin="0,8,0,0"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding JlcpcbSecretKey}" PasswordChar="*" Watermark="The API key's secret key" Margin="0,8,0,0"/>
+                                </Grid>
+                                <TextBlock Text="Enter all three, or leave all three empty. They are kept with the API keys above, never in config.json."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- easyeda2kicad (#76): the optional, user-installed converter behind EasyEDA / LCSC import -->
                         <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
                             <StackPanel Spacing="8">

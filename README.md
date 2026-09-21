@@ -140,9 +140,20 @@ UltraLibrarian, EasyEDA, LCSC, JLCPCB, Octopart, SnapEDA and SamacSys are tradem
 owners. They're named only to identify the services and data this plugin works with; this project
 isn't affiliated with or endorsed by any of them.
 
-Part search results labelled **EasyEDA / LCSC** come from
-[jlcsearch](https://github.com/tscircuit/jlcsearch), an independent index of JLCPCB's parts list
-run by tscircuit — not from JLCPCB or LCSC directly. The app says so beside each of those results.
+Part search results labelled **EasyEDA / LCSC** come from JLCPCB's parts library, by one of two
+routes. The app names the route beside each of those results.
+
+- **JLCPCB's official Components API**, if you enter your own API credentials in Settings →
+  Component Providers. JLCPCB reviews applications for API access; see
+  [its guide](https://jlcpcb.com/help/article/jlcpcb-online-api-available-now). The API looks parts
+  up by LCSC number (such as `C2040`) and has no keyword search, so keyword searches take the
+  second route even with credentials. The MCP server (`--mcp`) never uses it, even with credentials:
+  JLCPCB's API terms forbid passing API data to third parties, and the MCP server hands every result
+  to the connected AI client.
+- **An internal endpoint of JLCPCB's website**, otherwise. It is not a published API, so it can change
+  or stop working at any time without notice, and the Part Explorer says so while it is in use. Each
+  search asks for one page of 25 results, through the same cache and rate limit as every other
+  provider, with an honest `kicad-ultra/1.0` User-Agent.
 
 easyeda2kicad is © its authors and licensed under AGPL-3.0; it is a separate program that you install, not
 a part or a dependency of this MIT-licensed project.
