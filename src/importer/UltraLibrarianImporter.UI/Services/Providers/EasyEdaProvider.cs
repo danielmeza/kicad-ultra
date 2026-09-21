@@ -29,7 +29,9 @@ namespace UltraLibrarianImporter.UI.Services.Providers;
 /// so while it is in use, and every result it produced says so in its Attribution.</item>
 /// </list>
 /// A failure of either source throws. A failed official lookup never falls back to the unofficial
-/// endpoint, so a problem with the user's credentials cannot hide behind other data.
+/// endpoint, so a problem with the user's credentials cannot hide behind other data. When the
+/// unofficial endpoint turns a search down as too frequent, the throw is a
+/// <see cref="ProviderRateLimitedException"/>, which the user is told about (#110).
 /// <para>
 /// The official API is used only where the container's <see cref="JlcpcbSourcePolicy"/> allows it:
 /// the GUI does, the <c>--mcp</c> server never does, because JLCPCB's terms forbid passing API data
@@ -154,6 +156,13 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         }
         catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (ProviderRateLimitedException ex)
+        {
+            // The aggregator reports it and backs off (#110); this records what JLCPCB actually answered.
+            _logger.LogWarning("Unofficial JLCPCB search for '{Keyword}' was turned down as too frequent: HTTP {StatusCode}, Retry-After {RetryAfter}",
+                keyword, (int)ex.StatusCode, ex.RetryAfter?.ToString() ?? "not given");
             throw;
         }
         catch (HttpRequestException ex)

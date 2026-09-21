@@ -21,6 +21,7 @@ public class McpServer
     private readonly IPartAggregatorService _aggregatorService;
     private readonly IComponentProviderRegistry _providerRegistry;
     private readonly IConfigService _configService;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<McpServer> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -46,6 +47,7 @@ public class McpServer
         IComponentProviderRegistry providerRegistry,
         IConfigService configService,
         JlcpcbSourcePolicy jlcpcbSources,
+        TimeProvider timeProvider,
         ILogger<McpServer> logger)
     {
         if (jlcpcbSources.AllowsOfficialApi)
@@ -57,6 +59,7 @@ public class McpServer
         _aggregatorService = aggregatorService;
         _providerRegistry = providerRegistry;
         _configService = configService;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -322,9 +325,9 @@ public class McpServer
         var hasCadOnly = args.TryGetProperty("has_cad_only", out JsonElement hasCadProp) && hasCadProp.GetBoolean();
         var maxResults = args.TryGetProperty("max_results", out JsonElement maxResultsProp) ? maxResultsProp.GetInt32() : 20;
 
-        IReadOnlyList<PartSearchResult> results = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
+        AggregatedSearchResult search = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
 
-        IEnumerable<PartSearchResult> filtered = results.AsEnumerable();
+        IEnumerable<PartSearchResult> filtered = search.Parts.AsEnumerable();
         if (inStockOnly)
         {
             filtered = filtered.Where(r => (r.Stock ?? 0) > 0);
@@ -343,12 +346,13 @@ public class McpServer
         var json = JsonSerializer.Serialize(finalResults, new JsonSerializerOptions { WriteIndented = true });
         return new McpToolCallResult
         {
-            IsError = false,
+            // Nothing found while a provider was left out is not "no matches" (#110).
+            IsError = finalResults.Count == 0 && search.RateLimited.Count > 0,
             Content =
             [
                 new()
                 {
-                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{DescribeSources(finalResults)}{json}"
+                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{DescribeSources(finalResults, search.RateLimited)}{json}"
                 }
             ]
         };
@@ -356,16 +360,32 @@ public class McpServer
 
     // The distinct Attributions ahead of the JSON, so a client reads where the data comes from before
     // the data itself - above all when a source is unofficial and can break without notice (#52) -
-    // and, with EasyEDA / LCSC results, that this server never uses JLCPCB's official API (#51).
-    private static string DescribeSources(IReadOnlyCollection<PartSearchResult> results)
+    // and, with EasyEDA / LCSC results, that this server never uses JLCPCB's official API (#51). Then
+    // the providers left out because they were rate-limiting (#110), so that their missing results are
+    // not read as "no matches".
+    private string DescribeSources(IReadOnlyCollection<PartSearchResult> results, IReadOnlyCollection<ProviderRateLimited> rateLimited)
     {
         // EasyEDA / LCSC results always carry an Attribution, so the note never appears without a list.
         var sources = results.Select(r => r.Attribution).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
         var note = results.Any(r => r.ProviderId == EasyEdaProvider.ProviderId) ? NoOfficialJlcpcbApiNote + "\n" : string.Empty;
-        return sources.Count == 0
+        var dataSources = sources.Count == 0
             ? string.Empty
             : "Data sources (each result's Attribution says which one applies to it; cite it with the result):\n" +
               string.Concat(sources.Select(source => $"- {source}\n")) + note + "\n";
+        return rateLimited.Count == 0
+            ? dataSources
+            : dataSources +
+              "Not answered (these providers' results are missing from this answer, not empty):\n" +
+              string.Concat(rateLimited.Select(limited => $"- {limited.ProviderName}: {limited.Reason}. {DescribeRetry(limited.RetryAt)}\n")) + "\n";
+    }
+
+    // When this server will ask a rate-limiting provider again, as a wait: the client reads it at once.
+    private string DescribeRetry(DateTimeOffset retryAt)
+    {
+        var seconds = (int)Math.Ceiling((retryAt - _timeProvider.GetUtcNow()).TotalSeconds);
+        return seconds > 0
+            ? $"This server will not ask it again for {seconds} s; search again after that."
+            : "Search again to ask it again.";
     }
 
     private McpToolCallResult ExecuteListProviders()
@@ -400,17 +420,18 @@ public class McpServer
         }
 
         var query = queryProp.GetString()!.Trim();
-        IReadOnlyList<PartSearchResult> results = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
+        AggregatedSearchResult search = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
 
-        PartSearchResult? bestMatch = results.FirstOrDefault(r =>
-            string.Equals(r.PartNumber, query, StringComparison.OrdinalIgnoreCase)) ?? results.FirstOrDefault();
+        PartSearchResult? bestMatch = search.Parts.FirstOrDefault(r =>
+            string.Equals(r.PartNumber, query, StringComparison.OrdinalIgnoreCase)) ?? search.Parts.FirstOrDefault();
 
         if (bestMatch == null)
         {
             return new McpToolCallResult
             {
-                IsError = false,
-                Content = [new() { Text = $"No component details found for query: '{query}'." }]
+                // Nothing found while a provider was left out is not "no matches" (#110).
+                IsError = search.RateLimited.Count > 0,
+                Content = [new() { Text = $"No component details found for query: '{query}'.\n\n{DescribeSources([], search.RateLimited)}".TrimEnd() }]
             };
         }
 
@@ -418,7 +439,7 @@ public class McpServer
         return new McpToolCallResult
         {
             IsError = false,
-            Content = [new() { Text = DescribeSources([bestMatch]) + json }]
+            Content = [new() { Text = DescribeSources([bestMatch], search.RateLimited) + json }]
         };
     }
 }

@@ -199,6 +199,15 @@ needed any more.
   - **Otherwise, JLCPCB's website endpoint** `selectSmtComponentList` (#52). It is unofficial and can
     break without notice. The Part Explorer shows a notice while it is in use, and the MCP output lists
     it as a data source. It asks for one page of 25 results, never more.
+  - **It has turned quick searches down with 403** (#110), and publishes no limit. The provider has
+    its own bucket in `ProviderSearchOptions.ProviderRateLimits`: one request at once, then one every
+    3 s, below what was measured to work. A 403 or 429 from the endpoint throws
+    `ProviderRateLimitedException`, "JLCPCB is rate-limiting; try again shortly". The aggregator
+    reports it in that search (`ProviderRateLimited`) and backs off: no request for 30 s, doubled per
+    further refusal up to 2 min, or longer if Retry-After says so (still capped at 2 min). Meanwhile
+    each search reports it again without a request, and cached answers are still served. The Part
+    Explorer's JLCPCB notice and status line and the MCP "Not answered" line say so, and an MCP call
+    that found nothing while a provider was left out is `isError`. Other failures are still only logged.
   - A failed official lookup throws. It never falls back to the website endpoint.
   - **`--mcp` never uses the official API**, even with credentials stored. JLCPCB's API terms (III.6(9))
     forbid passing API data to third parties, and the MCP server hands every result to the AI client.
@@ -223,9 +232,10 @@ needed any more.
   (`EnsureSuccessStatusCode`; a missing token throws `ProviderNotConfiguredException`). The aggregator
   logs the failure and leaves that provider out, and failures are never cached. Honest
   `kicad-ultra/1.0` User-Agent.
-- **`PartAggregatorService.StreamAllProvidersAsync`** yields results as each provider finishes, each on
-  its own `Task.Run`, behind `ProviderResponseCache` (5-minute TTL) and `ProviderRateLimiter` (a token
-  bucket per provider). `SearchAllProvidersAsync` is the materialising overload the MCP server uses.
+- **`PartAggregatorService.StreamAllProvidersAsync`** yields each provider's outcome as it finishes, its
+  parts or `ProviderRateLimited`, each on its own `Task.Run`, behind `ProviderResponseCache` (5-minute
+  TTL) and `ProviderRateLimiter` (a token bucket per provider, plus the back-off after a refusal).
+  `SearchAllProvidersAsync` is the materialising overload the MCP server uses.
 - **`MainViewModel` search (ReactiveUI).** `SearchPartsCommand` only emits the normalised query and
   completes at once. If it executed the whole search it would stay disabled for its duration, and a
   new query could not supersede the running one. Its output runs through `Switch()`: a new query drops

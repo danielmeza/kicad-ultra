@@ -229,7 +229,8 @@
           </Border>
 
           <!-- Which JLCPCB source EasyEDA / LCSC search uses (#51, #52): the unofficial endpoint can break
-               without notice, so say so, link to JLCPCB's API guide and point at the credentials. Blocks nothing. -->
+               without notice, so say so, link to JLCPCB's API guide and point at the credentials. Blocks nothing.
+               While the last search's EasyEDA / LCSC request was turned down as too frequent, it says that instead (#110). -->
           <Border Grid.Row="4"
                   IsVisible="{Binding IsJlcpcbNoticeVisible}"
                   Background="#201976D2"
@@ -260,7 +261,7 @@
                 <Button Content="Settings..." Command="{Binding OpenSettingsCommand}" Padding="10,4" FontSize="11"/>
                 <Button Content="Hide"
                         Command="{Binding HideJlcpcbNoticeCommand}"
-                        ToolTip.Tip="Hide this notice until the app restarts or the JLCPCB API settings change"
+                        ToolTip.Tip="{Binding JlcpcbNoticeHideToolTip}"
                         Padding="10,4"
                         FontSize="11"/>
               </StackPanel>
