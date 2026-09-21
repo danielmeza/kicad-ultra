@@ -89,6 +89,23 @@
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
                                    Margin="2,-6,0,5"/>
 
+                        <!-- Where API keys are kept (#54): a quiet note when the OS credential store
+                             works, a warning when keys will only last for this session. -->
+                        <TextBlock Text="{Binding SecretStorageMessage}"
+                                   IsVisible="{Binding !IsSecretStorageSessionOnly}"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Margin="2,-10,0,5"/>
+                        <Border IsVisible="{Binding IsSecretStorageSessionOnly}"
+                                Background="#20F57C00"
+                                BorderBrush="#F57C00"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10">
+                            <TextBlock Text="{Binding SecretStorageMessage}" TextWrapping="Wrap" FontSize="12"/>
+                        </Border>
+
                         <ItemsControl ItemsSource="{Binding ConfiguredProviders}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ProviderConfigItemViewModel">

@@ -41,19 +41,27 @@ public interface IConfigService
     string LibraryName { get; set; }
 
     /// <summary>
-    /// API token for Octopart / Nexar part search
+    /// API token for Octopart / Nexar part search. Persisted in the OS credential store, never in
+    /// config.json; see <see cref="SecretStorage"/>.
     /// </summary>
     string OctopartApiToken { get; set; }
 
     /// <summary>
-    /// API key for SnapEDA / SnapMagic CAD search
+    /// API key for SnapEDA / SnapMagic CAD search. Persisted like <see cref="OctopartApiToken"/>.
     /// </summary>
     string SnapEdaApiKey { get; set; }
 
     /// <summary>
-    /// API key for Component Search Engine (SamacSys)
+    /// API key for Component Search Engine (SamacSys). Persisted like <see cref="OctopartApiToken"/>.
     /// </summary>
     string SamacSysApiKey { get; set; }
+
+    /// <summary>
+    /// Whether the three API keys above are being persisted in the OS credential store or, because
+    /// that store could not be used, held for this session only. Updated by <see cref="Load"/> and
+    /// <see cref="Save"/>.
+    /// </summary>
+    SecretStorageStatus SecretStorage { get; }
 
     /// <summary>
     /// Default component provider ID to select on startup (e.g. "ultralibrarian", "easyeda")
