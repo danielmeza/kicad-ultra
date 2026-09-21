@@ -423,9 +423,14 @@ Open, and each of these waits on something outside this repo:
   - #67 / #75: Avalonia 12, waiting on OutSystems/CefGlue#249;
   - #68: `extends` rename, waiting on a KiCadSharp release with kicad-sharp#48;
   - #72 and #73: KiCad 11's IPC library commands are declared on KiCad master, but nothing handles them.
-- **In progress:** #110 (JLCPCB rate limiting) and #112 (Settings save).
 
 Upstream: danielmeza/kicad-sharp#46 and #47, danielmeza/sexpressions#24.
+
+**Careful with issue numbers in PR descriptions and commit messages.** GitHub closes an issue when a
+PR merges if its text contains `close`, `fix` or `resolve` (in any tense) followed by `#N`, anywhere in
+a sentence and whatever comes before it. "This does not close #68" closed #68, and "Close #51 after
+someone runs it" closed #51; both had to be reopened. Write `Fixes #N` only when the PR really
+finishes the issue, and otherwise use `Part of #N`, or put the number before the verb: "#68 stays open".
 
 ## Release state
 
