@@ -63,6 +63,13 @@
                                     <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
                                 </Grid>
+                                <!-- Why Save refused the target path (#112). Outside the grid above, so it
+                                     stays readable while the project directory is in use. -->
+                                <TextBlock Text="{Binding TargetPathError}"
+                                           IsVisible="{Binding TargetPathError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
 
                                 <Separator Margin="0,5"/>
 

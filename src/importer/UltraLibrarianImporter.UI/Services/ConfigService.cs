@@ -178,6 +178,7 @@ public class ConfigService : IConfigService
         ConfigData? config = null;
         var fileExists = File.Exists(_configFilePath);
         var droppedRelativeDownloadDirectory = false;
+        var droppedRelativeTargetPath = false;
         var scopeMigrated = false;
         try
         {
@@ -208,7 +209,20 @@ public class ConfigService : IConfigService
 
                     RegistrationScope = ReadRegistrationScope(config, out scopeMigrated);
                     CleanupAfterImport = config.CleanupAfterImport;
-                    TargetPath = config.TargetPath ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(config.TargetPath) && !Path.IsPathFullyQualified(config.TargetPath))
+                    {
+                        // Settings accepted a relative target path until #112, and the import engine
+                        // writes libraries straight into it. Drop it like a relative download
+                        // directory: empty means not set, so imports go to the default location.
+                        _logger.LogWarning("Ignoring the relative target path {SavedTargetPath} in config.json", config.TargetPath);
+                        TargetPath = string.Empty;
+                        droppedRelativeTargetPath = true;
+                    }
+                    else
+                    {
+                        TargetPath = config.TargetPath ?? string.Empty;
+                    }
+
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                     LibraryName = config.LibraryName ?? string.Empty;
@@ -234,9 +248,9 @@ public class ConfigService : IConfigService
         var migrated = LoadSecrets(config);
 
         // Create the default config file, or rewrite one whose cleartext keys were just moved into
-        // the credential store or whose relative download directory was dropped. A file that
-        // exists but failed to parse is left alone.
-        if (!fileExists || migrated || droppedRelativeDownloadDirectory)
+        // the credential store or whose relative download directory or target path was dropped. A
+        // file that exists but failed to parse is left alone.
+        if (!fileExists || migrated || droppedRelativeDownloadDirectory || droppedRelativeTargetPath)
         {
             Save();
         }

@@ -96,6 +96,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _targetPath = string.Empty;
 
+    /// <summary>Why Save refused the target path, shown under it. Empty when it did not (#112).</summary>
+    [ObservableProperty]
+    private string _targetPathError = string.Empty;
+
     [ObservableProperty]
     private bool _useProjectPath = true;
 
@@ -288,8 +292,10 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // The error was about the folder as it was; the next Save checks the new one.
+    // Each error was about the path as it was; the next Save checks the new one.
     partial void OnDownloadDirectoryChanged(string value) => DownloadDirectoryError = string.Empty;
+
+    partial void OnTargetPathChanged(string value) => TargetPathError = string.Empty;
 
     // Since #111 the browser saves into this folder as it is given, so a relative one would resolve
     // against whatever directory the app happens to run in (#112). Returns why it is refused, or null.
@@ -299,6 +305,14 @@ public partial class SettingsViewModel : ObservableObject
         : !Path.IsPathFullyQualified(directory)
             ? $"Not saved: \"{directory}\" is not a full path. A relative folder would depend on the directory the app was started in. Enter a full path, or choose a folder with Browse."
         : null;
+
+    // The import engine writes libraries straight into the target path when the project directory is
+    // not used, so the same goes for it. Empty is valid: it means not set, and the engine then uses its
+    // default location. Checked whether or not the path is in use, so config.json never holds a relative one.
+    private static string? CheckTargetPath(string path) =>
+        string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path)
+            ? null
+            : $"Not saved: \"{path}\" is not a full path. Imported libraries would go wherever the app was started from. Enter a full path, choose a folder with Browse, or leave it empty.";
 
     private void AddFallbackProvider(string id, string name, bool directApi)
     {
@@ -344,13 +358,23 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
-        // Checked before anything is written: a refused folder leaves every setting as it was, and
-        // the dialog open on the General tab with the reason under the folder.
-        if (CheckDownloadDirectory(DownloadDirectory) is { } downloadDirectoryError)
+        // Checked before anything is written: a refused path leaves every setting as it was, and the
+        // dialog open on the General tab with the reason under the path.
+        DownloadDirectoryError = CheckDownloadDirectory(DownloadDirectory) ?? string.Empty;
+        TargetPathError = CheckTargetPath(TargetPath) ?? string.Empty;
+        if (DownloadDirectoryError.Length > 0 || TargetPathError.Length > 0)
         {
-            DownloadDirectoryError = downloadDirectoryError;
             SelectedTabIndex = 0;
-            _logger.LogWarning("Settings not saved: the download folder \"{Directory}\" is not a full path", DownloadDirectory);
+            if (DownloadDirectoryError.Length > 0)
+            {
+                _logger.LogWarning("Settings not saved: the download folder \"{Directory}\" is not a full path", DownloadDirectory);
+            }
+
+            if (TargetPathError.Length > 0)
+            {
+                _logger.LogWarning("Settings not saved: the target path \"{TargetPath}\" is not a full path", TargetPath);
+            }
+
             return;
         }
 
