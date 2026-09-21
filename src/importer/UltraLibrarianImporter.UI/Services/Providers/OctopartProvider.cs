@@ -118,7 +118,8 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                 if (!item.TryGetProperty("part", out JsonElement part))
                     continue;
 
-                var mpn = part.GetProperty("mpn").GetString() ?? query;
+                // Empty rather than the search text when Nexar gives none: the query is not a part number.
+                var mpn = part.GetProperty("mpn").GetString() ?? string.Empty;
                 var mfg = part.TryGetProperty("manufacturer", out JsonElement m) && m.TryGetProperty("name", out JsonElement n)
                     ? n.GetString() ?? "Unknown" : "Unknown";
                 var desc = part.TryGetProperty("shortDescription", out JsonElement d) ? d.GetString() ?? "" : "";
