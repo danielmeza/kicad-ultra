@@ -113,8 +113,16 @@ public interface IComponentProvider
     /// <summary>
     /// Performs an API search for components matching the given query.
     /// </summary>
+    /// <remarks>
+    /// Return only what the provider answered, and throw when it did not answer: a non-success HTTP
+    /// status, a timeout, a body that is not the expected shape, or
+    /// <see cref="ProviderNotConfiguredException"/> when a required credential is missing. A narrow
+    /// catch may log the detail, but must rethrow rather than return an empty list:
+    /// <c>PartAggregatorService</c> caches every list returned here, so an empty list is remembered
+    /// as "no matches", while a failure is left out of the results and not cached.
+    /// </remarks>
     /// <param name="query">Search term, keyword, or manufacturer part number.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A collection of matching part search results.</returns>
+    /// <returns>The provider's matches for the query; empty only when it found none.</returns>
     Task<IReadOnlyList<PartSearchResult>> SearchPartsAsync(string query, CancellationToken cancellationToken = default);
 }

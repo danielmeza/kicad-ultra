@@ -59,33 +59,17 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
             // JLCPCB / LCSC in-stock parts API (tscircuit jlcsearch index)
             var url = $"https://jlcsearch.tscircuit.com/components/list.json?search={Uri.EscapeDataString(query)}&limit=25";
             using HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogWarning("EasyEDA/JLCPCB search returned HTTP {StatusCode}", response.StatusCode);
-                return results;
-            }
+            // Anything short of an answer throws, so the aggregator leaves it out and does not cache it.
+            _ = response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             using var doc = JsonDocument.Parse(json);
 
-            JsonElement componentsArray;
-            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-            {
-                componentsArray = doc.RootElement;
-            }
-            else if (doc.RootElement.TryGetProperty("components", out JsonElement comps) && comps.ValueKind == JsonValueKind.Array)
-            {
-                componentsArray = comps;
-            }
-            else
-            {
-                return results;
-            }
-
-            if (componentsArray.ValueKind != JsonValueKind.Array)
-            {
-                return results;
-            }
+            JsonElement componentsArray = doc.RootElement.ValueKind == JsonValueKind.Array
+                ? doc.RootElement
+                : doc.RootElement.TryGetProperty("components", out JsonElement comps) && comps.ValueKind == JsonValueKind.Array
+                    ? comps
+                    : throw new JsonException("Response has neither a top-level array nor a 'components' array.");
 
             foreach (JsonElement item in componentsArray.EnumerateArray().Take(25))
             {
@@ -165,14 +149,17 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "HTTP request failed while querying EasyEDA/JLCPCB endpoint");
+            throw;
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Failed to parse JSON response from EasyEDA/JLCPCB endpoint");
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Unexpected error searching EasyEDA parts");
+            throw;
         }
 
         return results;
