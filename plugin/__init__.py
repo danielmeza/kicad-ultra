@@ -25,7 +25,8 @@ try:
                 self.icon_file_name = icon_path
 
         def Run(self):
-            launch_importer()
+            # Runs on KiCad's UI thread: never wait on the child here, or the editor freezes.
+            launch_importer(wait=False)
 
     exe_name = os.path.basename(sys.executable).lower()
     is_standalone_cli = exe_name.startswith("python") and wx.GetApp() is None
