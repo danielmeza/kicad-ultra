@@ -901,6 +901,16 @@ public partial class MainViewModel : ObservableObject
         IsProgressVisible = false;
     }
 
+    // A browser download the download handler would not let through. The reason is the handler's own
+    // short text and never carries the server-supplied file name.
+    internal void DownloadRefused(string reason)
+    {
+        _logger.LogWarning("Browser download refused: {Reason}", reason);
+        StatusMessage = $"Download refused: {reason}.";
+        ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Download refused: {reason}.");
+        IsProgressVisible = false;
+    }
+
     internal void ReportDownloadProgressChanged(string fullPath, long receivedBytes, long totalBytes, int percentComplete)
     {
         StatusMessage =

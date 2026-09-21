@@ -125,9 +125,21 @@ public partial class MainWindow : Window
     {
         AvaloniaXamlLoader.Load(this);
     }
+
+    // The only route from the browser to an import. WebView.DownloadCompleted, also wired to
+    // DownloadComplete, is raised only by the WebView's own download handler, and Initialize replaces
+    // that handler with this one while the WebView is still being constructed.
     private class InternalDownloadHandler : DownloadHandler
     {
         private readonly MainWindow _mainWindow;
+
+        // The downloads this handler continued, by CEF download id, with the path each was given. Only
+        // these reach the view model (#97). Both collections are touched only by OnBeforeDownload and
+        // OnDownloadUpdated, which CEF calls on its browser-process UI thread.
+        private readonly Dictionary<uint, string> _acceptedDownloads = [];
+
+        // The downloads this handler refused, until CEF reports them canceled.
+        private readonly HashSet<uint> _refusedDownloads = [];
 
         public InternalDownloadHandler(MainWindow mainWindow)
         {
@@ -181,7 +193,7 @@ public partial class MainWindow : Window
                 }
                 catch
                 {
-                    callback.Continue(string.Empty, false);
+                    Refuse(downloadItem.Id, callback, "the download folder could not be created");
                     return;
                 }
             }
@@ -195,40 +207,84 @@ public partial class MainWindow : Window
 
             if (!fullPath.StartsWith(rootPath, StringComparison.Ordinal))
             {
-                callback.Continue(string.Empty, false); // Refuse rather than write outside target folder
+                // Refuse rather than write outside target folder
+                Refuse(downloadItem.Id, callback, "its file name would place it outside the download folder");
                 return;
             }
 
+            _acceptedDownloads[downloadItem.Id] = fullPath;
             callback.Continue(fullPath, false);
             _mainWindow.AsyncExecuteInUI(() => _mainWindow.DownloadStarted(fullPath));
         }
 
+        // Refusing never calls Continue: with an empty path Continue does not refuse, it saves the file
+        // under the server's name in CEF's temp directory (#97). Not continuing is not enough either:
+        // CEF 120 leaves the download waiting for a path, its data in a temporary file, so
+        // OnDownloadUpdated cancels it at its next update. The callback, never to be run, is released.
+        private void Refuse(uint downloadId, CefBeforeDownloadCallback callback, string reason)
+        {
+            _ = _refusedDownloads.Add(downloadId);
+            callback.Dispose();
+            _mainWindow.AsyncExecuteInUI(() => _mainWindow.ViewModel.DownloadRefused(reason));
+        }
+
         protected override void OnDownloadUpdated(CefBrowser browser, CefDownloadItem downloadItem, CefDownloadItemCallback callback)
         {
+            if (_refusedDownloads.Contains(downloadItem.Id))
+            {
+                if (downloadItem.IsCanceled)
+                {
+                    _ = _refusedDownloads.Remove(downloadItem.Id);
+                }
+                else
+                {
+                    callback.Cancel();
+                }
 
-            var fullPath = downloadItem.FullPath;
+                return;
+            }
+
+            // CEF also reports a download before OnBeforeDownload has seen it. Only a download this
+            // handler accepted reaches the view model.
+            if (!_acceptedDownloads.TryGetValue(downloadItem.Id, out var acceptedPath))
+            {
+                return;
+            }
+
             var receivedBytes = downloadItem.ReceivedBytes;
             var totalBytes = downloadItem.TotalBytes;
             var percentageComplete = downloadItem.PercentComplete;
             if (downloadItem.IsComplete)
             {
+                // Forgotten at once, so a later update of the finished download cannot import it again.
+                _ = _acceptedDownloads.Remove(downloadItem.Id);
+
+                // Import the file at the path that passed the containment check, and only if that is
+                // where CEF says it saved it.
+                if (!string.Equals(downloadItem.FullPath, acceptedPath, StringComparison.Ordinal))
+                {
+                    _mainWindow.AsyncExecuteInUI(() => _mainWindow.ViewModel.DownloadRefused(
+                        "it was not saved where it was accepted, so it will not be imported"));
+                    return;
+                }
+
                 _mainWindow.AsyncExecuteInUI(delegate
                 {
-                    _mainWindow.DownloadComplete(fullPath);
+                    _mainWindow.DownloadComplete(acceptedPath);
                 });
             }
             else if (downloadItem.IsCanceled || downloadItem.IsInterrupted)
             {
                 _mainWindow.AsyncExecuteInUI(delegate
                 {
-                    _mainWindow.DownloadCancelled(fullPath);
+                    _mainWindow.DownloadCancelled(acceptedPath);
                 });
             }
             else
             {
                 _mainWindow.AsyncExecuteInUI(delegate
                 {
-                    _mainWindow.DownloadProgressChanged(fullPath, receivedBytes, totalBytes, percentageComplete);
+                    _mainWindow.DownloadProgressChanged(acceptedPath, receivedBytes, totalBytes, percentageComplete);
                 });
             }
         }
