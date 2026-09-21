@@ -28,6 +28,9 @@ namespace UltraLibrarianImporter.UI.Services
         public bool UseProjectPath { get; set; } = true;
         public bool AutoImportWhenDownloaded { get; set; } = true;
         public string LibraryName { get; set; } = string.Empty;
+        public string OctopartApiToken { get; set; } = string.Empty;
+        public string SnapEdaApiKey { get; set; } = string.Empty;
+        public string SamacSysApiKey { get; set; } = string.Empty;
 
         /// <summary>
         /// Creates a new instance of the configuration service
@@ -79,6 +82,9 @@ namespace UltraLibrarianImporter.UI.Services
                         UseProjectPath = config.UseProjectPath;
                         AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                         LibraryName = config.LibraryName;
+                        OctopartApiToken = config.OctopartApiToken ?? string.Empty;
+                        SnapEdaApiKey = config.SnapEdaApiKey ?? string.Empty;
+                        SamacSysApiKey = config.SamacSysApiKey ?? string.Empty;
                     }
 
                     _logger.LogInformation("Configuration loaded from file");

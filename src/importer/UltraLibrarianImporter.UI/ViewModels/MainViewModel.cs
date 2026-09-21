@@ -1,6 +1,8 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Avalonia.Threading;
@@ -19,15 +21,15 @@ using UltraLibrarianImporter.UI.Views;
 
 namespace UltraLibrarianImporter.UI.ViewModels
 {
-    // Change from inheriting ReactiveObject to ObservableObject
     public partial class MainViewModel : ObservableObject
     {
         private readonly ILogger<MainViewModel> _logger;
         private readonly IConfigService _configService;
         private readonly KiCad _kiCad;
-        private readonly Services.UltraLibrarianImporter _importer;
+        private readonly IKiCadImportEngine _importEngine;
+        private readonly IComponentProviderRegistry _providerRegistry;
+        private readonly IPartAggregatorService _aggregatorService;
 
-        // Use [ObservableProperty] for properties that need to notify changes
         [ObservableProperty]
         private string _statusMessage = "Ready";
 
@@ -43,85 +45,343 @@ namespace UltraLibrarianImporter.UI.ViewModels
         [ObservableProperty]
         private bool _webViewLoaded;
 
-        private string? _downloadedFilePath;
-
         [ObservableProperty]
         private Services.ImportType _selectedImportType = Services.ImportType.All;
 
-        // Observable collections for UI
+        public IReadOnlyList<Services.ImportType> ImportTypes { get; } = new[]
+        {
+            Services.ImportType.Symbol,
+            Services.ImportType.Footprint,
+            Services.ImportType.Model3D,
+            Services.ImportType.All
+        };
+
+        [ObservableProperty]
+        private IComponentProvider _selectedProvider;
+
+        [ObservableProperty]
+        private string _webviewUrl = string.Empty;
+
+        // Part Explorer Properties
+        [ObservableProperty]
+        private string _searchQuery = string.Empty;
+
+        [ObservableProperty]
+        private bool _isSearching;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsOnBrowserTab))]
+        private int _selectedTabIndex;
+
+        public bool IsOnBrowserTab => SelectedTabIndex == 1;
+
+        public event Action? RequestBrowserBack;
+        public event Action? RequestBrowserForward;
+        public event Action? RequestBrowserReload;
+
+        [RelayCommand]
+        private void BackToExplorer()
+        {
+            SelectedTabIndex = 0;
+        }
+
+        [RelayCommand]
+        private void BrowserBack()
+        {
+            RequestBrowserBack?.Invoke();
+        }
+
+        [RelayCommand]
+        private void BrowserForward()
+        {
+            RequestBrowserForward?.Invoke();
+        }
+
+        [RelayCommand]
+        private void BrowserReload()
+        {
+            RequestBrowserReload?.Invoke();
+        }
+
+        [ObservableProperty]
+        private PartSearchResult? _selectedSearchResult;
+
+        public enum SortField { Stock, Price, CadAssets }
+        public enum SortOrder { Ascending, Descending }
+
+        [ObservableProperty]
+        private SortField _activeSortField = SortField.Stock;
+
+        [ObservableProperty]
+        private SortOrder _activeSortOrder = SortOrder.Descending;
+
+        [ObservableProperty]
+        private string _stockSortIndicator = "▼";
+
+        [ObservableProperty]
+        private string _priceSortIndicator = "";
+
+        [ObservableProperty]
+        private string _cadSortIndicator = "";
+
+        [ObservableProperty]
+        private string _sortStatusSummary = "Sorted: Stock (High → Low)";
+
+        public ObservableCollection<PartSearchResult> SearchResults { get; } = new ObservableCollection<PartSearchResult>();
+
+        private string? _downloadedFilePath;
+
+        public IReadOnlyList<IComponentProvider> AvailableProviders => _providerRegistry.Providers;
+
+        public string DownloadDirectory => _configService.DownloadDirectory;
+
         public ObservableCollection<string> ImportMessages { get; } = new ObservableCollection<string>();
 
         public MainViewModel(
             ILogger<MainViewModel> logger,
             IConfigService configService,
             KiCad kiCad,
-            Services.UltraLibrarianImporter importer)
+            IKiCadImportEngine importEngine,
+            IComponentProviderRegistry providerRegistry,
+            IPartAggregatorService aggregatorService)
         {
             _logger = logger;
             _configService = configService;
             _kiCad = kiCad;
-            _importer = importer;
+            _importEngine = importEngine;
+            _providerRegistry = providerRegistry;
+            _aggregatorService = aggregatorService;
 
-            // Ensure the download directory exists
+            _selectedProvider = _providerRegistry.SelectedProvider;
+            _webviewUrl = SelectedProvider.SearchUrl;
+
             _configService.EnsureDownloadDirectoryExists();
-
-            // Log that we're ready
-            _logger.LogInformation($"MainWindowViewModel initialized, watching for downloads in {_configService.DownloadDirectory}");
+            _logger.LogInformation("MainViewModel initialized for provider {Provider}. Watching for downloads in {Dir}",
+                SelectedProvider.DisplayName, _configService.DownloadDirectory);
         }
 
-        public string WebviewUrl => "https://app.ultralibrarian.com/Account/Login?returnUrl=%252fsearch";
+        partial void OnSelectedProviderChanged(IComponentProvider value)
+        {
+            if (value != null)
+            {
+                _providerRegistry.SelectedProvider = value;
+                WebviewUrl = value.SearchUrl;
+                StatusMessage = $"Active provider: {value.DisplayName}";
+                _logger.LogInformation("Switched component provider to {Provider} ({Url})", value.DisplayName, value.SearchUrl);
+            }
+        }
 
-        // Method to update the WebView loaded status from MainWindow
         public void SetWebViewLoaded(bool isLoaded)
         {
             WebViewLoaded = isLoaded;
         }
 
-        private void InitializeKiCadClient()
+        [RelayCommand]
+        private async Task SearchParts()
         {
+            if (string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                StatusMessage = "Please enter a part number or keyword to search.";
+                return;
+            }
+
             try
             {
-                // Get the importer with current config
-                //_importer = _kicadClientService.GetImporter(_configService.GetImportOptions());
-                _logger.LogInformation("KiCad client initialized");
+                IsSearching = true;
+                StatusMessage = $"Searching all component providers for '{SearchQuery}'...";
+                SearchResults.Clear();
+
+                var results = await _aggregatorService.SearchAllProvidersAsync(SearchQuery);
+                foreach (var r in results)
+                {
+                    SearchResults.Add(r);
+                }
+
+                ApplySort();
+
+                StatusMessage = $"Found {SearchResults.Count} results across providers for '{SearchQuery}'. ({SortStatusSummary})";
+                _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", SearchQuery, SearchResults.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error initializing KiCad client");
-                StatusMessage = "Error: Could not connect to KiCad";
+                _logger.LogError(ex, "Error searching components across providers");
+                StatusMessage = $"Search error: {ex.Message}";
             }
+            finally
+            {
+                IsSearching = false;
+            }
+        }
+
+        [RelayCommand]
+        private void Sort(string? column)
+        {
+            if (string.IsNullOrEmpty(column)) return;
+
+            if (string.Equals(column, "Stock", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.Stock)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Descending
+                        ? SortOrder.Ascending
+                        : SortOrder.Descending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.Stock;
+                    ActiveSortOrder = SortOrder.Descending;
+                }
+            }
+            else if (string.Equals(column, "Price", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.Price)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Ascending
+                        ? SortOrder.Descending
+                        : SortOrder.Ascending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.Price;
+                    ActiveSortOrder = SortOrder.Ascending;
+                }
+            }
+            else if (string.Equals(column, "CAD", StringComparison.OrdinalIgnoreCase))
+            {
+                if (ActiveSortField == SortField.CadAssets)
+                {
+                    ActiveSortOrder = ActiveSortOrder == SortOrder.Descending
+                        ? SortOrder.Ascending
+                        : SortOrder.Descending;
+                }
+                else
+                {
+                    ActiveSortField = SortField.CadAssets;
+                    ActiveSortOrder = SortOrder.Descending;
+                }
+            }
+
+            UpdateSortVisuals();
+            ApplySort();
+        }
+
+        private void UpdateSortVisuals()
+        {
+            string arrow = ActiveSortOrder == SortOrder.Ascending ? "▲" : "▼";
+            StockSortIndicator = ActiveSortField == SortField.Stock ? arrow : "";
+            PriceSortIndicator = ActiveSortField == SortField.Price ? arrow : "";
+            CadSortIndicator = ActiveSortField == SortField.CadAssets ? arrow : "";
+
+            string fieldName = ActiveSortField switch
+            {
+                SortField.Stock => "Stock",
+                SortField.Price => "Price",
+                SortField.CadAssets => "CAD Assets",
+                _ => ""
+            };
+            string direction = ActiveSortOrder == SortOrder.Ascending ? "Low → High" : "High → Low";
+            SortStatusSummary = $"Sorted: {fieldName} ({direction})";
+        }
+
+        private void ApplySort()
+        {
+            if (SearchResults.Count <= 1) return;
+
+            List<PartSearchResult> sorted;
+            switch (ActiveSortField)
+            {
+                case SortField.Price:
+                    sorted = ActiveSortOrder == SortOrder.Ascending
+                        ? SearchResults.OrderBy(r => r.BestPrice == null).ThenBy(r => r.BestPrice).ToList()
+                        : SearchResults.OrderBy(r => r.BestPrice == null).ThenByDescending(r => r.BestPrice).ToList();
+                    break;
+
+                case SortField.Stock:
+                    sorted = ActiveSortOrder == SortOrder.Descending
+                        ? SearchResults.OrderBy(r => r.Stock == null).ThenByDescending(r => r.Stock).ToList()
+                        : SearchResults.OrderBy(r => r.Stock == null).ThenBy(r => r.Stock).ToList();
+                    break;
+
+                case SortField.CadAssets:
+                    sorted = ActiveSortOrder == SortOrder.Descending
+                        ? SearchResults.OrderByDescending(GetCadScore).ThenByDescending(r => r.Stock ?? 0).ToList()
+                        : SearchResults.OrderBy(GetCadScore).ThenBy(r => r.Stock ?? 0).ToList();
+                    break;
+
+                default:
+                    return;
+            }
+
+            SearchResults.Clear();
+            foreach (var item in sorted)
+            {
+                SearchResults.Add(item);
+            }
+        }
+
+        private static int GetCadScore(PartSearchResult part)
+        {
+            int score = 0;
+            if (part.Has3DModel) score += 4;
+            if (part.HasFootprint) score += 2;
+            if (part.HasSymbol) score += 1;
+            return score;
+        }
+
+        [RelayCommand]
+        private void OpenInWebBrowser(PartSearchResult? part)
+        {
+            if (part == null)
+            {
+                return;
+            }
+
+            // Find provider in registry and switch to it
+            var provider = _providerRegistry.GetProvider(part.ProviderId);
+            if (provider != null)
+            {
+                SelectedProvider = provider;
+            }
+
+            if (!string.IsNullOrEmpty(part.DatasheetUrl))
+            {
+                WebviewUrl = part.DatasheetUrl;
+            }
+            else if (provider != null)
+            {
+                WebviewUrl = provider.SearchUrl;
+            }
+
+            // Switch to the Web Browser tab
+            SelectedTabIndex = 1;
+            StatusMessage = $"Navigating to {part.PartNumber} on {part.ProviderName}...";
         }
 
         public void LibraryDownloaded(string filePath)
         {
-            // Only process ZIP files (UltraLibrarian typically downloads as ZIP)
-            if (!filePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            if (!SelectedProvider.CanHandleDownload(filePath) && !filePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
                 return;
+            }
 
             IsProgressVisible = false;
-
             _downloadedFilePath = filePath;
             var fileName = Path.GetFileName(filePath);
-            StatusMessage = $"Downloaded: {fileName}";
+            StatusMessage = $"Downloaded ({SelectedProvider.DisplayName}): {fileName}";
             CanImport = true;
 
-            // Add message to the list
-            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Downloaded: {Path.GetFileName(fileName)}");
-            _logger.LogInformation($"Detected new file: {fileName}");
-            
-            // Check if auto-import is enabled
+            ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] [{SelectedProvider.DisplayName}] Downloaded: {fileName}");
+            _logger.LogInformation("Detected download for {Provider}: {File}", SelectedProvider.DisplayName, fileName);
+
             if (_configService.AutoImportWhenDownloaded)
             {
-                _logger.LogInformation("Auto-import is enabled. Starting import process...");
-                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Auto-import enabled. Starting import...");
-                
-                // Run the import
+                _logger.LogInformation("Auto-import enabled. Initiating import...");
+                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Starting auto-import...");
                 _ = ImportComponent();
             }
             else
             {
-                _logger.LogInformation("Auto-import is disabled. Waiting for user to initiate import.");
-                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Auto-import disabled. Use the Import button to import this component.");
+                ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Ready to import. Click 'Import Component' to proceed.");
             }
         }
 
@@ -132,36 +392,27 @@ namespace UltraLibrarianImporter.UI.ViewModels
             {
                 _logger.LogInformation("Opening settings dialog");
 
-                // Get the service provider from the application instance
                 var serviceProvider = (App.Current as App)?._serviceProvider;
-
-                // Create the settings window
                 SettingsWindow settingsWindow;
+
                 if (serviceProvider != null)
                 {
-                    // Use DI to get a properly configured SettingsViewModel
                     var viewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
                     var options = serviceProvider.GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
                     settingsWindow = new SettingsWindow(_configService, _logger, options) { DataContext = viewModel };
                 }
                 else
                 {
-                    // Fallback to direct creation when DI is not available
                     settingsWindow = new SettingsWindow();
                 }
 
-                // Show the dialog and wait for the result. App.MainWindow is null until the
-                // framework has finished initialising; a dialog cannot be owned by nothing, so say
-                // so rather than passing null into Avalonia.
                 var owner = App.MainWindow
-                    ?? throw new InvalidOperationException(
-                        "Cannot open the settings dialog before the main window exists.");
-                var result = await settingsWindow.ShowDialog<bool>(owner);
+                    ?? throw new InvalidOperationException("Cannot open settings dialog before main window exists.");
 
+                var result = await settingsWindow.ShowDialog<bool>(owner);
                 if (result)
                 {
-                    _logger.LogInformation("Settings saved successfully");
-
+                    _logger.LogInformation("Settings saved successfully.");
                 }
             }
             catch (Exception ex)
@@ -173,9 +424,9 @@ namespace UltraLibrarianImporter.UI.ViewModels
         [RelayCommand]
         private async Task ImportComponent()
         {
-            if (_importer == null || string.IsNullOrEmpty(_downloadedFilePath) || !File.Exists(_downloadedFilePath))
+            if (string.IsNullOrEmpty(_downloadedFilePath) || !File.Exists(_downloadedFilePath))
             {
-                StatusMessage = "No component available to import";
+                StatusMessage = "No component package available to import.";
                 return;
             }
 
@@ -183,10 +434,9 @@ namespace UltraLibrarianImporter.UI.ViewModels
             {
                 IsProgressVisible = true;
                 ProgressValue = 0;
-                StatusMessage = "Importing component...";
+                StatusMessage = $"Importing component from {SelectedProvider.DisplayName}...";
                 CanImport = false;
 
-                // Use a progress timer to show activity
                 var progressTimer = new System.Timers.Timer(100);
                 progressTimer.Elapsed += (s, e) =>
                 {
@@ -197,17 +447,15 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 };
                 progressTimer.Start();
 
-                // Import the component
-                var result = await _importer.ImportComponentAsync(_downloadedFilePath, SelectedImportType);
+                var options = _configService.GetImportOptions();
+                var result = await _importEngine.ImportAsync(SelectedProvider, _downloadedFilePath, SelectedImportType, options);
 
-                // Stop the timer
                 progressTimer.Stop();
 
-                // Update UI with result
                 if (result.Success)
                 {
-                    StatusMessage = "Import completed successfully";
-                    ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import succeeded");
+                    StatusMessage = $"Import completed ({SelectedProvider.DisplayName})";
+                    ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import succeeded ({SelectedProvider.DisplayName})");
 
                     foreach (var detail in result.Details)
                     {
@@ -217,7 +465,7 @@ namespace UltraLibrarianImporter.UI.ViewModels
                 else
                 {
                     StatusMessage = "Import failed";
-                    ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import failed");
+                    ImportMessages.Add($"[{DateTime.Now:HH:mm:ss}] Import failed ({SelectedProvider.DisplayName})");
 
                     foreach (var detail in result.Details)
                     {
@@ -245,7 +493,6 @@ namespace UltraLibrarianImporter.UI.ViewModels
             {
                 if (Directory.Exists(_configService.DownloadDirectory))
                 {
-                    // Open downloads folder in file explorer
                     if (OperatingSystem.IsWindows())
                     {
                         System.Diagnostics.Process.Start("explorer.exe", _configService.DownloadDirectory);
@@ -272,14 +519,10 @@ namespace UltraLibrarianImporter.UI.ViewModels
             try
             {
                 _logger.LogInformation("Showing about dialog");
+                var aboutWindow = new AboutWindow(_logger, _kiCad);
 
-                // Create the about window with the KiCad instance
-                AboutWindow aboutWindow = new AboutWindow(_logger, _kiCad);
-
-                // Show the dialog
                 var aboutOwner = App.MainWindow
-                    ?? throw new InvalidOperationException(
-                        "Cannot open the about dialog before the main window exists.");
+                    ?? throw new InvalidOperationException("Cannot open about dialog before main window exists.");
                 aboutWindow.ShowDialog(aboutOwner);
             }
             catch (Exception ex)
@@ -290,20 +533,19 @@ namespace UltraLibrarianImporter.UI.ViewModels
 
         internal void DownloadCancelled(string fullPath)
         {
-            StatusMessage = $"Download canceled.";
+            StatusMessage = "Download canceled.";
             IsProgressVisible = false;
         }
 
         internal void ReportDownloadProgressChanged(string fullPath, long receivedBytes, long totalBytes, int percentComplete)
         {
-            StatusMessage = $"Downloading library: {Path.GetFileName(fullPath)} {percentComplete}% ...";
+            StatusMessage = $"Downloading: {Path.GetFileName(fullPath)} ({percentComplete}%)...";
             ProgressValue = percentComplete;
         }
 
         internal void DownloadStarted(string filePath)
         {
             IsProgressVisible = true;
-
         }
     }
 }
