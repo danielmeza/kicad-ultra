@@ -41,7 +41,6 @@
                                     <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Default naming if empty"/>
                                 </Grid>
 
-                                <CheckBox Content="Add imported components to global library table" IsChecked="{Binding AddToGlobalLibrary}"/>
                                 <CheckBox Content="Clean up temporary files after successful import" IsChecked="{Binding CleanupAfterImport}"/>
                                 <CheckBox Content="Automatically trigger import when CAD package finishes downloading" IsChecked="{Binding AutoImportWhenDownloaded}"/>
                                 
@@ -58,6 +57,44 @@
                                     <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
                                 </Grid>
+
+                                <Separator Margin="0,5"/>
+
+                                <!-- Which of KiCad's library tables imported libraries are registered in (#71) -->
+                                <TextBlock Text="Register imported libraries in" FontWeight="SemiBold"/>
+                                <StackPanel Spacing="8">
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsAutomaticRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Automatic (recommended)"/>
+                                            <TextBlock Text="The project's library tables when importing into a KiCad project, by a path relative to the project, so the library moves with it. KiCad's global library tables when there is no project."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsProjectRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="The project's library tables only"/>
+                                            <TextBlock Text="Always the project's tables. Without a KiCad project to import into, the import fails and nothing is written."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsGlobalRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="KiCad's global library tables only"/>
+                                            <TextBlock Text="Always the global tables, by absolute path, even for a library imported into a project. Every project then lists it, and its entry breaks if the project is moved."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                                <TextBlock Text="KiCad does not reload its library tables by itself: after an import, reopen the project, or restart KiCad for the global tables."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>

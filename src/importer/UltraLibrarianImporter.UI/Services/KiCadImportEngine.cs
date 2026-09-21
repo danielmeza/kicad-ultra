@@ -78,6 +78,12 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             ResolveProjectContext(options, provider.DefaultLibraryName, out var projectDirectory, out var projectName);
 
+            // Before extracting, so a refused import leaves the downloaded package for the next attempt.
+            if (SelectLibraryTable(options, projectDirectory, result) is not { } table)
+            {
+                return result;
+            }
+
             _logger.LogDebug("Extracting package via provider {Provider} into {TempDir}", provider.DisplayName, tempDir);
             ProviderExtractionResult extraction = await provider.ExtractPackageAsync(packageFilePath, tempDir);
 
@@ -85,7 +91,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             if (importType.HasFlag(ImportType.Symbol))
             {
-                var symbolSuccess = await RunStepAsync("Symbol import", () => ImportSymbolsAsync(extraction, projectDirectory, projectName, options, provider, result), result);
+                var symbolSuccess = await RunStepAsync("Symbol import", () => ImportSymbolsAsync(extraction, projectDirectory, projectName, options, table, provider, result), result);
                 result.SymbolImportSuccess = symbolSuccess;
                 success |= symbolSuccess;
                 result.Details.Add($"Symbol import: {(symbolSuccess ? "Success" : "Failed")}");
@@ -93,7 +99,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             if (importType.HasFlag(ImportType.Footprint))
             {
-                var footprintSuccess = await RunStepAsync("Footprint import", () => ImportFootprintsAsync(extraction, projectDirectory, projectName, options, provider, result), result);
+                var footprintSuccess = await RunStepAsync("Footprint import", () => ImportFootprintsAsync(extraction, projectDirectory, projectName, options, table, provider, result), result);
                 result.FootprintImportSuccess = footprintSuccess;
                 success |= footprintSuccess;
                 result.Details.Add($"Footprint import: {(footprintSuccess ? "Success" : "Failed")}");
@@ -228,9 +234,12 @@ public class KiCadImportEngine : IKiCadImportEngine
             return result;
         }
 
-        result.Details.Add($"Converting {lcscPartNumber} with {detection.Command.Description}.");
-
         ResolveProjectContext(options, provider.DefaultLibraryName, out var projectDirectory, out var projectName);
+        if (SelectLibraryTable(options, projectDirectory, result) is not { } table)
+        {
+            return result;
+        }
+
         var libraryName = LibraryBaseName(options, provider, projectDirectory, projectName);
         if (libraryName is "." or ".." || libraryName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
         {
@@ -238,14 +247,16 @@ public class KiCadImportEngine : IKiCadImportEngine
             return result;
         }
 
-        var symbolSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Symbol);
+        result.Details.Add($"Converting {lcscPartNumber} with {detection.Command.Description}.");
+
+        var symbolSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, table, LibraryTableKind.Symbol);
         var outputBase = Path.Combine(ChooseLibraryDirectory(projectDirectory, symbolSettingsDirectory, "kicad_easyeda2kicad"), libraryName);
 
         // ${KIPRJMOD}-relative 3D model paths only for a library registered in the project's own table,
         // which refers to the library relative to the project as well. A library in the global table is
         // used from other projects too, where ${KIPRJMOD} is somewhere else, so it keeps absolute paths,
-        // as its table row does (RegisterLibrary). Which table is the default is still open (#71).
-        var projectRelative = !options.AddToGlobalLibrary && IsKiCadProject(projectDirectory);
+        // as its table row does (RegisterLibrary), even when the library itself is in a project.
+        var projectRelative = table == LibraryTableScope.Project;
 
         EasyEda2KiCadConversion conversion = await _easyEda2KiCadConverter.ConvertAsync(
             detection.Command,
@@ -275,7 +286,7 @@ public class KiCadImportEngine : IKiCadImportEngine
             var symbolSuccess = await RunStepAsync(
                 "Symbol import",
                 () => Task.FromResult(conversion.SymbolLibraryWritten
-                    ? RegisterLibrary(LibraryTableKind.Symbol, conversion.SymbolLibraryPath, libraryName, projectDirectory, symbolSettingsDirectory, options, result)
+                    ? RegisterLibrary(LibraryTableKind.Symbol, conversion.SymbolLibraryPath, libraryName, projectDirectory, symbolSettingsDirectory, table, result)
                     : NotWritten("symbol", result)),
                 result);
             result.SymbolImportSuccess = symbolSuccess;
@@ -293,8 +304,8 @@ public class KiCadImportEngine : IKiCadImportEngine
                         conversion.FootprintLibraryPath,
                         libraryName,
                         projectDirectory,
-                        await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Footprint),
-                        options,
+                        await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, table, LibraryTableKind.Footprint),
+                        table,
                         result)
                     : NotWritten("footprint", result),
                 result);
@@ -441,6 +452,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         string projectDirectory,
         string projectName,
         ImportOptions options,
+        LibraryTableScope table,
         IComponentProvider provider,
         ImportResult result)
     {
@@ -452,7 +464,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
         var libraryBaseName = LibraryBaseName(options, provider, projectDirectory, projectName);
 
-        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Symbol);
+        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, table, LibraryTableKind.Symbol);
         var symbolLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_symbols"), $"{libraryBaseName}.kicad_sym");
 
         KiCadSymbolLibrary symbolLibrary;
@@ -523,7 +535,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
         // Only now that the library is on disk: before the save, nothing was added or replaced.
         result.Details.AddRange(written);
-        return RegisterLibrary(LibraryTableKind.Symbol, symbolLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
+        return RegisterLibrary(LibraryTableKind.Symbol, symbolLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, table, result);
     }
 
     /// <summary>
@@ -549,12 +561,13 @@ public class KiCadImportEngine : IKiCadImportEngine
         string projectDirectory,
         string projectName,
         ImportOptions options,
+        LibraryTableScope table,
         IComponentProvider provider,
         ImportResult result)
     {
         var libraryBaseName = LibraryBaseName(options, provider, projectDirectory, projectName);
 
-        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Footprint);
+        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, table, LibraryTableKind.Footprint);
         var footprintLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_footprints"), $"{libraryBaseName}.pretty");
 
         _ = Directory.CreateDirectory(footprintLibPath);
@@ -585,7 +598,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
 
         return success
-            && RegisterLibrary(LibraryTableKind.Footprint, footprintLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
+            && RegisterLibrary(LibraryTableKind.Footprint, footprintLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, table, result);
     }
 
     /// <summary>
@@ -671,10 +684,10 @@ public class KiCadImportEngine : IKiCadImportEngine
     }
 
     /// <summary>
-    /// Adds the library to the table <see cref="ImportOptions.AddToGlobalLibrary"/> selects: KiCad's
-    /// global table when it is set, otherwise the table of the project the library was imported into.
-    /// Returns the step's result: <see langword="false"/> when the library was meant to be registered
-    /// and is not, with the reason in <see cref="ImportResult.Details"/>.
+    /// Adds the library to <paramref name="table"/>, as <see cref="SelectLibraryTable"/> chose it: KiCad's
+    /// global table, or the table of the project the library was imported into. Returns the step's
+    /// result: <see langword="false"/> when the library is not registered, with the reason in
+    /// <see cref="ImportResult.Details"/>.
     /// </summary>
     /// <remarks>
     /// KiCad 10 has no IPC call to reload a library table, so a running KiCad keeps the table it has in
@@ -688,7 +701,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         string nickname,
         string projectDirectory,
         string? kicadSettingsDirectory,
-        ImportOptions options,
+        LibraryTableScope table,
         ImportResult result)
     {
         var label = kind == LibraryTableKind.Symbol ? "Symbol" : "Footprint";
@@ -697,7 +710,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         string tablePath;
         string? kiprjmod;
         string reload;
-        if (options.AddToGlobalLibrary)
+        if (table == LibraryTableScope.Global)
         {
             if (kicadSettingsDirectory is null)
             {
@@ -712,16 +725,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
         else
         {
-            if (!IsKiCadProject(projectDirectory))
-            {
-                // Registration is off by configuration, not broken: there is no project table to add
-                // the library to, and the user chose not to use the global one.
-                var where = string.IsNullOrEmpty(projectDirectory) ? "there is no KiCad project" : $"{projectDirectory} is not a KiCad project folder";
-                _logger.LogInformation("{Label} library {Path} not registered: {Where} and global registration is off", label, libraryPath, where);
-                result.Details.Add($"{label} library not registered: {where} and 'Add imported components to global library table' is off.");
-                return true;
-            }
-
+            // SelectLibraryTable chooses the project's table only when projectDirectory is a KiCad project.
             tablePath = Path.Combine(projectDirectory, tableName);
             kiprjmod = projectDirectory;
             reload = "reopen the project to load it";
@@ -734,7 +738,7 @@ public class KiCadImportEngine : IKiCadImportEngine
             "Imported by KiCad UltraLibrarian Importer");
 
         // Only a project table may be created: see KiCadLibraryTable.Register on the global one.
-        LibraryTableUpdate update = KiCadLibraryTable.Register(tablePath, kind, entry, createIfMissing: !options.AddToGlobalLibrary, kiprjmod);
+        LibraryTableUpdate update = KiCadLibraryTable.Register(tablePath, kind, entry, createIfMissing: table == LibraryTableScope.Project, kiprjmod);
         switch (update.Status)
         {
             case LibraryTableUpdateStatus.Added:
@@ -760,6 +764,35 @@ public class KiCadImportEngine : IKiCadImportEngine
             default:
                 throw new InvalidOperationException($"Unhandled library table status {update.Status}.");
         }
+    }
+
+    /// <summary>
+    /// The library table this import registers in, from <see cref="ImportOptions.RegistrationScope"/> and
+    /// whether <paramref name="projectDirectory"/> is a KiCad project (#71). <see langword="null"/>, with
+    /// the reason in <see cref="ImportResult.Details"/>, when the scope is
+    /// <see cref="LibraryRegistrationScope.Project"/> and there is no project: the import then stops
+    /// before any library is written.
+    /// </summary>
+    /// <remarks>
+    /// The project is the one the libraries are written into: the project KiCad started the importer
+    /// from, or, with "Use active KiCad project directory" off, a target path that holds a
+    /// <c>.kicad_pro</c>.
+    /// </remarks>
+    private LibraryTableScope? SelectLibraryTable(ImportOptions options, string projectDirectory, ImportResult result)
+    {
+        LibraryTableScope? table = options.RegistrationScope.SelectTable(IsKiCadProject(projectDirectory));
+        if (table is { } selected)
+        {
+            _logger.LogInformation("Registering in the {Table} library tables (registration scope {Scope})", selected, options.RegistrationScope);
+            return selected;
+        }
+
+        var where = string.IsNullOrEmpty(projectDirectory)
+            ? "there is no KiCad project to import into"
+            : $"{projectDirectory} is not a KiCad project folder (it has no {KiCadFileExtensions.Project} file)";
+        _logger.LogWarning("Import refused: libraries are registered only in the project's library tables, and {Where}", where);
+        result.Details.Add($"Nothing was imported: Settings registers libraries only in the project's library tables, and {where}. Import with a KiCad project open, or choose Automatic or the global library tables in Settings.");
+        return null;
     }
 
     private static bool IsKiCadProject(string directory) =>
@@ -790,11 +823,12 @@ public class KiCadImportEngine : IKiCadImportEngine
     /// <summary>
     /// KiCad's settings directory for the running version, when the step needs it: to find the global
     /// table, or to hold the library when there is no project directory. <see langword="null"/> when it
-    /// is not needed or cannot be found.
+    /// is not needed or cannot be found. A library registered in the project's table always has a
+    /// project directory to go into, so it never needs it.
     /// </summary>
-    private async Task<string?> ResolveKiCadSettingsDirectoryIfNeededAsync(string projectDirectory, ImportOptions options, LibraryTableKind kind)
+    private async Task<string?> ResolveKiCadSettingsDirectoryIfNeededAsync(string projectDirectory, LibraryTableScope table, LibraryTableKind kind)
     {
-        if (!options.AddToGlobalLibrary && !string.IsNullOrEmpty(projectDirectory))
+        if (table == LibraryTableScope.Project && !string.IsNullOrEmpty(projectDirectory))
         {
             return null;
         }

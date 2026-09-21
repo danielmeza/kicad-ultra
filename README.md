@@ -66,7 +66,9 @@ it found:
 3. `python -m easyeda2kicad` with KiCad's Python interpreter (`api.interpreter_path` in `kicad_common.json`).
 
 The part is converted straight into the same library the other imports use (`<project>_EasyEDA` in the
-project folder, or `EasyEDA` next to KiCad's global tables), then registered in the library table.
+project folder, or `EasyEDA` next to KiCad's global tables), then registered in a library table. By
+default that is the project's table when there is a project and KiCad's global table when there is not;
+**Settings → General → Register imported libraries in** can pin it to either one.
 Re-importing a part replaces it rather than adding a second copy. When an import fails, times out or is
 cancelled, nothing is registered, the symbol library is restored and the files the run created are removed;
 the log names anything it could not undo.
