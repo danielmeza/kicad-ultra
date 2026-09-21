@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Avalonia.Threading;
@@ -128,6 +129,11 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<PartSearchResult> SearchResults { get; } = [];
 
+    // The search that currently owns SearchResults, IsSearching and the status line, and the query it
+    // is running. Both are only touched on the UI thread.
+    private CancellationTokenSource? _searchCancellation;
+    private string? _activeSearchQuery;
+
     private string? _downloadedFilePath;
 
     public IReadOnlyList<IComponentProvider> AvailableProviders => _providerRegistry.Providers;
@@ -184,40 +190,80 @@ public partial class MainViewModel : ObservableObject
         WebViewLoaded = isLoaded;
     }
 
-    [RelayCommand]
+    // AllowConcurrentExecutions: otherwise the command disables the Search button until the slowest
+    // provider has answered or timed out, and a new query cannot replace the one in flight (#49).
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SearchParts()
     {
-        if (string.IsNullOrWhiteSpace(SearchQuery))
+        var query = SearchQueryNormalizer.Normalize(SearchQuery);
+        if (query.Length == 0)
         {
             StatusMessage = "Please enter a part number or keyword to search.";
             return;
         }
 
+        // A second click on the same query would only cancel it and ask every provider again.
+        if (_searchCancellation is not null && string.Equals(query, _activeSearchQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Supersede the search in flight before touching anything it owns. This method runs on the UI
+        // thread, and so does every continuation of the old search, so from here on the old one sees
+        // its token cancelled and cannot write to SearchResults again.
+        _searchCancellation?.Cancel();
+        using var cancellation = new CancellationTokenSource();
+        _searchCancellation = cancellation;
+        _activeSearchQuery = query;
+        CancellationToken token = cancellation.Token;
+
         try
         {
             IsSearching = true;
-            StatusMessage = $"Searching all component providers for '{SearchQuery}'...";
             SearchResults.Clear();
+            StatusMessage = $"Searching all component providers for '{query}'...";
 
-            IReadOnlyList<PartSearchResult> results = await _aggregatorService.SearchAllProvidersAsync(SearchQuery);
-            foreach (PartSearchResult r in results)
+            // No ConfigureAwait(false): each iteration must resume on the UI thread, because
+            // SearchResults is bound to the results list. The command is invoked from the UI thread
+            // and Avalonia's SynchronizationContext brings every continuation back to it.
+            await foreach (PartSearchResult part in _aggregatorService.StreamAllProvidersAsync(query, token))
             {
-                SearchResults.Add(r);
+                // Superseded while this result was already on its way.
+                if (token.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                InsertSorted(part);
+                StatusMessage = $"Searching all component providers for '{query}'... {SearchResults.Count} result(s) so far.";
             }
 
-            ApplySort();
-
-            StatusMessage = $"Found {SearchResults.Count} results across providers for '{SearchQuery}'. ({SortStatusSummary})";
-            _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", SearchQuery, SearchResults.Count);
+            if (!token.IsCancellationRequested)
+            {
+                StatusMessage = $"Found {SearchResults.Count} results across providers for '{query}'. ({SortStatusSummary})";
+                _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", query, SearchResults.Count);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // Superseded: the newer search owns the results and the status line now.
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error searching components across providers");
-            StatusMessage = $"Search error: {ex.Message}";
+            if (!token.IsCancellationRequested)
+            {
+                StatusMessage = $"Search error: {ex.Message}";
+            }
         }
         finally
         {
-            IsSearching = false;
+            if (ReferenceEquals(_searchCancellation, cancellation))
+            {
+                _searchCancellation = null;
+                _activeSearchQuery = null;
+                IsSearching = false;
+            }
         }
     }
 
@@ -295,36 +341,66 @@ public partial class MainViewModel : ObservableObject
     {
         if (SearchResults.Count <= 1) return;
 
-        List<PartSearchResult> sorted;
-        switch (ActiveSortField)
-        {
-            case SortField.Price:
-                sorted = ActiveSortOrder == SortOrder.Ascending
-                    ? SearchResults.OrderBy(r => r.BestPrice == null).ThenBy(r => r.BestPrice).ToList()
-                    : SearchResults.OrderBy(r => r.BestPrice == null).ThenByDescending(r => r.BestPrice).ToList();
-                break;
-
-            case SortField.Stock:
-                sorted = ActiveSortOrder == SortOrder.Descending
-                    ? SearchResults.OrderBy(r => r.Stock == null).ThenByDescending(r => r.Stock).ToList()
-                    : SearchResults.OrderBy(r => r.Stock == null).ThenBy(r => r.Stock).ToList();
-                break;
-
-            case SortField.CadAssets:
-                sorted = ActiveSortOrder == SortOrder.Descending
-                    ? SearchResults.OrderByDescending(GetCadScore).ThenByDescending(r => r.Stock ?? 0).ToList()
-                    : SearchResults.OrderBy(GetCadScore).ThenBy(r => r.Stock ?? 0).ToList();
-                break;
-
-            default:
-                return;
-        }
+        // Order is a stable sort, so ties keep their current order, as they do in InsertSorted.
+        var sorted = SearchResults.Order(Comparer<PartSearchResult>.Create(GetSortComparison())).ToList();
 
         SearchResults.Clear();
         foreach (PartSearchResult item in sorted)
         {
             SearchResults.Add(item);
         }
+    }
+
+    // Results stream in one provider at a time, so each one is placed where the active sort puts it
+    // instead of re-sorting the whole list: rows already on screen stay put and the selection
+    // survives. It goes after every row it ties with, which keeps ties in arrival order.
+    private void InsertSorted(PartSearchResult part)
+    {
+        Comparison<PartSearchResult> compare = GetSortComparison();
+        var index = SearchResults.Count;
+        while (index > 0 && compare(SearchResults[index - 1], part) > 0)
+        {
+            index--;
+        }
+
+        SearchResults.Insert(index, part);
+    }
+
+    // The orders ApplySort has always produced. Rows without a price or a stock figure sort last in
+    // either direction; CAD sorts by asset score, then by stock.
+    private Comparison<PartSearchResult> GetSortComparison()
+    {
+        var descending = ActiveSortOrder == SortOrder.Descending;
+        return ActiveSortField switch
+        {
+            SortField.Price => (a, b) => CompareMissingLast(a.BestPrice, b.BestPrice, descending),
+            SortField.Stock => (a, b) => CompareMissingLast(a.Stock, b.Stock, descending),
+            SortField.CadAssets => (a, b) => CompareCadAssets(a, b, descending),
+            _ => static (_, _) => 0,
+        };
+    }
+
+    private static int CompareCadAssets(PartSearchResult a, PartSearchResult b, bool descending)
+    {
+        var byScore = GetCadScore(a).CompareTo(GetCadScore(b));
+        var result = byScore != 0 ? byScore : (a.Stock ?? 0).CompareTo(b.Stock ?? 0);
+        return descending ? -result : result;
+    }
+
+    private static int CompareMissingLast<T>(T? a, T? b, bool descending) where T : struct, IComparable<T>
+    {
+        if (a is null)
+        {
+            return b is null ? 0 : 1;
+        }
+
+        if (b is null)
+        {
+            return -1;
+        }
+
+        var result = a.Value.CompareTo(b.Value);
+        return descending ? -result : result;
     }
 
     private static int GetCadScore(PartSearchResult part)
