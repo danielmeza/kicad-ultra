@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NLog;
+using NLog.Common;
 using NLog.Config;
 using NLog.Extensions.Logging;
 using NLog.Targets;
@@ -54,7 +55,9 @@ internal sealed class Program
             return;
         }
 
-        // Initialize NLog
+        // Initialize NLog. If SetLogDirectory throws, there is no ApplicationData folder, which
+        // ConfigService and the browser cache need as well, so its exception is left to end the GUI.
+        SetLogDirectory();
         _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
 
         // Before anything can start Avalonia or CEF: CEF's GTK brings in the system HarfBuzz, and
@@ -85,24 +88,46 @@ internal sealed class Program
         }
     }
 
+    // nlog.config names the log files; their folder is set here, before either mode loads it, and
+    // reaches it as ${gdc:logDirectory} (#98). NLog's own ${specialfolder} is "" on Linux while
+    // ~/.config does not exist, and NLog kept that for the whole session, so on a fresh account every
+    // log line went to /UltraLibrarianImporter/logs and was lost. SpecialFolders.GetPath does not need
+    // the folder to exist (#70). A GDC item, not an NLog variable: a variable belongs to a
+    // configuration, and there is none until nlog.config has been parsed.
+    //
+    // NLog's internal log goes to the same folder. internalLogFile cannot expand ${specialfolder}, and
+    // made a directory with that literal name in the working directory on every start. The level is
+    // set first because setting LogFile alone turns the internal log on at Info.
+    private static void SetLogDirectory()
+    {
+        var logDirectory = Path.Combine(
+            SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData), "UltraLibrarianImporter", "logs");
+        GlobalDiagnosticsContext.Set("logDirectory", logDirectory);
+        InternalLogger.LogLevel = NLog.LogLevel.Error;
+        InternalLogger.LogFile = Path.Combine(logDirectory, "nlog-internal.log");
+    }
+
     // MCP mode logs to nlog.config's log files and to stderr, never to stdout, which carries the
-    // JSON-RPC messages (#80). nlog.config stays the one place that names the log files and their
-    // folder, but only its file targets are kept: an allowlist, so a console target added to it later,
-    // or renamed, cannot reach stdout. autoReload is off, because a reload reads nlog.config again,
-    // stdout target included, while the server runs. If nlog.config is missing or unreadable, the
-    // server still runs, as the GUI does, and logs to stderr alone.
+    // JSON-RPC messages (#80). nlog.config stays the one place that names the log files, but only its
+    // file targets are kept: an allowlist, so a console target added to it later, or renamed, cannot
+    // reach stdout. autoReload is off, because a reload reads nlog.config again, stdout target
+    // included, while the server runs. If the log folder cannot be resolved, or nlog.config is missing
+    // or unreadable, the server still runs and logs to stderr alone. SetLogDirectory's failure is
+    // caught here rather than in Main because Main's catch asks NLog for a logger, and with no
+    // configuration assigned NLog would load nlog.config by itself, stdout target included.
     private static void ConfigureMcpLogging()
     {
         LoggingConfiguration config;
         Exception? loadFailure = null;
         try
         {
+            SetLogDirectory();
             config = new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "nlog.config"))
             {
                 AutoReload = false
             };
         }
-        catch (Exception ex) when (ex is NLogConfigurationException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is InvalidOperationException or NLogConfigurationException or IOException or UnauthorizedAccessException)
         {
             config = new LoggingConfiguration();
             loadFailure = ex;
@@ -123,7 +148,7 @@ internal sealed class Program
 
         if (loadFailure != null)
         {
-            LogManager.GetCurrentClassLogger().Warn(loadFailure, "nlog.config could not be loaded; MCP mode logs to stderr only");
+            LogManager.GetCurrentClassLogger().Warn(loadFailure, "The log files could not be set up; MCP mode logs to stderr only");
         }
     }
 
@@ -170,12 +195,13 @@ internal sealed class Program
         return builder;
     }
 
-    // Console for `dotnet run`; NLog so the file targets declared in nlog.config actually receive
-    // ILogger output. Before #34 nothing bridged ILogger into NLog.
+    // ILogger goes to NLog alone: nlog.config's files, and its console target for `dotnet run`. Before
+    // #34 nothing bridged ILogger into NLog. AddConsole() is gone because, next to that console
+    // target, it printed every ILogger line twice (#98). NLog's console is the one kept because it
+    // also prints what is logged through NLog directly, such as HarfBuzzPreload's line.
     private static void ConfigureLogging(ILoggingBuilder logging) =>
         logging
             .ClearProviders()
-            .AddConsole()
             .AddNLog();
 
     [SupportedOSPlatform("windows")]
