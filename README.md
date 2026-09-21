@@ -53,11 +53,17 @@ They're consumed from nuget.org like any other dependency.
 ## Building
 
 ```bash
+scripts/pack-cefglue-avalonia12.sh   # once per clone, see below
 dotnet build UltraLibrarianImporter.sln -c Release
 dotnet test  UltraLibrarianImporter.sln -c Release
 ```
 
-No submodules, nothing to pack first.
+No submodules. One thing to pack first, for now: the app runs on Avalonia 12, and the embedded
+browser's Avalonia 12 support (`CefGlue.Avalonia`) is still an open upstream pull request,
+[OutSystems/CefGlue#249](https://github.com/OutSystems/CefGlue/pull/249). The script builds it at a
+pinned commit into `local-packages/`, and does nothing once the package is there. From an empty
+NuGet cache the first run downloads about 2.5 GB, mostly the .NET runtime packs CefGlue publishes its
+browser subprocess with for Windows, Linux and macOS. It goes away when upstream publishes a release.
 
 ### Against local library checkouts
 

@@ -34,4 +34,13 @@
     <KiCadSharpVersion Condition="'$(KiCadSharpVersion)' == ''">0.1.1</KiCadSharpVersion>
   </PropertyGroup>
 
+  <!-- CefGlue.Avalonia built against Avalonia 12 (#67). Nothing on nuget.org is yet: this version is
+       packed from the open upstream pull request OutSystems/CefGlue#249, at the commit the suffix
+       names, by scripts/pack-cefglue-avalonia12.sh into local-packages/ (CI runs the script before
+       restoring). Replace it with the published version once upstream releases one, and delete the
+       script and its CI step. -->
+  <PropertyGroup>
+    <CefGlueAvaloniaVersion Condition="'$(CefGlueAvaloniaVersion)' == ''">120.6099.211-pr249.e204172</CefGlueAvaloniaVersion>
+  </PropertyGroup>
+
 </Project>
