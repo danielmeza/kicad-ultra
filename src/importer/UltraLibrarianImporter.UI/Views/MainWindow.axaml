@@ -17,7 +17,62 @@
   <Window.Resources>
     <vm:HexToBrushConverter x:Key="HexToBrushConverter" />
     <vm:ImportTypeDisplayConverter x:Key="ImportTypeDisplayConverter" />
+    <x:String x:Key="CadAvailabilityLegend">Symbol, footprint and 3D model, as each provider reports them. Filled: available. Struck through: the provider reports none. "?": the provider does not say. EasyEDA / LCSC search never does; importing a part marks what easyeda2kicad produced. Sorting puts reported assets first, then unknown ones.</x:String>
   </Window.Resources>
+
+  <Window.Styles>
+    <!-- CAD availability badges (#48). Filled: the provider reports the asset. Struck through: it
+         reports none. Outlined with "?": it does not say, which is not a "no". Later styles win. The
+         text is styled by its cadLabel class, not as any TextBlock in the badge: the badge's tooltip
+         text is in its logical tree too, and would be struck through with it. -->
+    <Style Selector="Border.cad">
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Padding" Value="3,0"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="ToolTip.Tip" Value="Not available: the provider reports that this part has none."/>
+    </Style>
+    <Style Selector="Border.cad TextBlock.cadLabel">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+      <Setter Property="TextDecorations" Value="Strikethrough"/>
+    </Style>
+    <Style Selector="Border.cad TextBlock.unknownMark">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
+
+    <Style Selector="Border.cad.unknown">
+      <Setter Property="ToolTip.Tip" Value="Unknown: this provider does not say whether the part has one. That is not a no."/>
+    </Style>
+    <Style Selector="Border.cad.unknown TextBlock.cadLabel">
+      <Setter Property="TextDecorations" Value="{x:Null}"/>
+    </Style>
+    <Style Selector="Border.cad.unknown TextBlock.unknownMark">
+      <Setter Property="IsVisible" Value="True"/>
+    </Style>
+
+    <Style Selector="Border.cad.available">
+      <Setter Property="ToolTip.Tip" Value="Available: the provider reports it, or importing this part produced it."/>
+    </Style>
+    <Style Selector="Border.cad.available TextBlock.cadLabel">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="TextDecorations" Value="{x:Null}"/>
+    </Style>
+    <Style Selector="Border.cad.symbol.available">
+      <Setter Property="Background" Value="#2E7D32"/>
+      <Setter Property="BorderBrush" Value="#2E7D32"/>
+    </Style>
+    <Style Selector="Border.cad.footprint.available">
+      <Setter Property="Background" Value="#1565C0"/>
+      <Setter Property="BorderBrush" Value="#1565C0"/>
+    </Style>
+    <Style Selector="Border.cad.model3d.available">
+      <Setter Property="Background" Value="#6A1B9A"/>
+      <Setter Property="BorderBrush" Value="#6A1B9A"/>
+    </Style>
+  </Window.Styles>
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,320">
     <!-- Top Action Bar -->
@@ -114,10 +169,11 @@
               </StackPanel>
             </Button>
 
-            <Button Grid.Column="3" 
-                    Command="{Binding SortCommand}" 
-                    CommandParameter="CAD" 
-                    Padding="10,4" 
+            <Button Grid.Column="3"
+                    Command="{Binding SortCommand}"
+                    CommandParameter="CAD"
+                    ToolTip.Tip="{StaticResource CadAvailabilityLegend}"
+                    Padding="10,4"
                     Margin="0,0,6,0"
                     FontSize="11" 
                     CornerRadius="3"
@@ -252,10 +308,11 @@
                   </Button>
 
                   <!-- CAD Assets Header (Clickable Sort) -->
-                  <Button Grid.Column="5" 
-                          Command="{Binding SortCommand}" 
+                  <Button Grid.Column="5"
+                          Command="{Binding SortCommand}"
                           CommandParameter="CAD"
-                          Background="Transparent" 
+                          ToolTip.Tip="{StaticResource CadAvailabilityLegend}"
+                          Background="Transparent"
                           BorderThickness="0" 
                           Padding="0" 
                           Cursor="Hand"
@@ -307,16 +364,31 @@
                                  Text="{Binding BestPrice, StringFormat='${0:F2}', TargetNullValue='-'}" 
                                  VerticalAlignment="Center"/>
 
-                      <!-- CAD Flags -->
-                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <Border Background="#2E7D32" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasSymbol}">
-                          <TextBlock Text="Sym" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                      <!-- CAD availability, as the provider reports it (#48); the badge styles are in Window.Styles -->
+                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                        <Border Classes="cad symbol"
+                                Classes.available="{Binding HasSymbol, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding HasSymbol, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="Sym"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
-                        <Border Background="#1565C0" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasFootprint}">
-                          <TextBlock Text="FP" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        <Border Classes="cad footprint"
+                                Classes.available="{Binding HasFootprint, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding HasFootprint, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="FP"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
-                        <Border Background="#6A1B9A" CornerRadius="2" Padding="4,1" IsVisible="{Binding Has3DModel}">
-                          <TextBlock Text="3D" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        <Border Classes="cad model3d"
+                                Classes.available="{Binding Has3DModel, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding Has3DModel, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="3D"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
                       </StackPanel>
 

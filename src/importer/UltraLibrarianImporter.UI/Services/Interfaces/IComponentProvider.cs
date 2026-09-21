@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,6 +20,24 @@ public record ProviderExtractionResult(
 );
 
 /// <summary>
+/// Whether the provider says a part has one CAD asset (#48). Not a <c>bool</c>, because "the provider
+/// did not say" is not "no": most providers cannot tell at search time.
+/// </summary>
+/// <remarks>Serialised by name, so the MCP tools' JSON says <c>"Unknown"</c> rather than a number.</remarks>
+[JsonConverter(typeof(JsonStringEnumConverter<CadAvailability>))]
+public enum CadAvailability
+{
+    /// <summary>The provider does not report it, or did not for this part. The default.</summary>
+    Unknown = 0,
+
+    /// <summary>The provider reports that the part has it.</summary>
+    Available,
+
+    /// <summary>The provider reports that the part does not have it.</summary>
+    NotAvailable,
+}
+
+/// <summary>
 /// Represents a consolidated part result returned from a component search query.
 /// </summary>
 /// <param name="ProviderId">Unique identifier of the provider that returned this result.</param>
@@ -29,9 +48,10 @@ public record ProviderExtractionResult(
 /// <param name="BestPrice">Lowest unit price found across available offers.</param>
 /// <param name="Currency">Currency code for the price (e.g. "USD").</param>
 /// <param name="Stock">Available stock count across authorized distributors.</param>
-/// <param name="HasSymbol">Indicates whether a verified KiCad schematic symbol is available.</param>
-/// <param name="HasFootprint">Indicates whether a verified KiCad PCB footprint is available.</param>
-/// <param name="Has3DModel">Indicates whether a verified 3D CAD model is available.</param>
+/// <param name="HasSymbol">Whether the provider reports a KiCad schematic symbol for the part.
+/// <see cref="CadAvailability.Unknown"/> unless the provider's response says so, either way.</param>
+/// <param name="HasFootprint">Whether the provider reports a KiCad PCB footprint for the part, on the same terms.</param>
+/// <param name="Has3DModel">Whether the provider reports a 3D model for the part, on the same terms.</param>
 /// <param name="DatasheetUrl">URL to component datasheet or provider product page.</param>
 /// <param name="ProviderColor">Hex color code for provider visual badge (e.g. "#E65100").</param>
 /// <param name="Attribution">Where this result's data actually comes from, shown beside the result, when that is
@@ -51,9 +71,9 @@ public record PartSearchResult(
     decimal? BestPrice,
     string? Currency,
     int? Stock,
-    bool HasSymbol,
-    bool HasFootprint,
-    bool Has3DModel,
+    CadAvailability HasSymbol,
+    CadAvailability HasFootprint,
+    CadAvailability Has3DModel,
     string? DatasheetUrl,
     string ProviderColor = "#666666",
     string? Attribution = null,

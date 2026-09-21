@@ -188,10 +188,12 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
             BestPrice: part.PriceBreaks.Count > 0 ? part.PriceBreaks[0].UnitPrice : null,
             Currency: part.PriceBreaks.Count > 0 ? PriceCurrency : null,
             Stock: part.Stock,
-            // Neither source says whether EasyEDA has a symbol, footprint or 3D model for the part.
-            HasSymbol: false,
-            HasFootprint: false,
-            Has3DModel: false,
+            // Neither source says whether EasyEDA has a symbol, footprint or 3D model for the part, and
+            // easyeda2kicad can only tell by converting it. Unknown, not "none" (#48): an import marks
+            // on the row what it produced.
+            HasSymbol: CadAvailability.Unknown,
+            HasFootprint: CadAvailability.Unknown,
+            Has3DModel: CadAvailability.Unknown,
             DatasheetUrl: part.DatasheetUrl,
             ProviderColor: ProviderColor,
             Attribution: attribution,

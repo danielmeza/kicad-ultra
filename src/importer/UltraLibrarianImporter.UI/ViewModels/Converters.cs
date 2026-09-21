@@ -2,6 +2,7 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
+using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
 
@@ -65,6 +66,19 @@ public class HexToBrushConverter : IValueConverter
     {
         throw new NotImplementedException();
     }
+}
+
+/// <summary>
+/// Picks the style classes of a Part Explorer CAD badge (#48). A badge with neither class shows
+/// <see cref="CadAvailability.NotAvailable"/>.
+/// </summary>
+public static class CadAvailabilityConverters
+{
+    public static readonly IValueConverter IsAvailable =
+        new FuncValueConverter<CadAvailability, bool>(availability => availability == CadAvailability.Available);
+
+    public static readonly IValueConverter IsUnknown =
+        new FuncValueConverter<CadAvailability, bool>(availability => availability == CadAvailability.Unknown);
 }
 
 /// <summary>

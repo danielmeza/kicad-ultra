@@ -187,6 +187,11 @@ public class McpServer
         return response;
     }
 
+    // What the CAD fields of a result mean (#48), for every tool that returns them.
+    private const string CadAvailabilityNote =
+        "HasSymbol, HasFootprint and Has3DModel are each Available, NotAvailable or Unknown, as the provider reports them. " +
+        "Unknown means the provider does not say, not that the part lacks it: EasyEDA / LCSC search never reports CAD availability.";
+
     private static List<McpToolDefinition> GetRegisteredTools()
     {
         return
@@ -194,7 +199,7 @@ public class McpServer
             new()
             {
                 Name = "search_components",
-                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from, including when that source is unofficial and may be unreliable; cite it when presenting that result.",
+                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with stock and pricing where the provider reports them. A result's Attribution, when set, names where its data actually comes from, including when that source is unofficial and may be unreliable; cite it when presenting that result. " + CadAvailabilityNote,
                 InputSchema = new
                 {
                     type = "object",
@@ -213,7 +218,7 @@ public class McpServer
                         ["has_cad_only"] = new
                         {
                             type = "boolean",
-                            description = "If true, only returns components that have KiCad symbols, footprints, or 3D models available"
+                            description = "If true, only returns components whose provider reports a KiCad symbol, footprint or 3D model as Available. Components whose CAD availability is Unknown, which includes every EasyEDA / LCSC result, are left out."
                         },
                         ["max_results"] = new
                         {
@@ -237,7 +242,7 @@ public class McpServer
             new()
             {
                 Name = "get_component_details",
-                Description = "Get detailed information about a specific electronic component (datasheet, symbols, footprints, 3D model status, seller stock/prices).",
+                Description = "Get detailed information about a specific electronic component (datasheet, seller stock/prices, and symbol / footprint / 3D model availability). " + CadAvailabilityNote,
                 InputSchema = new
                 {
                     type = "object",
@@ -326,7 +331,11 @@ public class McpServer
         }
         if (hasCadOnly)
         {
-            filtered = filtered.Where(r => r.HasSymbol || r.HasFootprint || r.Has3DModel);
+            // Only what a provider reported: Unknown is not a CAD asset.
+            filtered = filtered.Where(r =>
+                r.HasSymbol == CadAvailability.Available ||
+                r.HasFootprint == CadAvailability.Available ||
+                r.Has3DModel == CadAvailability.Available);
         }
 
         var finalResults = filtered.Take(maxResults).ToList();

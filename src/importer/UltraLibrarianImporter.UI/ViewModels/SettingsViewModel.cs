@@ -244,32 +244,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 AvailableProviderIds.Add(p.Id);
 
-                var reqKey = p.Id is "octopart" or "snapeda" or "samacsys";
-                var key = p.Id switch
-                {
-                    "octopart" => _configService.OctopartApiToken,
-                    "snapeda" => _configService.SnapEdaApiKey,
-                    "samacsys" => _configService.SamacSysApiKey,
-                    _ => string.Empty
-                };
-
-                var caps = p.Id switch
-                {
-                    "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Symbols, footprints and 3D models through easyeda2kicad, an optional third-party tool (below)",
-                    "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
-                    "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
-                    "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
-                    "ultralibrarian" => "Browser-Assisted • Official UltraLibrarian CAD Models & 3D Assets",
-                    _ => "Component Library Provider"
-                };
-
-                var placeholder = p.Id switch
-                {
-                    "octopart" => "Nexar API Bearer token...",
-                    "snapeda" => "SnapEDA / SnapMagic API key...",
-                    "samacsys" => "SamacSys / Component Search Engine key...",
-                    _ => "API Key / Token..."
-                };
+                var reqKey = ReadsApiKey(p.Id);
 
                 ConfiguredProviders.Add(new ProviderConfigItemViewModel
                 {
@@ -277,22 +252,22 @@ public partial class SettingsViewModel : ObservableObject
                     DisplayName = p.DisplayName,
                     SearchUrl = p.SearchUrl,
                     SupportsDirectApi = p.SupportsDirectApi,
-                    CapabilitiesDescription = caps,
+                    CapabilitiesDescription = DescribeCapabilities(p.Id),
                     RequiresApiKey = reqKey,
-                    ApiKeyPlaceholder = placeholder,
+                    ApiKeyPlaceholder = reqKey ? "Nexar API Bearer token..." : string.Empty,
                     IsEnabled = _configService.IsProviderEnabled(p.Id),
-                    ApiKey = key
+                    ApiKey = reqKey ? _configService.OctopartApiToken : string.Empty
                 });
             }
         }
         else
         {
             // Fallback default list if no registry provided
-            AddFallbackProvider("ultralibrarian", "UltraLibrarian", false, "Browser-Assisted • CAD Models & 3D Assets", false, "");
-            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • Stock & Pricing from JLCPCB's parts library (official API with your credentials, otherwise an unofficial endpoint)", false, "");
-            AddFallbackProvider("octopart", "Octopart (Nexar)", true, "Direct API • Multi-Distributor Stock & Pricing", true, _configService.OctopartApiToken);
-            AddFallbackProvider("snapeda", "SnapEDA / SnapMagic", true, "Direct API • CAD Models & Footprints", true, _configService.SnapEdaApiKey);
-            AddFallbackProvider("samacsys", "Component Search Engine", true, "Direct API • SamacSys CAD Models", true, _configService.SamacSysApiKey);
+            AddFallbackProvider("ultralibrarian", "UltraLibrarian", false);
+            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true);
+            AddFallbackProvider("octopart", "Octopart (Nexar)", true);
+            AddFallbackProvider("snapeda", "SnapEDA (SnapMagic)", false);
+            AddFallbackProvider("componentsearchengine", "Component Search Engine (SamacSys)", false);
         }
     }
 
@@ -304,21 +279,39 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    private void AddFallbackProvider(string id, string name, bool directApi, string caps, bool reqKey, string key)
+    private void AddFallbackProvider(string id, string name, bool directApi)
     {
+        var reqKey = ReadsApiKey(id);
         AvailableProviderIds.Add(id);
         ConfiguredProviders.Add(new ProviderConfigItemViewModel
         {
             Id = id,
             DisplayName = name,
             SupportsDirectApi = directApi,
-            CapabilitiesDescription = caps,
+            CapabilitiesDescription = DescribeCapabilities(id),
             RequiresApiKey = reqKey,
-            ApiKeyPlaceholder = $"{name} API key...",
+            ApiKeyPlaceholder = reqKey ? "Nexar API Bearer token..." : string.Empty,
             IsEnabled = _configService.IsProviderEnabled(id),
-            ApiKey = key
+            ApiKey = reqKey ? _configService.OctopartApiToken : string.Empty
         });
     }
+
+    // Only Octopart reads a key. SnapEDA's and SamacSys's stay in the credential store as they are,
+    // but nothing reads them (#56, #57), so Settings neither asks for them nor rewrites them.
+    private static bool ReadsApiKey(string providerId) => providerId == "octopart";
+
+    // What each provider does today, keyed by its real Id. Claim nothing it does not do (#48): a
+    // provider that makes no call is not "Direct API", and one whose search cannot tell whether a part
+    // has a symbol, footprint or 3D model does not list them.
+    private static string DescribeCapabilities(string providerId) => providerId switch
+    {
+        "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Search cannot tell whether a part has a symbol, footprint or 3D model: importing it with easyeda2kicad, an optional third-party tool (below), converts whichever of them EasyEDA has",
+        "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
+        "snapeda" => "Browser-Assisted • No direct search: SnapMagic has no public API, and grants API keys per application after review (github.com/danielmeza/kicad-ultra/issues/56)",
+        "componentsearchengine" => "Browser-Assisted • No direct search integration yet (github.com/danielmeza/kicad-ultra/issues/57)",
+        "ultralibrarian" => "Browser-Assisted • Official UltraLibrarian CAD Models & 3D Assets",
+        _ => "Component Library Provider"
+    };
 
     [RelayCommand]
     private void CopyMcpConfig()
@@ -353,9 +346,8 @@ public partial class SettingsViewModel : ObservableObject
             foreach (ProviderConfigItemViewModel p in ConfiguredProviders)
             {
                 _configService.SetProviderEnabled(p.Id, p.IsEnabled);
+                // Only keys Settings shows are written back; see ReadsApiKey.
                 if (p.Id == "octopart") _configService.OctopartApiToken = p.ApiKey ?? string.Empty;
-                if (p.Id == "snapeda") _configService.SnapEdaApiKey = p.ApiKey ?? string.Empty;
-                if (p.Id == "samacsys") _configService.SamacSysApiKey = p.ApiKey ?? string.Empty;
             }
 
             _configService.Save();

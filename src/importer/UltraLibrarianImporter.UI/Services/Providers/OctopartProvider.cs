@@ -72,10 +72,9 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                                             prices { price currency quantity }
                                         }
                                     }
-                                    cadModels {
-                                        hasSymbol
-                                        hasFootprint
-                                        has3DModel
+                                    cad {
+                                        hasKicad
+                                        has3dModel
                                     }
                                 }
                             }
@@ -108,6 +107,12 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                 throw new JsonException($"Nexar response has no supSearch results (errors: {errors}).");
             }
 
+            // Results can come with errors too, for a field the token's plan does not include. Any one
+            // of them may be what left a part's "cad" null, so a null then says nothing about CAD.
+            var responseHasErrors = doc.RootElement.TryGetProperty("errors", out JsonElement partialErrors) &&
+                partialErrors.ValueKind == JsonValueKind.Array &&
+                partialErrors.GetArrayLength() > 0;
+
             foreach (JsonElement item in resultsArray.EnumerateArray())
             {
                 if (!item.TryGetProperty("part", out JsonElement part))
@@ -121,13 +126,7 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                     ? u.GetString() : null;
                 var lcscPartNumber = FindLcscPartNumber(part);
 
-                bool hasSym = false, hasFp = false, has3D = false;
-                if (part.TryGetProperty("cadModels", out JsonElement cad))
-                {
-                    hasSym = cad.TryGetProperty("hasSymbol", out JsonElement hs) && hs.GetBoolean();
-                    hasFp = cad.TryGetProperty("hasFootprint", out JsonElement hf) && hf.GetBoolean();
-                    has3D = cad.TryGetProperty("has3DModel", out JsonElement hm) && hm.GetBoolean();
-                }
+                (CadAvailability kicad, CadAvailability model3D) = ReadCad(part, responseHasErrors);
 
                 var totalStock = 0;
                 decimal? bestUnitPrice = null;
@@ -187,9 +186,9 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                     BestPrice: bestUnitPrice,
                     Currency: detectedCurrency,
                     Stock: totalStock > 0 ? totalStock : null,
-                    HasSymbol: hasSym,
-                    HasFootprint: hasFp,
-                    Has3DModel: has3D,
+                    HasSymbol: kicad,
+                    HasFootprint: kicad,
+                    Has3DModel: model3D,
                     DatasheetUrl: datasheet,
                     ProviderColor: ProviderColor,
                     LcscPartNumber: lcscPartNumber
@@ -256,4 +255,46 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
 
         return null;
     }
+
+    /// <summary>
+    /// Reads a part's CAD availability from Nexar's <c>cad</c> field (#48): whether its CAD model can
+    /// be downloaded in KiCad format, and whether the downloads include a 3D (STEP) model.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>cad</c> is the schema's public CAD field. The schema also has <c>cadModels</c>, with separate
+    /// symbol and footprint flags, but documents it as internal. <c>cad</c> does not split symbol from
+    /// footprint: it describes the part's CAD model, which Octopart counts as a symbol plus a
+    /// footprint (the schema's <c>SupCadBucket</c>: "parts that have CAD Symbol + Footprint and 3D
+    /// model"). So <c>hasKicad</c> answers for both.
+    /// </para>
+    /// <para>
+    /// A null <c>cad</c> means the part has no CAD model: the schema says one can then be requested
+    /// through <c>cadRequestUrl</c>. That holds only in a response without errors, see
+    /// <paramref name="responseHasErrors"/>.
+    /// </para>
+    /// </remarks>
+    private static (CadAvailability KiCad, CadAvailability Model3D) ReadCad(JsonElement part, bool responseHasErrors)
+    {
+        if (!part.TryGetProperty("cad", out JsonElement cad))
+        {
+            return (CadAvailability.Unknown, CadAvailability.Unknown);
+        }
+
+        if (cad.ValueKind == JsonValueKind.Null)
+        {
+            return responseHasErrors
+                ? (CadAvailability.Unknown, CadAvailability.Unknown)
+                : (CadAvailability.NotAvailable, CadAvailability.NotAvailable);
+        }
+
+        return (ReadFlag(cad, "hasKicad"), ReadFlag(cad, "has3dModel"));
+    }
+
+    // Anything but a boolean is not an answer.
+    private static CadAvailability ReadFlag(JsonElement cad, string name) =>
+        !cad.TryGetProperty(name, out JsonElement flag) ? CadAvailability.Unknown
+        : flag.ValueKind == JsonValueKind.True ? CadAvailability.Available
+        : flag.ValueKind == JsonValueKind.False ? CadAvailability.NotAvailable
+        : CadAvailability.Unknown;
 }

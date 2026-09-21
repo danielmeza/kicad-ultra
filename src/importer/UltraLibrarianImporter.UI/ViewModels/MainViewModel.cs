@@ -505,13 +505,23 @@ public partial class MainViewModel : ObservableObject
         return descending ? -result : result;
     }
 
+    // Assets the provider reports come first, weighted 3D model, footprint, symbol. Among rows that
+    // report the same ones, an asset nobody reported on ranks above one reported missing (#48): the
+    // part may still have it. Unknown never counts as available.
     private static int GetCadScore(PartSearchResult part)
     {
-        var score = 0;
-        if (part.Has3DModel) score += 4;
-        if (part.HasFootprint) score += 2;
-        if (part.HasSymbol) score += 1;
-        return score;
+        var reported = 0;
+        if (part.Has3DModel == CadAvailability.Available) reported += 4;
+        if (part.HasFootprint == CadAvailability.Available) reported += 2;
+        if (part.HasSymbol == CadAvailability.Available) reported += 1;
+
+        var unknown = 0;
+        if (part.Has3DModel == CadAvailability.Unknown) unknown++;
+        if (part.HasFootprint == CadAvailability.Unknown) unknown++;
+        if (part.HasSymbol == CadAvailability.Unknown) unknown++;
+
+        // unknown is at most 3, so it only breaks ties between equal reported scores.
+        return (reported * 4) + unknown;
     }
 
     [RelayCommand]
@@ -655,6 +665,8 @@ public partial class MainViewModel : ObservableObject
             {
                 ImportMessages.Add($"  - {detail}");
             }
+
+            ShowImportedAssets(part, result);
         }
         catch (Exception ex)
         {
@@ -766,6 +778,35 @@ public partial class MainViewModel : ObservableObject
 
         IsJlcpcbNoticeVisible = state != _hiddenJlcpcbNoticeState
             && _providerRegistry.Providers.Any(p => p.Id == EasyEdaProvider.ProviderId);
+    }
+
+    // Search cannot tell whether an EasyEDA part has a symbol, footprint or 3D model, but an import
+    // shows it (#48): an asset easyeda2kicad produced for the part exists, whichever search found its
+    // LCSC code (#47). Only those change, to Available. One it did not produce keeps its flag: the
+    // import messages say why, and a failed step does not show that the part has none. The row keeps
+    // its place in the list, as rows do while results stream in; the next sort puts it where it belongs.
+    private void ShowImportedAssets(PartSearchResult part, ImportResult result)
+    {
+        PartSearchResult imported = part with
+        {
+            HasSymbol = result.SymbolImportSuccess ? CadAvailability.Available : part.HasSymbol,
+            HasFootprint = result.FootprintImportSuccess ? CadAvailability.Available : part.HasFootprint,
+            Has3DModel = result.Model3DImportSuccess ? CadAvailability.Available : part.Has3DModel,
+        };
+
+        // A search started since may have replaced the list; then there is no row to update.
+        var index = SearchResults.IndexOf(part);
+        if (imported == part || index < 0)
+        {
+            return;
+        }
+
+        var wasSelected = SelectedSearchResult == part;
+        SearchResults[index] = imported;
+        if (wasSelected)
+        {
+            SelectedSearchResult = imported;
+        }
     }
 
     public void LibraryDownloaded(string filePath)
