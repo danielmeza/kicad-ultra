@@ -60,6 +60,14 @@ internal sealed class Program
             return;
         }
 
+        // Before anything can start Avalonia or CEF: CEF's GTK brings in the system HarfBuzz, and
+        // HarfBuzzSharp's own calls would bind to it and crash (#78). MCP mode loads neither, and must
+        // not log to stdout, so this is the GUI path only.
+        if (OperatingSystem.IsLinux())
+        {
+            HarfBuzzPreload.Apply();
+        }
+
         try
         {
             // Create the host

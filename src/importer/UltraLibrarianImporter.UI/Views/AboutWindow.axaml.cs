@@ -1,5 +1,8 @@
 ﻿using System;
 
+#if DEBUG
+using Avalonia; // AttachDevTools(), which only exists in Debug builds
+#endif
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 

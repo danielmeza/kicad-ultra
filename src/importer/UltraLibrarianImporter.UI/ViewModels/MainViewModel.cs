@@ -263,7 +263,11 @@ public partial class MainViewModel : ObservableObject
     // list at the click instead would let that queued result land after the clear.
     private IObservable<SearchUpdate> SearchProviders(string query, IScheduler uiThread) =>
         _aggregatorService.StreamAllProvidersAsync(query)
-            .ToObservable()
+            // A superseded search is cancelled by Switch() disposing it, which ToObservable never
+            // reports. Any other cancellation stopped this search early, so it fails rather than
+            // completing: "Found N results" would claim a finished search. ApplySearchUpdate reports it
+            // as cancelled, not as an error.
+            .ToObservable(whenCancelled: AsyncStreamCancellation.Error)
             .Select<PartSearchResult, SearchUpdate>(part => new PartFound(query, part))
             .Append(new SearchCompleted(query))
             // A provider that fails is already left out by the aggregator, so an error here means the
@@ -292,6 +296,12 @@ public partial class MainViewModel : ObservableObject
             case SearchCompleted:
                 StatusMessage = $"Found {SearchResults.Count} results across providers for '{update.Query}'. ({SortStatusSummary})";
                 _logger.LogInformation("Aggregated search completed for query: {Query}, found: {Count}", update.Query, SearchResults.Count);
+                EndSearch();
+                break;
+
+            case SearchFailed { Error: OperationCanceledException }:
+                _logger.LogInformation("Search for {Query} was cancelled before it finished", update.Query);
+                StatusMessage = $"Search for '{update.Query}' was cancelled. {SearchResults.Count} result(s) found before it stopped.";
                 EndSearch();
                 break;
 
