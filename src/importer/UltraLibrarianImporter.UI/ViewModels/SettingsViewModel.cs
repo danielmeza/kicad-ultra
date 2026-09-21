@@ -14,6 +14,7 @@ using Microsoft.Extensions.Options;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
 
@@ -41,6 +42,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IOptionsMonitor<KiCadClientSettings> _kicadSettings;
     private readonly IComponentProviderRegistry? _providerRegistry;
     private readonly EasyEda2KiCadLocator? _easyEda2KiCadLocator;
+    private readonly ProviderResponseCache? _responseCache;
     private readonly KiCadClientSettings _originalSettings;
 
     [ObservableProperty]
@@ -110,6 +112,20 @@ public partial class SettingsViewModel : ObservableObject
 
     public string EasyEda2KiCadInstallNote => EasyEda2KiCadLocator.InstallHelp.Note;
 
+    // The user's own JLCPCB API credentials (#51). Kept in the credential store like the API keys
+    // below; all three empty means EasyEDA / LCSC search uses the unofficial endpoint (#52).
+    [ObservableProperty]
+    private string _jlcpcbAppId = string.Empty;
+
+    [ObservableProperty]
+    private string _jlcpcbAccessKey = string.Empty;
+
+    [ObservableProperty]
+    private string _jlcpcbSecretKey = string.Empty;
+
+    /// <summary>JLCPCB's guide to applying for API access.</summary>
+    public Uri JlcpcbApiGuideUri { get; } = new(JlcpcbApiCredentials.ApiGuideUrl);
+
     // Provider configuration
     public ObservableCollection<ProviderConfigItemViewModel> ConfiguredProviders { get; } = [];
     public ObservableCollection<string> AvailableProviderIds { get; } = [];
@@ -172,13 +188,15 @@ public partial class SettingsViewModel : ObservableObject
         ILogger<SettingsViewModel> logger,
         IOptionsMonitor<KiCadClientSettings> kicadSettings,
         IComponentProviderRegistry? providerRegistry = null,
-        EasyEda2KiCadLocator? easyEda2KiCadLocator = null)
+        EasyEda2KiCadLocator? easyEda2KiCadLocator = null,
+        ProviderResponseCache? responseCache = null)
     {
         _configService = configService;
         _logger = logger;
         _kicadSettings = kicadSettings;
         _providerRegistry = providerRegistry;
         _easyEda2KiCadLocator = easyEda2KiCadLocator;
+        _responseCache = responseCache;
 
         _originalSettings = new KiCadClientSettings
         {
@@ -207,6 +225,9 @@ public partial class SettingsViewModel : ObservableObject
         AutoImportWhenDownloaded = _configService.AutoImportWhenDownloaded;
         LibraryName = _configService.LibraryName;
         EasyEda2KiCadPath = _configService.EasyEda2KiCadPath;
+        JlcpcbAppId = _configService.JlcpcbAppId;
+        JlcpcbAccessKey = _configService.JlcpcbAccessKey;
+        JlcpcbSecretKey = _configService.JlcpcbSecretKey;
 
         SelectedDefaultProviderId = string.IsNullOrEmpty(_configService.DefaultProviderId)
             ? "ultralibrarian"
@@ -234,7 +255,7 @@ public partial class SettingsViewModel : ObservableObject
 
                 var caps = p.Id switch
                 {
-                    "easyeda" => "Direct API: Yes • Stock & Pricing from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts • Symbols, footprints and 3D models through easyeda2kicad, an optional third-party tool (below)",
+                    "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Symbols, footprints and 3D models through easyeda2kicad, an optional third-party tool (below)",
                     "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
                     "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
                     "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
@@ -268,7 +289,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             // Fallback default list if no registry provided
             AddFallbackProvider("ultralibrarian", "UltraLibrarian", false, "Browser-Assisted • CAD Models & 3D Assets", false, "");
-            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • Stock & Pricing from third-party jlcsearch.tscircuit.com", false, "");
+            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • Stock & Pricing from JLCPCB's parts library (official API with your credentials, otherwise an unofficial endpoint)", false, "");
             AddFallbackProvider("octopart", "Octopart (Nexar)", true, "Direct API • Multi-Distributor Stock & Pricing", true, _configService.OctopartApiToken);
             AddFallbackProvider("snapeda", "SnapEDA / SnapMagic", true, "Direct API • CAD Models & Footprints", true, _configService.SnapEdaApiKey);
             AddFallbackProvider("samacsys", "Component Search Engine", true, "Direct API • SamacSys CAD Models", true, _configService.SamacSysApiKey);
@@ -323,6 +344,9 @@ public partial class SettingsViewModel : ObservableObject
             _configService.AutoImportWhenDownloaded = AutoImportWhenDownloaded;
             _configService.LibraryName = LibraryName;
             _configService.EasyEda2KiCadPath = EasyEda2KiCadPath.Trim();
+            _configService.JlcpcbAppId = JlcpcbAppId.Trim();
+            _configService.JlcpcbAccessKey = JlcpcbAccessKey.Trim();
+            _configService.JlcpcbSecretKey = JlcpcbSecretKey.Trim();
 
             _configService.DefaultProviderId = SelectedDefaultProviderId;
 
@@ -337,6 +361,8 @@ public partial class SettingsViewModel : ObservableObject
             _configService.Save();
             _configService.EnsureDownloadDirectoryExists();
 
+            // A cached answer may come from a source these settings no longer select.
+            _responseCache?.Clear();
             _providerRegistry?.RefreshProviders();
 
             _logger.LogInformation("Settings saved successfully.");

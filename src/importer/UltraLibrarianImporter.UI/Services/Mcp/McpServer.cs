@@ -174,7 +174,7 @@ public class McpServer
             new()
             {
                 Name = "search_components",
-                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from; cite it when presenting that result.",
+                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from, including when that source is unofficial and may be unreliable; cite it when presenting that result.",
                 InputSchema = new
                 {
                     type = "object",
@@ -319,10 +319,21 @@ public class McpServer
             [
                 new()
                 {
-                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{json}"
+                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{DescribeSources(finalResults)}{json}"
                 }
             ]
         };
+    }
+
+    // The distinct Attributions ahead of the JSON, so a client reads where the data comes from before
+    // the data itself - above all when a source is unofficial and can break without notice (#52).
+    private static string DescribeSources(IEnumerable<PartSearchResult> results)
+    {
+        var sources = results.Select(r => r.Attribution).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        return sources.Count == 0
+            ? string.Empty
+            : "Data sources (each result's Attribution says which one applies to it; cite it with the result):\n" +
+              string.Concat(sources.Select(source => $"- {source}\n")) + "\n";
     }
 
     private McpToolCallResult ExecuteListProviders()
@@ -375,7 +386,7 @@ public class McpServer
         return new McpToolCallResult
         {
             IsError = false,
-            Content = [new() { Text = json }]
+            Content = [new() { Text = DescribeSources([bestMatch]) + json }]
         };
     }
 }

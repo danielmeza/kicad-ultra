@@ -181,10 +181,23 @@ needed any more.
 ### Providers, search and the import engine
 
 - **`IComponentProvider`** (`Services/Interfaces`) is one source; `ComponentProviderRegistry` collects
-  them from DI. **Live:** `EasyEdaProvider` (searches the third-party `jlcsearch.tscircuit.com` index —
-  every result carries an `Attribution` saying so, #52), and `OctopartProvider` (Nexar, needs the user's
-  token). `SnapEdaProvider` and `ComponentSearchEngineProvider` are `SupportsDirectApi => false` until
-  real integrations exist (#56, #57). `UltraLibrarianProvider` is browser-only.
+  them from DI. **Live:** `EasyEdaProvider` and `OctopartProvider` (Nexar, needs the user's token).
+  `SnapEdaProvider` and `ComponentSearchEngineProvider` are `SupportsDirectApi => false` until real
+  integrations exist (#56, #57). `UltraLibrarianProvider` is browser-only.
+- **`EasyEdaProvider` searches JLCPCB's parts library** (`Services/Providers/Jlcpcb/`), with one of two
+  sources per search, and every result's `Attribution` names the source used:
+  - **The official Components API** (#51) for an LCSC-number query, when the user has entered all three
+    credentials (App ID, Access Key, Secret Key). Every call is a signed POST to `open.jlcpcb.com`, using
+    the `JOP` HMAC-SHA256 scheme from JLCPCB's public docs. The signing reproduces their worked example.
+    The API has **no keyword search**: its other interfaces are bulk feeds, and bulk feeds are never
+    used. The endpoint path and response fields come from open-source clients, because JLCPCB documents
+    them only inside its console. They are **untested against the live API** (no credentials here).
+  - **Otherwise, JLCPCB's website endpoint** `selectSmtComponentList` (#52). It is unofficial and can
+    break without notice. The Part Explorer shows a notice while it is in use, and the MCP output lists
+    it as a data source. It asks for one page of 25 results, never more.
+  - A failed official lookup throws. It never falls back to the website endpoint.
+  - The tscircuit index is gone.
+  - Neither source reports CAD availability, so the CAD flags stay false.
 - **Never fabricate.** A result or a CAD-availability flag appears only if the provider said so. A
   provider that cannot answer is absent — it does not appear with invented values.
 - **Failures are not "no results".** Providers use narrow catches that log, and then **rethrow**
@@ -292,10 +305,11 @@ valid JSON-RPC.
 `ConfigService` persists non-secret settings through a single private `ConfigData` DTO to
 `<app data>/UltraLibrarianImporter/config.json`. Keep it the only persistence path.
 
-**API tokens live in the OS credential store** (#54): `ISecretStore`, with `PlatformSecretStore` choosing
-Windows Credential Manager, the macOS Keychain, or libsecret on Linux (under Flatpak, libsecret goes
-through the Secret portal). A token found in an old `config.json` is migrated into the store, and the
-file is rewritten without it — only after the store write succeeds. With no working store, tokens are
+**API tokens live in the OS credential store** (#54), and so do the three JLCPCB API credentials
+(#51): `ISecretStore`, with `PlatformSecretStore` choosing Windows Credential Manager, the macOS
+Keychain, or libsecret on Linux (under Flatpak, libsecret goes through the Secret portal). A token
+found in an old `config.json` is migrated into the store, and the file is rewritten without it — only
+after the store write succeeds. With no working store, tokens are
 session-only and never written to the file. **Never log a token value.**
 
 Caveat (#70): on Unix, `Environment.GetFolderPath` returns `""` for a folder that does not exist yet,
@@ -317,8 +331,8 @@ A process that exits on its own under `timeout` is **not** a clean run. Exit 134
 ### Tracked work
 
 Open: importing from the explorer for providers other than EasyEDA/LCSC (#47), CAD availability (#48),
-providers (#51, #52, #56, #57), Avalonia 12 (#67, draft #75), symbols KiCad cannot load (#68),
-duplicate symbols (#69), special-folder paths (#70), KiCad 11 IPC
+providers (#51 until the official API is checked with real credentials, #56, #57), Avalonia 12
+(#67, draft #75), symbols KiCad cannot load (#68), duplicate symbols (#69), special-folder paths (#70), KiCad 11 IPC
 (#72 tables, #73 datasheets), and MCP-mode logging (#80). Upstream: danielmeza/kicad-sharp#45 and #46, danielmeza/sexpressions#24.
 
 ## Release state

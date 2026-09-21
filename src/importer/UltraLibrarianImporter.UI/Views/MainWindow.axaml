@@ -55,7 +55,7 @@
       
       <!-- TAB 1: Unified Multi-Provider Part Explorer -->
       <TabItem Header="🔍 Part Explorer (Aggregated Search)">
-        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" Margin="10">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="10">
           <!-- Search Header -->
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
@@ -172,8 +172,47 @@
             </Grid>
           </Border>
 
+          <!-- Which JLCPCB source EasyEDA / LCSC search uses (#51, #52): the unofficial endpoint can break
+               without notice, so say so, link to JLCPCB's API guide and point at the credentials. Blocks nothing. -->
+          <Border Grid.Row="4"
+                  IsVisible="{Binding IsJlcpcbNoticeVisible}"
+                  Background="#201976D2"
+                  BorderBrush="#1976D2"
+                  BorderThickness="1"
+                  CornerRadius="4"
+                  Padding="10,8"
+                  Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="{Binding JlcpcbNoticeTitle}"
+                         TextWrapping="Wrap"
+                         FontWeight="SemiBold"
+                         FontSize="12"/>
+              <TextBlock Grid.Row="1" Grid.Column="0"
+                         Text="{Binding JlcpcbNoticeText}"
+                         TextWrapping="Wrap"
+                         FontSize="11"
+                         Margin="0,4,0,0"/>
+              <HyperlinkButton Grid.Row="2" Grid.Column="0"
+                               NavigateUri="{Binding JlcpcbApiGuideUri}"
+                               Padding="0"
+                               FontSize="11"
+                               Margin="0,4,0,0">
+                <TextBlock Text="{Binding JlcpcbApiGuideUri, StringFormat='JLCPCB API access guide: {0}'}" TextWrapping="Wrap"/>
+              </HyperlinkButton>
+              <StackPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0,0,0">
+                <Button Content="Settings..." Command="{Binding OpenSettingsCommand}" Padding="10,4" FontSize="11"/>
+                <Button Content="Hide"
+                        Command="{Binding HideJlcpcbNoticeCommand}"
+                        ToolTip.Tip="Hide this notice until the app restarts or the JLCPCB API settings change"
+                        Padding="10,4"
+                        FontSize="11"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
           <!-- Results List / Table -->
-          <Border Grid.Row="4" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+          <Border Grid.Row="5" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
             <Grid RowDefinitions="Auto,*">
               <!-- Table Header -->
               <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
@@ -330,6 +369,7 @@
                                  Grid.Column="1"
                                  Grid.ColumnSpan="6"
                                  Text="{Binding Attribution}"
+                                 ToolTip.Tip="{Binding Attribution}"
                                  IsVisible="{Binding Attribution, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                  FontSize="10"
                                  Opacity="0.6"
@@ -361,7 +401,7 @@
           </Border>
 
           <!-- Enabled providers the search above does not reach, so that their absence says why -->
-          <TextBlock Grid.Row="5"
+          <TextBlock Grid.Row="6"
                      Text="{Binding BrowserOnlyProviders}"
                      IsVisible="{Binding BrowserOnlyProviders, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                      TextWrapping="Wrap"

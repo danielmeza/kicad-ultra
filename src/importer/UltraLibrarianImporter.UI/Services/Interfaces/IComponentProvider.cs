@@ -37,9 +37,11 @@ public record ProviderExtractionResult(
 /// <param name="Attribution">Where this result's data actually comes from, shown beside the result, when that is
 /// not the provider itself (e.g. a third-party index). <c>null</c> when the provider is the source.</param>
 /// <param name="LcscPartNumber">The part's LCSC code (<c>C</c> followed by digits, e.g. <c>C2040</c>) when the provider
-/// reported one, which is what the EasyEDA / LCSC import converts (#76): the index's own field for EasyEDA / LCSC,
-/// LCSC's offer SKU for Octopart (#47). <c>null</c> when the provider did not report one; never derived from the
-/// MPN or guessed.</param>
+/// reported one, which is what the EasyEDA / LCSC import converts (#76): JLCPCB's own field for EasyEDA / LCSC
+/// (#51, #52), LCSC's offer SKU for Octopart (#47). <c>null</c> when the provider did not report one; never derived
+/// from the MPN or guessed.</param>
+/// <param name="PriceBreaks">The provider's quantity price breaks, lowest quantity first, in <paramref name="Currency"/>.
+/// <c>null</c> when the provider does not report them.</param>
 public record PartSearchResult(
     string ProviderId,
     string ProviderName,
@@ -55,8 +57,17 @@ public record PartSearchResult(
     string? DatasheetUrl,
     string ProviderColor = "#666666",
     string? Attribution = null,
-    string? LcscPartNumber = null
+    string? LcscPartNumber = null,
+    IReadOnlyList<PriceBreak>? PriceBreaks = null
 );
+
+/// <summary>
+/// One step of a quantity price ladder: the unit price that applies from <paramref name="Quantity"/>
+/// pieces up to the next break.
+/// </summary>
+/// <param name="Quantity">The smallest order quantity this unit price applies to.</param>
+/// <param name="UnitPrice">The price per piece at that quantity.</param>
+public record PriceBreak(int Quantity, decimal UnitPrice);
 
 /// <summary>
 /// Represents an external component library provider (e.g. UltraLibrarian, SnapEDA, Octopart, EasyEDA).

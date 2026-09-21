@@ -25,6 +25,7 @@ using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Providers;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 using UltraLibrarianImporter.UI.Views;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
@@ -217,7 +218,11 @@ public partial class MainViewModel : ObservableObject
             {
                 SelectedProvider = _providerRegistry.SelectedProvider;
             }
+
+            // Raised when Settings are saved, which is where providers and credentials change.
+            UpdateJlcpcbNotice();
         };
+        UpdateJlcpcbNotice();
 
         // Avalonia's dispatcher: UseReactiveUI (Program.BuildAvaloniaApp) sets it during platform setup,
         // before App resolves this view model. Both the command's output and every search's results
@@ -710,6 +715,58 @@ public partial class MainViewModel : ObservableObject
 
     private bool CanFindOnUltraLibrarian(PartSearchResult? part) =>
         UltraLibrarian is not null && !string.IsNullOrWhiteSpace(part?.PartNumber);
+
+    // Which JLCPCB source EasyEDA / LCSC search uses (#51, #52). A notice that blocks nothing, shown
+    // while that provider is enabled, because every state still sends at least some searches to the
+    // unofficial endpoint: it says so, links to JLCPCB's API guide and says where the credentials go.
+
+    /// <summary>True while the JLCPCB source notice is shown.</summary>
+    [ObservableProperty]
+    private bool _isJlcpcbNoticeVisible;
+
+    [ObservableProperty]
+    private string _jlcpcbNoticeTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _jlcpcbNoticeText = string.Empty;
+
+    // The credential state the notice was hidden in. Hiding lasts until the app closes or the state
+    // changes, so a notice about new credentials is not swallowed by an old dismissal.
+    private JlcpcbApiCredentialState? _hiddenJlcpcbNoticeState;
+
+    /// <summary>JLCPCB's guide to applying for API access.</summary>
+    public Uri JlcpcbApiGuideUri { get; } = new(JlcpcbApiCredentials.ApiGuideUrl);
+
+    [RelayCommand]
+    private void HideJlcpcbNotice()
+    {
+        _hiddenJlcpcbNoticeState = JlcpcbApiCredentials.GetState(_configService);
+        IsJlcpcbNoticeVisible = false;
+    }
+
+    private void UpdateJlcpcbNotice()
+    {
+        JlcpcbApiCredentialState state = JlcpcbApiCredentials.GetState(_configService);
+        (JlcpcbNoticeTitle, JlcpcbNoticeText) = state switch
+        {
+            JlcpcbApiCredentialState.None => (
+                "EasyEDA / LCSC search uses an unofficial source",
+                "Parts are looked up through an internal endpoint of JLCPCB's website. It is not a published API and can change or stop working at any time without notice. " +
+                "For a supported source, apply for access to JLCPCB's official API (guide below), then enter your App ID, Access Key and Secret Key in Settings > Component Providers."),
+            JlcpcbApiCredentialState.Incomplete => (
+                "JLCPCB API credentials are incomplete",
+                $"Missing: {string.Join(", ", JlcpcbApiCredentials.GetMissing(_configService))}. Until all three are entered in Settings > Component Providers, " +
+                "EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint, which can change or stop working at any time without notice."),
+            JlcpcbApiCredentialState.Complete => (
+                "EasyEDA / LCSC keyword searches use an unofficial source",
+                "LCSC part numbers such as C2040 are looked up through JLCPCB's official API with your credentials. That API has no keyword search, " +
+                "so other searches use an internal endpoint of JLCPCB's website, which can change or stop working at any time without notice."),
+            _ => throw new System.Diagnostics.UnreachableException($"Unknown JLCPCB credential state {state}"),
+        };
+
+        IsJlcpcbNoticeVisible = state != _hiddenJlcpcbNoticeState
+            && _providerRegistry.Providers.Any(p => p.Id == EasyEdaProvider.ProviderId);
+    }
 
     public void LibraryDownloaded(string filePath)
     {
