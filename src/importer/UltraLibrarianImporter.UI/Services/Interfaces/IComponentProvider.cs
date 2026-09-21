@@ -33,13 +33,13 @@ public record ProviderExtractionResult(
 /// <param name="HasFootprint">Indicates whether a verified KiCad PCB footprint is available.</param>
 /// <param name="Has3DModel">Indicates whether a verified 3D CAD model is available.</param>
 /// <param name="DatasheetUrl">URL to component datasheet or provider product page.</param>
-/// <param name="PackageDownloadUrl">Direct URL to download CAD model package archive if supported.</param>
 /// <param name="ProviderColor">Hex color code for provider visual badge (e.g. "#E65100").</param>
 /// <param name="Attribution">Where this result's data actually comes from, shown beside the result, when that is
 /// not the provider itself (e.g. a third-party index). <c>null</c> when the provider is the source.</param>
 /// <param name="LcscPartNumber">The part's LCSC code (<c>C</c> followed by digits, e.g. <c>C2040</c>) when the provider
-/// reported one, which is what the EasyEDA / LCSC import converts (#76). <c>null</c> when the provider did not
-/// report one; never derived from the MPN or guessed.</param>
+/// reported one, which is what the EasyEDA / LCSC import converts (#76): the index's own field for EasyEDA / LCSC,
+/// LCSC's offer SKU for Octopart (#47). <c>null</c> when the provider did not report one; never derived from the
+/// MPN or guessed.</param>
 public record PartSearchResult(
     string ProviderId,
     string ProviderName,
@@ -53,7 +53,6 @@ public record PartSearchResult(
     bool HasFootprint,
     bool Has3DModel,
     string? DatasheetUrl,
-    string? PackageDownloadUrl,
     string ProviderColor = "#666666",
     string? Attribution = null,
     string? LcscPartNumber = null

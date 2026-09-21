@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.Services.Providers;
@@ -18,6 +19,9 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
     private readonly IConfigService _configService;
     private readonly ILogger<OctopartProvider> _logger;
     private static readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(10) };
+
+    // LCSC's company slug on Octopart, as in octopart.com/distributors/lcsc.
+    private const string LcscCompanySlug = "lcsc";
 
     public OctopartProvider(IConfigService configService, ILogger<OctopartProvider> logger)
     {
@@ -57,6 +61,10 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                                     manufacturer { name }
                                     shortDescription
                                     bestDatasheet { url }
+                                    allSellers: sellers(authorizedOnly: false) {
+                                        company { slug }
+                                        offers { sku }
+                                    }
                                     sellers(authorizedOnly: true) {
                                         company { name }
                                         offers {
@@ -111,6 +119,7 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                 var desc = part.TryGetProperty("shortDescription", out JsonElement d) ? d.GetString() ?? "" : "";
                 var datasheet = part.TryGetProperty("bestDatasheet", out JsonElement ds) && ds.TryGetProperty("url", out JsonElement u)
                     ? u.GetString() : null;
+                var lcscPartNumber = FindLcscPartNumber(part);
 
                 bool hasSym = false, hasFp = false, has3D = false;
                 if (part.TryGetProperty("cadModels", out JsonElement cad))
@@ -182,8 +191,8 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
                     HasFootprint: hasFp,
                     Has3DModel: has3D,
                     DatasheetUrl: datasheet,
-                    PackageDownloadUrl: null,
-                    ProviderColor: ProviderColor
+                    ProviderColor: ProviderColor,
+                    LcscPartNumber: lcscPartNumber
                 ));
             }
         }
@@ -208,5 +217,43 @@ public sealed class OctopartProvider : BaseArchiveComponentProvider
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The LCSC code of LCSC's own offer for the part, which the easyeda2kicad import converts (#47, #76),
+    /// or <c>null</c> when LCSC has no offer that carries one.
+    /// </summary>
+    /// <remarks>
+    /// LCSC's SKU is its part code: on octopart.com, LCSC is the distributor company <c>lcsc</c>
+    /// (octopart.com/distributors/lcsc), and its offers carry SKUs such as <c>C41431778</c>. Octopart
+    /// usually lists LCSC as a non-authorized seller, so the SKU is read from <c>allSellers</c>, every
+    /// seller except brokers, and not from the authorized sellers the stock and price come from. A SKU
+    /// that is not an LCSC code is ignored rather than guessed at.
+    /// </remarks>
+    private static string? FindLcscPartNumber(JsonElement part)
+    {
+        if (!part.TryGetProperty("allSellers", out JsonElement sellers) || sellers.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (JsonElement seller in sellers.EnumerateArray())
+        {
+            if (!seller.TryGetProperty("company", out JsonElement company) ||
+                !company.TryGetProperty("slug", out JsonElement slug) ||
+                !string.Equals(slug.GetString(), LcscCompanySlug, StringComparison.OrdinalIgnoreCase) ||
+                !seller.TryGetProperty("offers", out JsonElement offers) ||
+                offers.ValueKind != JsonValueKind.Array)
+                continue;
+
+            foreach (JsonElement offer in offers.EnumerateArray())
+            {
+                var sku = offer.TryGetProperty("sku", out JsonElement s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+                if (EasyEda2KiCadConverter.IsLcscPartNumber(sku))
+                {
+                    return sku;
+                }
+            }
+        }
+
+        return null;
     }
 }

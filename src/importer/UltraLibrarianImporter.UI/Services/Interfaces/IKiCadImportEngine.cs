@@ -18,7 +18,8 @@ public interface IKiCadImportEngine
     /// Imports an LCSC part by running the user-installed easyeda2kicad, which converts it straight into
     /// the target library, and then registers that library as <see cref="ImportAsync"/> does (#76).
     /// </summary>
-    /// <param name="provider">The provider the part came from; names the default library.</param>
+    /// <param name="provider">Names the default library. The Part Explorer passes the EasyEDA provider, whichever
+    /// search found the part (#47).</param>
     /// <param name="lcscPartNumber">The part's LCSC code, <c>C</c> followed by digits.</param>
     /// <param name="importType">Which of symbol, footprint and 3D model to import.</param>
     /// <param name="options">Where to import to, as for <see cref="ImportAsync"/>.</param>
