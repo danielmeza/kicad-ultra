@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading.Tasks;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -56,6 +57,14 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _downloadDirectory = string.Empty;
+
+    /// <summary>Why Save refused the download folder, shown under it. Empty when it did not (#112).</summary>
+    [ObservableProperty]
+    private string _downloadDirectoryError = string.Empty;
+
+    /// <summary>The selected tab, so that a refused Save can show the error on the General tab.</summary>
+    [ObservableProperty]
+    private int _selectedTabIndex;
 
     /// <summary>Which of KiCad's library tables imported libraries are registered in (#71).</summary>
     [ObservableProperty]
@@ -279,6 +288,18 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    // The error was about the folder as it was; the next Save checks the new one.
+    partial void OnDownloadDirectoryChanged(string value) => DownloadDirectoryError = string.Empty;
+
+    // Since #111 the browser saves into this folder as it is given, so a relative one would resolve
+    // against whatever directory the app happens to run in (#112). Returns why it is refused, or null.
+    private static string? CheckDownloadDirectory(string directory) =>
+        string.IsNullOrWhiteSpace(directory)
+            ? "Not saved: enter the download folder as a full path, or choose one with Browse."
+        : !Path.IsPathFullyQualified(directory)
+            ? $"Not saved: \"{directory}\" is not a full path. A relative folder would depend on the directory the app was started in. Enter a full path, or choose a folder with Browse."
+        : null;
+
     private void AddFallbackProvider(string id, string name, bool directApi)
     {
         var reqKey = ReadsApiKey(id);
@@ -323,6 +344,16 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
+        // Checked before anything is written: a refused folder leaves every setting as it was, and
+        // the dialog open on the General tab with the reason under the folder.
+        if (CheckDownloadDirectory(DownloadDirectory) is { } downloadDirectoryError)
+        {
+            DownloadDirectoryError = downloadDirectoryError;
+            SelectedTabIndex = 0;
+            _logger.LogWarning("Settings not saved: the download folder \"{Directory}\" is not a full path", DownloadDirectory);
+            return;
+        }
+
         try
         {
             KiCadClientSettings currentSettings = _kicadSettings.CurrentValue;

@@ -72,6 +72,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private IComponentProvider _selectedProvider;
 
+    // The provider last switched to, whose start page the browser was sent to. SelectedProvider
+    // can briefly be null while the provider ComboBox refreshes its items; this cannot.
+    private IComponentProvider _activeProvider;
+
     [ObservableProperty]
     private string _webviewUrl = string.Empty;
 
@@ -206,6 +210,7 @@ public partial class MainViewModel : ObservableObject
         _easyEda2KiCadLocator = easyEda2KiCadLocator;
 
         _selectedProvider = _providerRegistry.SelectedProvider;
+        _activeProvider = _selectedProvider;
         _webviewUrl = SelectedProvider.SearchUrl;
 
         _configService.EnsureDownloadDirectoryExists();
@@ -257,13 +262,19 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedProviderChanged(IComponentProvider value)
     {
-        if (value != null)
+        // A different provider switches, and sends the browser to its start page. The provider
+        // ComboBox writes null and then the same provider again whenever AvailableProviders is
+        // replaced, which every Settings save does, and that is not a change (#112).
+        if (value is null || ReferenceEquals(value, _activeProvider))
         {
-            _providerRegistry.SelectedProvider = value;
-            WebviewUrl = value.SearchUrl;
-            StatusMessage = $"Active provider: {value.DisplayName}";
-            _logger.LogInformation("Switched component provider to {Provider} ({Url})", value.DisplayName, value.SearchUrl);
+            return;
         }
+
+        _activeProvider = value;
+        _providerRegistry.SelectedProvider = value;
+        WebviewUrl = value.SearchUrl;
+        StatusMessage = $"Active provider: {value.DisplayName}";
+        _logger.LogInformation("Switched component provider to {Provider} ({Url})", value.DisplayName, value.SearchUrl);
     }
 
     public void SetWebViewLoaded(bool isLoaded)
