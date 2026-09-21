@@ -34,8 +34,19 @@ public partial class MainWindow : Window
         ?? throw new InvalidOperationException(
             "MainWindow was used before its MainViewModel DataContext was assigned.");
 
+    // Where the download handler reads the download folder (#108). Null only without DI.
+    private readonly IConfigService? _configService;
+
+    // For the XAML designer and App's fallback without DI. Without the configuration, browser
+    // downloads go to the default download folder.
     public MainWindow()
+        : this(null)
     {
+    }
+
+    public MainWindow(IConfigService? configService)
+    {
+        _configService = configService;
 
         WebView.GlobalWebViewInitialized += Initialize;
 
@@ -98,7 +109,7 @@ public partial class MainWindow : Window
     private void Initialize(WebView view)
     {
         var browser = (BaseCefBrowser)view.GetVisualChildren().First();
-        browser.DownloadHandler = new InternalDownloadHandler(this);
+        browser.DownloadHandler = new InternalDownloadHandler(this, _configService);
     }
 
     private void DownloadComplete(string resourcePath)
@@ -129,9 +140,18 @@ public partial class MainWindow : Window
     // The only route from the browser to an import. WebView.DownloadCompleted, also wired to
     // DownloadComplete, is raised only by the WebView's own download handler, and Initialize replaces
     // that handler with this one while the WebView is still being constructed.
+    //
+    // CEF calls OnBeforeDownload and OnDownloadUpdated on its browser-process UI thread, not
+    // Avalonia's, so neither may touch the window or its view model there: DataContext throws "Call
+    // from invalid thread", which is how the configured download folder came to be ignored (#108).
+    // Anything for the UI goes through AsyncExecuteInUI.
     private class InternalDownloadHandler : DownloadHandler
     {
         private readonly MainWindow _mainWindow;
+
+        // Plain data, so safe to read on CEF's thread. Settings saves into the same instance, so a
+        // folder changed there applies to the next download.
+        private readonly IConfigService? _configService;
 
         // The downloads this handler continued, by CEF download id, with the path each was given. Only
         // these reach the view model (#97). Both collections are touched only by OnBeforeDownload and
@@ -141,9 +161,10 @@ public partial class MainWindow : Window
         // The downloads this handler refused, until CEF reports them canceled.
         private readonly HashSet<uint> _refusedDownloads = [];
 
-        public InternalDownloadHandler(MainWindow mainWindow)
+        public InternalDownloadHandler(MainWindow mainWindow, IConfigService? configService)
         {
             _mainWindow = mainWindow;
+            _configService = configService;
         }
 
         protected override void OnBeforeDownload(CefBrowser browser, CefDownloadItem downloadItem, string suggestedName, CefBeforeDownloadCallback callback)
@@ -179,8 +200,10 @@ public partial class MainWindow : Window
             string downloadDir;
             try
             {
-                downloadDir = !string.IsNullOrWhiteSpace(_mainWindow.ViewModel.DownloadDirectory)
-                    ? _mainWindow.ViewModel.DownloadDirectory
+                // Read once, so the value checked is the value used.
+                var configuredDir = _configService?.DownloadDirectory;
+                downloadDir = !string.IsNullOrWhiteSpace(configuredDir)
+                    ? configuredDir
                     : DefaultDownloadDir();
                 _ = Directory.CreateDirectory(downloadDir);
             }
@@ -297,13 +320,10 @@ public partial class MainWindow : Window
         ViewModel.DownloadStarted(filePath);
     }
 
+    // Called on CEF's thread. IsLoaded is the window's own state, so it is checked only once the
+    // action is on Avalonia's UI thread.
     private void AsyncExecuteInUI(Action action)
     {
-        if (!IsLoaded)
-        {
-            return;
-        }
-
         _ = Dispatcher.UIThread.InvokeAsync(delegate
         {
             if (IsLoaded)

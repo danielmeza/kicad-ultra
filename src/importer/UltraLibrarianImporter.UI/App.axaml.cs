@@ -126,7 +126,7 @@ public partial class App : Application
                 WebView.Settings.PersistCache = true;
                 WebView.Settings.CachePath = cachePath;
 
-                MainWindow = new MainWindow() { DataContext = viewModel };
+                MainWindow = new MainWindow(configService) { DataContext = viewModel };
 
                 // Set up file watcher with the configured directory
 
