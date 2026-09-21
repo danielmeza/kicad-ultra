@@ -14,9 +14,6 @@ using Microsoft.Extensions.Logging;
 using NLog;
 using NLog.Extensions.Logging;
 
-using Microsoft.Extensions.Logging;
-using NLog.Extensions.Logging;
-
 using KiCadSharp;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
