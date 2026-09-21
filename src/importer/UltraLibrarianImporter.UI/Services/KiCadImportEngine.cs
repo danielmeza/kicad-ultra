@@ -16,6 +16,9 @@ namespace UltraLibrarianImporter.UI.Services;
 
 public class KiCadImportEngine : IKiCadImportEngine
 {
+    /// <summary>How long to wait for KiCad to report its version before looking on disk instead.</summary>
+    private static readonly TimeSpan KiCadQueryTimeout = TimeSpan.FromSeconds(5);
+
     private readonly KiCad _kicad;
     private readonly ILogger<KiCadImportEngine> _logger;
 
@@ -47,7 +50,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             if (importType.HasFlag(ImportType.Symbol))
             {
-                var symbolSuccess = await RunStepAsync("Symbol import", () => ImportSymbolsAsync(extraction, projectDirectory, projectName, options, provider), result);
+                var symbolSuccess = await RunStepAsync("Symbol import", () => ImportSymbolsAsync(extraction, projectDirectory, projectName, options, provider, result), result);
                 result.SymbolImportSuccess = symbolSuccess;
                 success |= symbolSuccess;
                 result.Details.Add($"Symbol import: {(symbolSuccess ? "Success" : "Failed")}");
@@ -55,7 +58,7 @@ public class KiCadImportEngine : IKiCadImportEngine
 
             if (importType.HasFlag(ImportType.Footprint))
             {
-                var footprintSuccess = await RunStepAsync("Footprint import", () => ImportFootprintsAsync(extraction, projectDirectory, projectName, options, provider), result);
+                var footprintSuccess = await RunStepAsync("Footprint import", () => ImportFootprintsAsync(extraction, projectDirectory, projectName, options, provider, result), result);
                 result.FootprintImportSuccess = footprintSuccess;
                 success |= footprintSuccess;
                 result.Details.Add($"Footprint import: {(footprintSuccess ? "Success" : "Failed")}");
@@ -204,7 +207,8 @@ public class KiCadImportEngine : IKiCadImportEngine
         string projectDirectory,
         string projectName,
         ImportOptions options,
-        IComponentProvider provider)
+        IComponentProvider provider,
+        ImportResult result)
     {
         if (extraction.SymbolFiles.Count == 0)
         {
@@ -216,9 +220,8 @@ public class KiCadImportEngine : IKiCadImportEngine
             ? options.LibraryName
             : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
-        var symbolLibPath = !string.IsNullOrEmpty(projectDirectory)
-            ? Path.Combine(projectDirectory, $"{libraryBaseName}.kicad_sym")
-            : Path.Combine(await GetSymbolLibraryPath(projectDirectory), $"{libraryBaseName}.kicad_sym");
+        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Symbol);
+        var symbolLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_symbols"), $"{libraryBaseName}.kicad_sym");
 
         KiCadSymbolLibrary symbolLibrary;
         if (File.Exists(symbolLibPath))
@@ -270,18 +273,15 @@ public class KiCadImportEngine : IKiCadImportEngine
         try
         {
             symbolLibrary.Save(symbolLibPath);
-            if (options.AddToGlobalLibrary)
-            {
-                await AddSymbolLibraryToTableAsync(symbolLibPath, libraryBaseName);
-            }
             _logger.LogInformation("Successfully saved symbol library to {Path}", symbolLibPath);
-            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save symbol library to {Path}: {Message}", symbolLibPath, ex.Message);
             return false;
         }
+
+        return RegisterLibrary(LibraryTableKind.Symbol, symbolLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
     }
 
     private async Task<bool> ImportFootprintsAsync(
@@ -289,15 +289,15 @@ public class KiCadImportEngine : IKiCadImportEngine
         string projectDirectory,
         string projectName,
         ImportOptions options,
-        IComponentProvider provider)
+        IComponentProvider provider,
+        ImportResult result)
     {
         var libraryBaseName = !string.IsNullOrEmpty(options.LibraryName)
             ? options.LibraryName
             : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
-        var footprintLibPath = !string.IsNullOrEmpty(projectDirectory)
-            ? Path.Combine(projectDirectory, $"{libraryBaseName}.pretty")
-            : Path.Combine(await GetFootprintLibraryPath(projectDirectory), $"{libraryBaseName}.pretty");
+        var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Footprint);
+        var footprintLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_footprints"), $"{libraryBaseName}.pretty");
 
         _ = Directory.CreateDirectory(footprintLibPath);
 
@@ -326,12 +326,8 @@ public class KiCadImportEngine : IKiCadImportEngine
             success |= SaveRenamedFootprint(file, footprintLibPath, provider.DefaultPrefix);
         }
 
-        if (success && options.AddToGlobalLibrary)
-        {
-            await AddFootprintLibraryToTableAsync(footprintLibPath, libraryBaseName);
-        }
-
-        return success;
+        return success
+            && RegisterLibrary(LibraryTableKind.Footprint, footprintLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
     }
 
     private bool SaveRenamedFootprint(string sourceFilePath, string targetPrettyDir, string prefix)
@@ -392,73 +388,167 @@ public class KiCadImportEngine : IKiCadImportEngine
         return success;
     }
 
-    private async Task AddSymbolLibraryToTableAsync(string libraryPath, string libraryName)
+    /// <summary>
+    /// Adds the library to the table <see cref="ImportOptions.AddToGlobalLibrary"/> selects: KiCad's
+    /// global table when it is set, otherwise the table of the project the library was imported into.
+    /// Returns the step's result: <see langword="false"/> when the library was meant to be registered
+    /// and is not, with the reason in <see cref="ImportResult.Details"/>.
+    /// </summary>
+    /// <remarks>
+    /// KiCad 10 has no IPC call to reload a library table, so a running KiCad keeps the table it has in
+    /// memory: it loads the global tables at start-up and a project's tables when the project is
+    /// opened. Until then, changing anything in that KiCad's Manage Symbol/Footprint Libraries dialog
+    /// saves its in-memory copy over the file and drops the new row.
+    /// </remarks>
+    private bool RegisterLibrary(
+        LibraryTableKind kind,
+        string libraryPath,
+        string nickname,
+        string projectDirectory,
+        string? kicadSettingsDirectory,
+        ImportOptions options,
+        ImportResult result)
     {
-        _ = await _kicad.RunAction($"eeschema.SymLibTable.AddLibrary:{libraryPath}:{libraryName}");
-        if (_logger.IsEnabled(LogLevel.Information))
+        var label = kind == LibraryTableKind.Symbol ? "Symbol" : "Footprint";
+        var tableName = KiCadLibraryTable.FileName(kind);
+
+        string tablePath;
+        string? kiprjmod;
+        string reload;
+        if (options.AddToGlobalLibrary)
         {
-            _logger.LogInformation("Symbol library registered in table: {Name}", libraryName);
+            if (kicadSettingsDirectory is null)
+            {
+                _logger.LogWarning("{Label} library {Path} not registered: KiCad's settings directory was not found", label, libraryPath);
+                result.Details.Add($"{label} library not registered: KiCad's settings directory, which holds the global {tableName}, was not found. Start KiCad once, or add {libraryPath} to its library table by hand.");
+                return false;
+            }
+
+            tablePath = Path.Combine(kicadSettingsDirectory, tableName);
+            kiprjmod = null;
+            reload = "restart KiCad to load it";
+        }
+        else
+        {
+            if (!IsKiCadProject(projectDirectory))
+            {
+                // Registration is off by configuration, not broken: there is no project table to add
+                // the library to, and the user chose not to use the global one.
+                var where = string.IsNullOrEmpty(projectDirectory) ? "there is no KiCad project" : $"{projectDirectory} is not a KiCad project folder";
+                _logger.LogInformation("{Label} library {Path} not registered: {Where} and global registration is off", label, libraryPath, where);
+                result.Details.Add($"{label} library not registered: {where} and 'Add imported components to global library table' is off.");
+                return true;
+            }
+
+            tablePath = Path.Combine(projectDirectory, tableName);
+            kiprjmod = projectDirectory;
+            reload = "reopen the project to load it";
+        }
+
+        var entry = new LibraryTableEntry(
+            nickname,
+            KiCadLibraryTable.ToUri(libraryPath, kiprjmod),
+            libraryPath,
+            "Imported by KiCad UltraLibrarian Importer");
+
+        // Only a project table may be created: see KiCadLibraryTable.Register on the global one.
+        LibraryTableUpdate update = KiCadLibraryTable.Register(tablePath, kind, entry, createIfMissing: !options.AddToGlobalLibrary, kiprjmod);
+        switch (update.Status)
+        {
+            case LibraryTableUpdateStatus.Added:
+                _logger.LogInformation("{Label} library {Name} registered in {Table}", label, nickname, update.TablePath);
+                result.Details.Add($"{label} library registered: {update.Message} KiCad does not reload library tables on its own; {reload}.");
+                return true;
+
+            case LibraryTableUpdateStatus.AlreadyRegistered:
+                _logger.LogInformation("{Label} library {Name} already registered in {Table}", label, nickname, update.TablePath);
+                result.Details.Add($"{label} library already registered: {update.Message}");
+                return true;
+
+            case LibraryTableUpdateStatus.NameConflict:
+                _logger.LogWarning("{Label} library {Name} not registered: {Message}", label, nickname, update.Message);
+                result.Details.Add($"{label} library not registered: {update.Message} Set a different library name in Settings.");
+                return false;
+
+            case LibraryTableUpdateStatus.Failed:
+                _logger.LogError(update.Error, "{Label} library {Name} not registered: {Message}", label, nickname, update.Message);
+                result.Details.Add($"{label} library not registered: {update.Message}");
+                return false;
+
+            default:
+                throw new InvalidOperationException($"Unhandled library table status {update.Status}.");
         }
     }
 
-    private async Task AddFootprintLibraryToTableAsync(string libraryPath, string libraryName)
+    private static bool IsKiCadProject(string directory) =>
+        !string.IsNullOrEmpty(directory)
+        && Directory.Exists(directory)
+        && Directory.EnumerateFiles(directory, $"*{KiCadFileExtensions.Project}").Any();
+
+    /// <summary>
+    /// Chooses the directory the library files are written to, and creates it (#63). With a project
+    /// directory that is where they go. Without one they go next to KiCad's global library tables, in
+    /// its settings directory for the running version, which is where the importer put them before #34
+    /// (<c>DirectoryOf(libraryTable)</c>). Only when that directory is unknown do they fall back to the
+    /// temporary directory, and a library there is never registered globally, because
+    /// <see cref="RegisterLibrary"/> needs the same settings directory to find the global table.
+    /// </summary>
+    private static string ChooseLibraryDirectory(string projectDirectory, string? kicadSettingsDirectory, string temporaryFolderName)
     {
-        _ = await _kicad.RunAction($"pcbnew.FpLibTable.AddLibrary:{libraryPath}:{libraryName}");
-        _logger.LogInformation("Footprint library registered in table: {Name}", libraryName);
+        var directory = !string.IsNullOrEmpty(projectDirectory)
+            ? projectDirectory
+            : kicadSettingsDirectory is not null && Directory.Exists(kicadSettingsDirectory)
+                ? kicadSettingsDirectory
+                : Path.Combine(Path.GetTempPath(), temporaryFolderName);
+
+        _ = Directory.CreateDirectory(directory);
+        return directory;
     }
 
-    private Task<string> GetSymbolLibraryPath(string projectDirectory)
+    /// <summary>
+    /// KiCad's settings directory for the running version, when the step needs it: to find the global
+    /// table, or to hold the library when there is no project directory. <see langword="null"/> when it
+    /// is not needed or cannot be found.
+    /// </summary>
+    private async Task<string?> ResolveKiCadSettingsDirectoryIfNeededAsync(string projectDirectory, ImportOptions options, LibraryTableKind kind)
     {
-        if (!string.IsNullOrEmpty(projectDirectory))
+        if (!options.AddToGlobalLibrary && !string.IsNullOrEmpty(projectDirectory))
         {
-            var symLibTable = Path.Combine(projectDirectory, "sym-lib-table");
-            if (File.Exists(symLibTable))
-            {
-                return Task.FromResult(symLibTable);
-            }
+            return null;
         }
 
-        var kicadConfigDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        kicadConfigDir = Path.Combine(kicadConfigDir, "kicad", "9.0");
-        if (Directory.Exists(kicadConfigDir))
+        try
         {
-            var symLibTable = Path.Combine(kicadConfigDir, "sym-lib-table");
-            if (File.Exists(symLibTable))
-            {
-                return Task.FromResult(symLibTable);
-            }
+            // KiCadSharp 0.1.1 blocks the calling thread on the socket read, and the caller is the UI
+            // thread when the import comes from MainViewModel. Run it on the pool and stop waiting
+            // after a few seconds rather than hang the import on a KiCad that never answers.
+            KiCadVersion version = await Task.Run(() => _kicad.GetVersion().AsTask()).WaitAsync(KiCadQueryTimeout);
+            var directory = KiCadSettingsDirectory.ForVersion(version.Major, version.Minor);
+            _logger.LogDebug("KiCad {Version} is running; its settings directory is {Directory}", version, directory);
+            return directory;
+        }
+        catch (Exception ex)
+        {
+            // Deliberately broad. KiCadSharp 0.1.1 surfaces a failed request as unrelated types: its
+            // public KiCadConnectionException, its internal ApiException (KiCad answered with an
+            // error), nng.NngException straight from the dial when nothing listens on the socket, and
+            // ArgumentNullException when there is no API token because KiCad did not launch the
+            // importer. With the timeout above, every one of them means the same thing here: KiCad
+            // cannot be asked, so fall back to looking at the disk.
+            _logger.LogWarning(ex, "Could not ask KiCad for its version; looking for its settings directory on disk instead");
         }
 
-        return Task.FromResult(!string.IsNullOrEmpty(projectDirectory)
-            ? Path.Combine(projectDirectory, "symbols")
-            : Path.Combine(Path.GetTempPath(), "kicad_symbols"));
-    }
-
-    private Task<string> GetFootprintLibraryPath(string projectDirectory)
-    {
-        if (!string.IsNullOrEmpty(projectDirectory))
+        var newest = KiCadSettingsDirectory.FindNewestContaining(KiCadLibraryTable.FileName(kind));
+        if (newest is null)
         {
-            var fpLibTable = Path.Combine(projectDirectory, "fp-lib-table");
-            if (File.Exists(fpLibTable))
-            {
-                return Task.FromResult(fpLibTable);
-            }
+            _logger.LogWarning("No KiCad settings directory with a {Table} was found under {Root}", KiCadLibraryTable.FileName(kind), KiCadSettingsDirectory.GetRoot());
+        }
+        else
+        {
+            _logger.LogWarning("Using the newest KiCad settings directory that has a {Table}: {Directory}", KiCadLibraryTable.FileName(kind), newest);
         }
 
-        var kicadConfigDir = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        kicadConfigDir = Path.Combine(kicadConfigDir, "kicad", "7.0");
-        if (Directory.Exists(kicadConfigDir))
-        {
-            var fpLibTable = Path.Combine(kicadConfigDir, "fp-lib-table");
-            if (File.Exists(fpLibTable))
-            {
-                return Task.FromResult(fpLibTable);
-            }
-        }
-
-        return Task.FromResult(!string.IsNullOrEmpty(projectDirectory)
-            ? Path.Combine(projectDirectory, "footprints")
-            : Path.Combine(Path.GetTempPath(), "kicad_footprints"));
+        return newest;
     }
 
     private Task<string> Get3DModelPath(string projectDirectory)
