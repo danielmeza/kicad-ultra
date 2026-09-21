@@ -201,6 +201,9 @@ needed any more.
   ordered stream as the results, which is what makes stale rows impossible. Keep it that way.
 - **`KiCadImportEngine`** does the file work: extract, then symbols, footprints and 3D models, each
   wrapped by `RunStepAsync` so a failing step reports its own `ImportResult` flag.
+  `ImportResult.Outcome` judges those flags against `RequestedSteps`: succeeded, partially succeeded
+  (the status line names the failed steps), failed, or cancelled (#102). `Success` only means that at
+  least one requested step worked, so a partial import has it too; report `Outcome`, not `Success`.
 
 ### Import flow
 

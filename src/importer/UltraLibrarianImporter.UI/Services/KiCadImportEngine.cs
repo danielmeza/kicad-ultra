@@ -69,7 +69,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         ImportType importType,
         ImportOptions options)
     {
-        var result = new ImportResult();
+        var result = new ImportResult { RequestedSteps = importType };
         var tempDir = Path.Combine(Path.GetTempPath(), $"{provider.DefaultLibraryName}_Import_{Guid.NewGuid()}");
 
         try
@@ -160,7 +160,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         ImportOptions options,
         CancellationToken cancellationToken = default)
     {
-        var result = new ImportResult();
+        var result = new ImportResult { RequestedSteps = importType };
 
         if (!EasyEda2KiCadConverter.IsLcscPartNumber(lcscPartNumber))
         {
