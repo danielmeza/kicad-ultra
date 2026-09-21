@@ -4,7 +4,9 @@ using Avalonia;
 using Lemon.Hosting.AvaloniauiDesktop;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NLog;
+using NLog.Extensions.Logging;
 using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
@@ -59,9 +61,18 @@ internal sealed class Program
     {
         HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
+        ConfigureLogging(builder.Logging);
         ConfigureServices(builder.Services);
         return builder;
     }
+
+    // Console for `dotnet run`; NLog so the file targets declared in nlog.config actually receive
+    // ILogger output. Before #34 nothing bridged ILogger into NLog.
+    private static void ConfigureLogging(ILoggingBuilder logging) =>
+        logging
+            .ClearProviders()
+            .AddConsole()
+            .AddNLog();
 
     [SupportedOSPlatform("windows")]
     [SupportedOSPlatform("linux")]

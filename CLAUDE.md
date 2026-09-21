@@ -87,6 +87,12 @@ Two things `dotnet format` will not do for you:
 - **IDE0005 is invisible to it.** The formatter does not emit a documentation file, so unnecessary
   usings only show up in a real build. `dotnet format` passing does not mean the build passes.
 - **IDE0060 has no fixer.** Unused parameters must be removed or used by hand.
+- **Do not accept its IDE0058 fix for builder chains.** It resolves "expression value is never used"
+  by prefixing `_ =`, and on DI or logging registrations that stacks a discard on every line —
+  rejected in review. Chain the calls instead, as an expression-bodied member
+  (`private static void ConfigureServices(IServiceCollection services) => services.AddX().AddY();`):
+  the value is returned rather than dropped, so IDE0058 does not apply. A single `_ =` on a call
+  that genuinely cannot chain, like `Directory.CreateDirectory`, is fine.
 
 Two deliberate deviations from Roslyn, both noted in the file itself: `var` is not preferred
 everywhere (`csharp_style_var_elsewhere = false`), and severities are error rather than suggestion.
@@ -98,10 +104,9 @@ the type and an explicit type everywhere else.
 
 Two processes, and the interesting one is the .NET side.
 
-1. **`plugin/`** — Python, loaded by KiCad through the IPC API plugin system. `plugin.json`
-   registers a single action scoped to schematic, pcb, footprint, symbol and project_manager.
-   `importer_launcher.py` does nothing but `subprocess.Popen` a .NET executable it expects at
-   `plugin/bin/UltralibrarianImporter.exe`.
+1. **`plugin/`** — Python. KiCad loads it two ways at once: `plugin.json` registers an IPC API action
+   whose entrypoint is `importer_launcher.py`, and `__init__.py` also registers a legacy
+   `pcbnew.ActionPlugin` whose `Run()` calls `launch_importer()`. Both only start the .NET app.
 2. **`src/importer/UltraLibrarianImporter.UI`** — Avalonia 11 desktop app on the generic host
    (`Host.CreateApplicationBuilder` + `Lemon.Hosting.AvaloniauiDesktop`), NLog, CommunityToolkit.Mvvm.
 
@@ -110,85 +115,94 @@ s-expression read/write) and `KiCadSharp` (IPC client + library formats) live in
 `danielmeza/sexpressions` and `danielmeza/kicad-sharp` and arrive from nuget.org at the versions
 `Directory.Build.props` pins. Changes to parsing or the IPC surface belong there, not here.
 
-### The launcher hand-off is currently broken in three ways
+### The launcher hand-off
 
-`importer_launcher.py` is 20 lines and every one of them matters, because it is the only link
-between the two processes:
+`importer_launcher.py` looks for `plugin/bin/UltraLibrarianImporter.UI.exe` (the real apphost name)
+and `plugin/bin/UltralibrarianImporter.exe`, nothing else — never add candidates outside the plugin
+directory; the #34 review removed three that an installed bundle would actually have reached. Still
+broken:
 
-- The path it starts is `bin/UltralibrarianImporter.exe`. The app builds as
-  `UltraLibrarianImporter.UI.exe` (note the `.UI`, and the `L` casing differs too), so the name does
-  not match the assembly even if the binary were staged there.
-- `.exe` is hardcoded, so the launcher cannot work on Linux or macOS at all.
-- `release.yml` never stages `plugin/bin/`, so an installed bundle has nothing to start.
+- **`.exe` is hardcoded**, so Linux and macOS cannot launch anything. #36 rewrites it per platform.
+- **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
+- When the launcher starts waiting on the child (as #36 does), `__init__.py`'s `ActionPlugin.Run()`
+  must call it with `wait=False` — it runs on KiCad's UI thread and would freeze the editor.
 
-What the launcher *does* get right is `env=os.environ`: KiCad exports the IPC socket path, the API
-token and the project directory into the child's environment, and that is how the .NET app finds
-KiCad. `AddKiCad(name)` in `UltraLibrarianKiCadExtensions` is called with no settings callback, so
-the connection comes entirely from `KiCadEnvironment.GetApiToken()` / `GetDefaultSocketPath()`, and
-`UltraLibrarianImporter.GetProjectPath()` reads `KiCadEnvironment.GetProjectDirectory()`. Launched
-any other way, the app starts fine and every KiCad operation fails.
+What the launcher gets right is passing the environment through: KiCad exports the IPC socket
+path, the API token and the project directory into it, and `KiCadSharp` reads them from there
+(`KiCadEnvironment.GetApiToken()` / `GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any
+other way, the app starts fine and every KiCad operation fails.
+
+### Providers and the import engine
+
+Since #34 the importer is multi-provider:
+
+- **`IComponentProvider`** (`Services/Interfaces`) is one source. `ComponentProviderRegistry`
+  collects every registered provider from DI; `PartAggregatorService` fans a search out to those
+  with `SupportsDirectApi == true`.
+- **`KiCadImportEngine`** does all the KiCad file work: extract the archive, then symbols, footprints
+  and 3D models, each wrapped by `RunStepAsync` so one failing step reports its own flag in
+  `ImportResult` instead of aborting the rest. `Services/UltraLibrarianImporter.cs` is now only a
+  thin facade over it.
+- **Live providers:** `EasyEdaProvider`, which searches the third-party `jlcsearch.tscircuit.com`
+  index (#52), and `OctopartProvider` (Nexar GraphQL, needs the user's token). `SnapEdaProvider` and
+  `ComponentSearchEngineProvider` are deliberately `SupportsDirectApi => false` because they used to
+  fabricate results (#56, #57). `UltraLibrarianProvider` is browser-only.
+- **Never fabricate** — the rule the #34 review converged on. A CAD-availability flag is `true` only
+  when the provider said so, and a provider that cannot answer is absent from the results rather
+  than present with invented values. The same review is why providers use narrow `catch`es that log
+  (`OperationCanceledException` rethrown) and an honest `kicad-ultra/1.0` User-Agent.
 
 ### Import flow
 
-`MainWindow` hosts a CEF `WebView` pointed at `app.ultralibrarian.com`. The user downloads a part
-inside that embedded browser; `InternalDownloadHandler` (`Views/MainWindow.axaml.cs`) intercepts the
-CEF download and hands the `.zip` path to `MainViewModel`, which calls
-`UltraLibrarianImporter.ImportComponentAsync(zip, ImportType)`. That service
-(`Services/UltraLibrarianImporter.cs` — ~1/3 of all the C# here) extracts the archive and runs
-symbol, footprint and 3D-model import independently, each returning its own success flag in
-`ImportResult`.
+`MainWindow` has two tabs.
 
-Writing the libraries is real — `KiCadSymbolLibrary.Save`, `KiCadFootprintLibrary.SaveFootprint`
-and a file copy for the models, all through KiCadSharp. **Registering them in the library tables is
-not.** `AddSymbolLibraryToTable` calls `RunAction("common.Control.addLibrary")` with no arguments at
-all, and `AddFootprintLibraryToTable` calls `RunAction("pcbnew.FpLibTable.AddLibrary:{path}:{name}")`
-with a colon-delimited argument string that is not how KiCad action identifiers work. Both are
-placeholders, and their own comments say so. `GetSymbolLibraryPath()` / `GetFootprintLibraryPath()`
-locate an existing `sym-lib-table` / `fp-lib-table` but are only used to *derive a directory* for
-the new library when no project is open; nothing ever writes to those files. Treat "the part shows
-up in KiCad's library list" as unimplemented, not as a regression.
+- **Part Explorer** searches through the aggregator but **cannot import**: `PackageDownloadUrl` is
+  never read, and activating a result opens a browser (#47).
+- **Web Browser** hosts CEF on the selected provider's site. `InternalDownloadHandler`
+  (`Views/MainWindow.axaml.cs`) intercepts the download, reduces the server-supplied name with
+  `Path.GetFileName`, and refuses anything that would resolve outside the download directory —
+  keep that containment check. The archive then goes to `MainViewModel`, which calls
+  `KiCadImportEngine.ImportAsync` with options read from `ConfigService` at import time.
 
-One more thing to know before editing that file: `_projectPath` holds a **directory**
-(`GetProjectDirectory()`, then `Directory.GetFiles(_projectPath, "*.kicad_pro")`), but every use
-site passes it through `DirectoryOf(...)` as if it were a file, which yields the project folder's
-*parent*. Preserve or fix that deliberately; do not half-change it.
+Writing the libraries is real, through KiCadSharp. **Registering them is not:** `KiCadImportEngine`
+calls `RunAction($"eeschema.SymLibTable.AddLibrary:{path}:{name}")` and the `pcbnew` equivalent, but
+`RunAction` runs an action by name and does not interpret that colon suffix, so nothing is
+registered (#46). Treat "the part shows up in KiCad's library list" as unimplemented.
 
-### DI wiring — one trap, with consequences
+### DI wiring — one trap
 
-`Program.ConfigureServices` registers the view models and `IConfigService`, then calls
-`AddUltraLibrarianKiCadServices()` (`UltraLibrarianKiCadExtensions.cs`), which registers KiCadSharp
-under the **keyed** client name `com.ultralibrarian.kicad.importer` and re-exposes it unkeyed.
-`Services/ServiceConfigurator.cs` is a parallel, older registration path that **nothing calls** —
-registrations added there have no effect.
+`Program.ConfigureLogging` and `Program.ConfigureServices` build the container;
+`AddUltraLibrarianKiCadServices()` (`UltraLibrarianKiCadExtensions.cs`) registers KiCadSharp under the
+**keyed** client name `com.ultralibrarian.kicad.importer` (re-exposed unkeyed), plus the providers,
+registry, aggregator and import engine. `Services/ServiceConfigurator.cs` is a parallel, older
+registration path that **nothing calls** — registrations added there have no effect.
 
-That dead path is why two things are not wired up as they look:
-
-- **NLog is configured but not connected.** `Program.Main` calls `LoadConfigurationFromFile("nlog.config")`,
-  which sets up NLog's own `LogManager`, but the only `AddNLog()` bridge lives in the dead
-  `ServiceConfigurator`. Every injected `ILogger<T>` therefore goes to the host's default providers
-  (console/debug), and the file targets `nlog.config` declares under
-  `%APPDATA%/UltraLibrarianImporter/logs/` stay empty. Console output is the log.
+- **Logging works now.** `ConfigureLogging` does `ClearProviders().AddConsole().AddNLog()`, so
+  `ILogger<T>` output reaches the file targets `nlog.config` declares under
+  `%APPDATA%/UltraLibrarianImporter/logs/`. Before #34 nothing bridged `ILogger` into NLog.
 - **`KiCadClientSettings` is bound from configuration only in the dead path.** `SettingsViewModel`
-  edits `IOptionsMonitor<KiCadClientSettings>.CurrentValue` in place and `ConfigService.Save()` does
-  not carry `PipeName`/`Token`, so KiCad connection settings entered in the Settings window are lost
-  on restart.
+  edits `IOptionsMonitor<KiCadClientSettings>.CurrentValue` in place and nothing persists
+  `PipeName`/`Token`, so KiCad connection settings entered in the Settings window are lost on restart.
 
-### Configuration and where files actually land
+### Configuration
 
-`ConfigService` serializes itself to `%APPDATA%/UltraLibrarianImporter/config.json` and supplies
-`ImportOptions` per import. Three traps around it:
+`ConfigService` serializes to `%APPDATA%/UltraLibrarianImporter/config.json`.
 
-- **Two different app-data folders.** Config and the (unused) NLog targets use
-  `UltraLibrarianImporter`; the CEF cache and the actual downloads use `UltralibrarianKicad`.
-- **`DownloadDirectory` is not where downloads go.** It defaults to
-  `~/Documents/UltraLibrarianDownloads` and `EnsureDownloadDirectoryExists()` creates it, but
-  `InternalDownloadHandler.OnBeforeDownload` writes the `.zip` to
-  `%APPDATA%/UltralibrarianKicad/<filename>` unconditionally. Changing the setting moves nothing.
-- **`ImportOptions` is snapshotted at startup.** `AddUltraLibrarianKiCadServices` calls
-  `configService.GetImportOptions()` inside the importer's factory, and although both the importer
-  and `MainViewModel` are transient, `MainViewModel` is resolved exactly once in
-  `App.OnFrameworkInitializationCompleted`. Saving the Settings window updates `ConfigService` and
-  `config.json` but not the live importer, so import options only take effect on the next launch.
+- **Settings do not survive a restart (#45).** `Load()` calls `Deserialize<ConfigService>`, whose only
+  constructor takes an `ILogger`; System.Text.Json binds constructors by parameter name, throws, and
+  the `catch` swallows it. This includes the provider API tokens. The fix is a `ConfigData` DTO, in
+  both #36 and #44 — do not add a third copy.
+- **API tokens are stored in cleartext** in that file, although the Settings dialog masks them (#54).
+- **Three app-data folders:** `UltraLibrarianImporter` (config and logs), `UltralibrarianKicad`
+  (the CEF cache), and `KiCadComponentDownloads` (the fallback download directory when
+  `DownloadDirectory` is empty; it defaults to `~/Documents/UltraLibrarianDownloads`).
+
+### Tracked work
+
+Open work from the #34 review and the provider research is filed as #45–#58 — settings persistence,
+library-table registration, importing from the explorer, real CAD availability, streaming results,
+the official JLCPCB API, the AGPL question for EasyEDA conversion, credential storage and rate
+limiting among them. Check there before starting on anything provider-related.
 
 ## Release state
 
