@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using KiCadSharp;
@@ -10,6 +12,7 @@ using Microsoft.Extensions.Logging;
 
 using SExpressions;
 
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 
 namespace UltraLibrarianImporter.UI.Services;
@@ -19,16 +22,48 @@ public class KiCadImportEngine : IKiCadImportEngine
     /// <summary>How long to wait for KiCad to report its version before looking on disk instead.</summary>
     private static readonly TimeSpan KiCadQueryTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>How many lines of easyeda2kicad's stderr go into an import's details.</summary>
+    private const int MaxToolOutputLines = 60;
+
     private readonly KiCad _kicad;
+    private readonly EasyEda2KiCadLocator _easyEda2KiCadLocator;
+    private readonly EasyEda2KiCadConverter _easyEda2KiCadConverter;
     private readonly ILogger<KiCadImportEngine> _logger;
 
-    public KiCadImportEngine(KiCad kicad, ILogger<KiCadImportEngine> logger)
+    // One import at a time, whichever path it comes from: two at once could write the same library,
+    // or rewrite the same library table and lose one of the two new rows.
+    private readonly SemaphoreSlim _importGate = new(1, 1);
+
+    public KiCadImportEngine(
+        KiCad kicad,
+        EasyEda2KiCadLocator easyEda2KiCadLocator,
+        EasyEda2KiCadConverter easyEda2KiCadConverter,
+        ILogger<KiCadImportEngine> logger)
     {
         _kicad = kicad;
+        _easyEda2KiCadLocator = easyEda2KiCadLocator;
+        _easyEda2KiCadConverter = easyEda2KiCadConverter;
         _logger = logger;
     }
 
     public async Task<ImportResult> ImportAsync(
+        IComponentProvider provider,
+        string packageFilePath,
+        ImportType importType,
+        ImportOptions options)
+    {
+        await _importGate.WaitAsync();
+        try
+        {
+            return await ImportPackageAsync(provider, packageFilePath, importType, options);
+        }
+        finally
+        {
+            _ = _importGate.Release();
+        }
+    }
+
+    private async Task<ImportResult> ImportPackageAsync(
         IComponentProvider provider,
         string packageFilePath,
         ImportType importType,
@@ -109,6 +144,205 @@ public class KiCadImportEngine : IKiCadImportEngine
                     _logger.LogWarning(ex, "Failed to clean up temp directory: {TempDir}", tempDir);
                 }
             }
+        }
+    }
+
+    public async Task<ImportResult> ImportLcscPartAsync(
+        IComponentProvider provider,
+        string lcscPartNumber,
+        ImportType importType,
+        ImportOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new ImportResult();
+
+        if (!EasyEda2KiCadConverter.IsLcscPartNumber(lcscPartNumber))
+        {
+            result.Details.Add($"'{lcscPartNumber}' is not an LCSC part number (C followed by digits), so easyeda2kicad was not run.");
+            return result;
+        }
+
+        if ((importType & ImportType.All) == 0)
+        {
+            result.Details.Add("Nothing to import: choose a symbol, a footprint or a 3D model.");
+            return result;
+        }
+
+        try
+        {
+            await _importGate.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return Cancelled(result, "The import was cancelled before it started. Nothing was changed.");
+        }
+
+        try
+        {
+            return await ImportLcscPartCoreAsync(provider, lcscPartNumber, importType, options, result, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Only possible while looking for the tool: a cancelled conversion is rolled back and
+            // reported by the converter itself, as a result rather than an exception.
+            return Cancelled(result, "The import was cancelled before easyeda2kicad ran. Nothing was changed.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error importing LCSC part {Part}: {Message}", lcscPartNumber, ex.Message);
+            result.Success = false;
+            result.Details.Add($"Error: {ex.Message}");
+            return result;
+        }
+        finally
+        {
+            _ = _importGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The easyeda2kicad path (#76). The tool writes the library itself, straight into the directory
+    /// the other path would use, and this only registers it. The files are deliberately not passed
+    /// through <see cref="ImportSymbolsAsync"/> and <see cref="ImportFootprintsAsync"/>: those re-save
+    /// symbols with KiCadSharp's writer, whose output KiCad 10 rejects (#68), and rename every symbol
+    /// and footprint with the provider prefix, which would break the links between the tool's
+    /// symbols, footprints and 3D models.
+    /// </summary>
+    private async Task<ImportResult> ImportLcscPartCoreAsync(
+        IComponentProvider provider,
+        string lcscPartNumber,
+        ImportType importType,
+        ImportOptions options,
+        ImportResult result,
+        CancellationToken cancellationToken)
+    {
+        EasyEda2KiCadDetection detection = await _easyEda2KiCadLocator.LocateAsync(options.EasyEda2KiCadPath, cancellationToken);
+        if (detection.Command is null)
+        {
+            // No fallback: without the tool there is nothing honest to import.
+            EasyEda2KiCadInstallHelp help = EasyEda2KiCadLocator.InstallHelp;
+            result.Details.Add("easyeda2kicad was not found, so EasyEDA / LCSC parts cannot be imported. It is an optional third-party tool (AGPL-3.0) that you install yourself; it is not part of this application.");
+            result.Details.Add($"Install it with: {help.Command}");
+            result.Details.Add(help.Note);
+            result.Details.AddRange(detection.Attempts.Select(attempt => $"Looked for it: {attempt}"));
+            return result;
+        }
+
+        result.Details.Add($"Converting {lcscPartNumber} with {detection.Command.Description}.");
+
+        ResolveProjectContext(options, provider.DefaultLibraryName, out var projectDirectory, out var projectName);
+        var libraryName = LibraryBaseName(options, provider, projectDirectory, projectName);
+        if (libraryName is "." or ".." || libraryName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            result.Details.Add($"The library name '{libraryName}' cannot be used as a file name. Set a different library name in Settings.");
+            return result;
+        }
+
+        var symbolSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Symbol);
+        var outputBase = Path.Combine(ChooseLibraryDirectory(projectDirectory, symbolSettingsDirectory, "kicad_easyeda2kicad"), libraryName);
+
+        // ${KIPRJMOD}-relative 3D model paths only for a library registered in the project's own table,
+        // which refers to the library relative to the project as well. A library in the global table is
+        // used from other projects too, where ${KIPRJMOD} is somewhere else, so it keeps absolute paths,
+        // as its table row does (RegisterLibrary). Which table is the default is still open (#71).
+        var projectRelative = !options.AddToGlobalLibrary && IsKiCadProject(projectDirectory);
+
+        EasyEda2KiCadConversion conversion = await _easyEda2KiCadConverter.ConvertAsync(
+            detection.Command,
+            lcscPartNumber,
+            importType,
+            outputBase,
+            projectRelative ? projectDirectory : null,
+            cancellationToken);
+
+        result.Details.AddRange(ToolOutput(conversion.StandardError));
+        result.Details.Add(conversion.Summary);
+
+        if (!conversion.Succeeded)
+        {
+            result.Cancelled = conversion.Status == EasyEda2KiCadRunStatus.Cancelled;
+            result.Details.AddRange(conversion.RollbackNotes);
+            result.Details.Add("Nothing was registered in KiCad's library tables.");
+            return result;
+        }
+
+        // Each asset is judged by the files the run actually wrote, not by the exit code alone: a part
+        // EasyEDA has no 3D model for converts without one.
+        var success = false;
+
+        if (importType.HasFlag(ImportType.Symbol))
+        {
+            var symbolSuccess = await RunStepAsync(
+                "Symbol import",
+                () => Task.FromResult(conversion.SymbolLibraryWritten
+                    ? RegisterLibrary(LibraryTableKind.Symbol, conversion.SymbolLibraryPath, libraryName, projectDirectory, symbolSettingsDirectory, options, result)
+                    : NotWritten("symbol", result)),
+                result);
+            result.SymbolImportSuccess = symbolSuccess;
+            success |= symbolSuccess;
+            result.Details.Add($"Symbol import: {(symbolSuccess ? $"Success ({conversion.SymbolLibraryPath})" : "Failed")}");
+        }
+
+        if (importType.HasFlag(ImportType.Footprint))
+        {
+            var footprintSuccess = await RunStepAsync(
+                "Footprint import",
+                async () => conversion.FootprintFiles.Count > 0
+                    ? RegisterLibrary(
+                        LibraryTableKind.Footprint,
+                        conversion.FootprintLibraryPath,
+                        libraryName,
+                        projectDirectory,
+                        await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Footprint),
+                        options,
+                        result)
+                    : NotWritten("footprint", result),
+                result);
+            result.FootprintImportSuccess = footprintSuccess;
+            success |= footprintSuccess;
+            result.Details.Add($"Footprint import: {(footprintSuccess ? $"Success ({string.Join(", ", conversion.FootprintFiles.Select(Path.GetFileName))})" : "Failed")}");
+        }
+
+        if (importType.HasFlag(ImportType.Model3D))
+        {
+            var modelSuccess = conversion.ModelFiles.Count > 0 || NotWritten("3D model", result);
+            result.Model3DImportSuccess = modelSuccess;
+            success |= modelSuccess;
+            result.Details.Add($"3D Model import: {(modelSuccess ? $"Success ({string.Join(", ", conversion.ModelFiles.Select(Path.GetFileName))})" : "Failed")}");
+        }
+
+        result.Success = success;
+        return result;
+    }
+
+    private static bool NotWritten(string asset, ImportResult result)
+    {
+        result.Details.Add($"easyeda2kicad finished without writing a {asset} for this part; its messages above may say why.");
+        return false;
+    }
+
+    private static ImportResult Cancelled(ImportResult result, string message)
+    {
+        result.Cancelled = true;
+        result.Details.Add(message);
+        return result;
+    }
+
+    /// <summary>easyeda2kicad's stderr, where it reports progress and errors, as lines for the import log.</summary>
+    private static IEnumerable<string> ToolOutput(string standardError)
+    {
+        List<string> lines = standardError
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+
+        foreach (var line in lines.Take(MaxToolOutputLines))
+        {
+            yield return $"easyeda2kicad: {line}";
+        }
+
+        if (lines.Count > MaxToolOutputLines)
+        {
+            yield return $"easyeda2kicad: ({lines.Count - MaxToolOutputLines} more line(s) not shown)";
         }
     }
 
@@ -216,9 +450,7 @@ public class KiCadImportEngine : IKiCadImportEngine
             return false;
         }
 
-        var libraryBaseName = !string.IsNullOrEmpty(options.LibraryName)
-            ? options.LibraryName
-            : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
+        var libraryBaseName = LibraryBaseName(options, provider, projectDirectory, projectName);
 
         var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Symbol);
         var symbolLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_symbols"), $"{libraryBaseName}.kicad_sym");
@@ -292,9 +524,7 @@ public class KiCadImportEngine : IKiCadImportEngine
         IComponentProvider provider,
         ImportResult result)
     {
-        var libraryBaseName = !string.IsNullOrEmpty(options.LibraryName)
-            ? options.LibraryName
-            : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
+        var libraryBaseName = LibraryBaseName(options, provider, projectDirectory, projectName);
 
         var kicadSettingsDirectory = await ResolveKiCadSettingsDirectoryIfNeededAsync(projectDirectory, options, LibraryTableKind.Footprint);
         var footprintLibPath = Path.Combine(ChooseLibraryDirectory(projectDirectory, kicadSettingsDirectory, "kicad_footprints"), $"{libraryBaseName}.pretty");
@@ -329,6 +559,15 @@ public class KiCadImportEngine : IKiCadImportEngine
         return success
             && RegisterLibrary(LibraryTableKind.Footprint, footprintLibPath, libraryBaseName, projectDirectory, kicadSettingsDirectory, options, result);
     }
+
+    /// <summary>
+    /// The library's name, which is also its nickname in the library tables: the one set in Settings,
+    /// else <c>&lt;project&gt;_&lt;provider library&gt;</c> with a project, else the provider's library.
+    /// </summary>
+    private static string LibraryBaseName(ImportOptions options, IComponentProvider provider, string projectDirectory, string projectName) =>
+        !string.IsNullOrEmpty(options.LibraryName)
+            ? options.LibraryName
+            : (string.IsNullOrEmpty(projectDirectory) ? provider.DefaultLibraryName : $"{Path.GetFileNameWithoutExtension(projectName)}_{provider.DefaultLibraryName}");
 
     private bool SaveRenamedFootprint(string sourceFilePath, string targetPrettyDir, string prefix)
     {

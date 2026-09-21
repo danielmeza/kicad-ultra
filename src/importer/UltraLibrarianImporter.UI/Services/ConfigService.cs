@@ -59,6 +59,7 @@ public class ConfigService : IConfigService
     public bool UseProjectPath { get; set; } = true;
     public bool AutoImportWhenDownloaded { get; set; } = true;
     public string LibraryName { get; set; } = string.Empty;
+    public string EasyEda2KiCadPath { get; set; } = string.Empty;
     public string OctopartApiToken { get; set; } = string.Empty;
     public string SnapEdaApiKey { get; set; } = string.Empty;
     public string SamacSysApiKey { get; set; } = string.Empty;
@@ -126,6 +127,7 @@ public class ConfigService : IConfigService
         public bool UseProjectPath { get; set; } = true;
         public bool AutoImportWhenDownloaded { get; set; } = true;
         public string? LibraryName { get; set; }
+        public string? EasyEda2KiCadPath { get; set; }
         public string? DefaultProviderId { get; set; }
         public Dictionary<string, bool>? EnabledProviders { get; set; }
 
@@ -169,6 +171,7 @@ public class ConfigService : IConfigService
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                     LibraryName = config.LibraryName ?? string.Empty;
+                    EasyEda2KiCadPath = config.EasyEda2KiCadPath ?? string.Empty;
                     DefaultProviderId = string.IsNullOrEmpty(config.DefaultProviderId) ? "ultralibrarian" : config.DefaultProviderId;
                     EnabledProviders = config.EnabledProviders != null
                         ? new Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
@@ -281,6 +284,7 @@ public class ConfigService : IConfigService
                 UseProjectPath = UseProjectPath,
                 AutoImportWhenDownloaded = AutoImportWhenDownloaded,
                 LibraryName = LibraryName,
+                EasyEda2KiCadPath = EasyEda2KiCadPath,
                 DefaultProviderId = DefaultProviderId,
                 EnabledProviders = EnabledProviders
             };
@@ -470,7 +474,8 @@ public class ConfigService : IConfigService
             TargetPath = TargetPath,
             UseProjectPath = UseProjectPath,
             AutoImportWhenDownloaded = AutoImportWhenDownloaded,
-            LibraryName = LibraryName
+            LibraryName = LibraryName,
+            EasyEda2KiCadPath = EasyEda2KiCadPath
         };
     }
 }

@@ -5,6 +5,7 @@ using KiCadSharp;
 using Microsoft.Extensions.DependencyInjection;
 
 using UltraLibrarianImporter.UI.Services;
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.Services.Mcp;
 using UltraLibrarianImporter.UI.Services.Providers;
@@ -21,6 +22,9 @@ internal static class UltraLibrarianKiCadExtensions
             .AddSingleton(provider => provider.GetRequiredKeyedService<KiCad>(UltraLibrarianKiCadClientName))
             // Core import engine & provider registry
             .AddSingleton<IKiCadImportEngine, KiCadImportEngine>()
+            // The user-installed easyeda2kicad, run only as a separate process (#76)
+            .AddSingleton<EasyEda2KiCadLocator>()
+            .AddSingleton<EasyEda2KiCadConverter>()
             // Component providers
             .AddSingleton<IComponentProvider, UltraLibrarianProvider>()
             .AddSingleton<IComponentProvider, SnapEdaProvider>()
