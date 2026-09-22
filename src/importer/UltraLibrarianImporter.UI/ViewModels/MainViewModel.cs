@@ -33,6 +33,10 @@ namespace UltraLibrarianImporter.UI.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly ILogger<MainViewModel> _logger;
+
+    // The About window logs under its own categories, so it is handed the factory rather than this
+    // view model's logger (#121).
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IConfigService _configService;
     private readonly KiCad _kiCad;
     private readonly IKiCadImportEngine _importEngine;
@@ -194,6 +198,7 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         ILogger<MainViewModel> logger,
+        ILoggerFactory loggerFactory,
         IConfigService configService,
         KiCad kiCad,
         IKiCadImportEngine importEngine,
@@ -202,6 +207,7 @@ public partial class MainViewModel : ObservableObject
         EasyEda2KiCadLocator easyEda2KiCadLocator)
     {
         _logger = logger;
+        _loggerFactory = loggerFactory;
         _configService = configService;
         _kiCad = kiCad;
         _importEngine = importEngine;
@@ -1052,7 +1058,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Showing about dialog");
-            var aboutWindow = new AboutWindow(_logger, _kiCad);
+            var aboutWindow = new AboutWindow(_loggerFactory, _kiCad);
 
             MainWindow aboutOwner = App.MainWindow
                 ?? throw new InvalidOperationException("Cannot open about dialog before main window exists.");

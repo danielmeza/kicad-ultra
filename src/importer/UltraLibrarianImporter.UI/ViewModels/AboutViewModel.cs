@@ -16,13 +16,15 @@ namespace UltraLibrarianImporter.UI.ViewModels;
 
 public partial class AboutViewModel : ViewModelBase
 {
-    /// <summary>How long KiCad has to answer each question, as for the import engine's version query.</summary>
-    private static readonly TimeSpan KiCadQueryTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// How long KiCad has to answer each question, as for the import engine's version query. Internal
+    /// because the view says how long that was when KiCad did not answer in time.
+    /// </summary>
+    internal static readonly TimeSpan KiCadQueryTimeout = TimeSpan.FromSeconds(5);
 
     private const string Loading = "Loading ...";
     private const string Unknown = "Unknown";
-    private const string NotConnected = "Not connected to KiCad";
-    private const string KiCadError = "KiCad answered with an error";
+    private const string NoProject = "None reported by KiCad";
 
     private readonly ILogger<AboutViewModel> _logger;
     private readonly KiCad? _kiCad;
@@ -36,11 +38,17 @@ public partial class AboutViewModel : ViewModelBase
     [ObservableProperty]
     private string _gitHubUrl = "https://github.com/danielmeza/kicad-ultralibrarian-importer";
 
+    /// <summary>The socket address the KiCad client dials.</summary>
     [ObservableProperty]
     private string _apiSocket;
 
+    /// <summary>Where <see cref="ApiSocket"/> came from.</summary>
     [ObservableProperty]
-    private string _apiToken;
+    private ApiSocketSource _apiSocketSource;
+
+    /// <summary>Whether an API token is set. Never the token itself.</summary>
+    [ObservableProperty]
+    private ApiTokenState _apiToken;
 
     [ObservableProperty]
     private string _copyright = $"Copyright © {DateTime.Now.Year}";
@@ -53,8 +61,9 @@ public partial class AboutViewModel : ViewModelBase
 
     /// <summary>What came of asking KiCad: connected, not connected, or why it did not answer.</summary>
     [ObservableProperty]
-    private string _connectionStatus = Loading;
+    private KiCadQueryState _connectionState = KiCadQueryState.Asking;
 
+    /// <summary>Whether KiCad answered what was asked, for the dot beside the Connection Status line.</summary>
     [ObservableProperty]
     private bool _isConnected = false;
 
@@ -68,9 +77,16 @@ public partial class AboutViewModel : ViewModelBase
         _logger = logger;
         _kiCad = kiCad;
 
-        // Get KiCad environment variables
-        ApiSocket = KiCadEnvironment.GetApiSocket() ?? "Not connected to KiCad";
-        ApiToken = KiCadEnvironment.GetApiToken() ?? "Not connected to KiCad";
+        // What the client dials and whether it has a token -- not KiCad's environment alone, which is
+        // set only for a plugin KiCad launched itself. The words for both lines are the view's, so
+        // that nothing here can put a token value on screen.
+        ApiSocket = KiCadEnvironment.GetDefaultSocketPath();
+        ApiSocketSource = string.IsNullOrEmpty(KiCadEnvironment.GetApiSocket())
+            ? ApiSocketSource.DefaultPath
+            : ApiSocketSource.KiCadEnvironment;
+        ApiToken = string.IsNullOrEmpty(KiCadEnvironment.GetApiToken())
+            ? ApiTokenState.NotSet
+            : ApiTokenState.Set;
 
         // Get version info
         Version = GetVersionInfo();
@@ -97,45 +113,58 @@ public partial class AboutViewModel : ViewModelBase
         if (_kiCad is not { } kiCad)
         {
             // Only the XAML designer builds the window without a client.
-            ShowUnanswered(NotConnected);
+            ShowUnanswered(KiCadQueryState.NotConnected);
             return;
         }
 
-        if (await AskAsync(nameof(KiCad.Ping), KiCadError, kiCad.Ping) is { } noPing)
+        if (await AskAsync(nameof(KiCad.Ping), kiCad.Ping) is { } noPing)
         {
             ShowUnanswered(noPing);
             return;
         }
 
+        ConnectionState = KiCadQueryState.Answered;
         IsConnected = true;
-        ConnectionStatus = "Connected";
 
         KiCadVersion? version = null;
-        var noVersion = await AskAsync(nameof(KiCad.GetVersion), KiCadError, async token => version = await kiCad.GetVersion(token));
-        KicadVersion = noVersion ?? version?.ToString() ?? Unknown;
-        if (noVersion is not null)
+        if (await AskAsync(nameof(KiCad.GetVersion), async token => version = await kiCad.GetVersion(token)) is { } noVersion)
         {
-            ProjectName = Unknown;
+            // The reason goes on the Connection Status line, which is the one that names the state.
+            ShowUnanswered(noVersion);
             return;
         }
 
+        KicadVersion = version?.ToString() ?? Unknown;
         _logger.LogInformation("Connected to KiCad {Version}", KicadVersion);
 
         // KiCad 10 names the project only through the board open in pcbnew, and answers with an error
-        // when there is none. KiCad is still connected then.
+        // when there is none. KiCad is still connected then, so that alone leaves the status line.
         Project? project = null;
-        var noProject = await AskAsync(nameof(KiCad.GetProject), "None reported by KiCad", async token => project = await kiCad.GetProject(token));
-        ProjectName = noProject ?? project?.Name ?? Unknown;
+        KiCadQueryState? noProject = await AskAsync(nameof(KiCad.GetProject), async token => project = await kiCad.GetProject(token));
+        if (noProject is null)
+        {
+            ProjectName = project?.Name ?? Unknown;
+        }
+        else if (noProject == KiCadQueryState.AnsweredWithError)
+        {
+            ProjectName = NoProject;
+        }
+        else
+        {
+            // Not ShowUnanswered: KiCad did say which version it is, and that answer stands.
+            ConnectionState = noProject.Value;
+            IsConnected = false;
+            ProjectName = Unknown;
+        }
     }
 
     /// <summary>
-    /// Makes one call to KiCad with a <see cref="KiCadQueryTimeout"/> deadline, and returns what to
-    /// show instead of its answer, or <see langword="null"/> when there is an answer.
+    /// Makes one call to KiCad with a <see cref="KiCadQueryTimeout"/> deadline, and returns why there
+    /// is no answer, or <see langword="null"/> when there is one.
     /// </summary>
     /// <param name="request">The call, for the log.</param>
-    /// <param name="whenRefused">What to show when KiCad answers with an error.</param>
     /// <param name="ask">The call.</param>
-    private async Task<string?> AskAsync(string request, string whenRefused, Func<CancellationToken, ValueTask> ask)
+    private async Task<KiCadQueryState?> AskAsync(string request, Func<CancellationToken, ValueTask> ask)
     {
         using var deadline = new CancellationTokenSource(KiCadQueryTimeout);
         try
@@ -149,20 +178,20 @@ public partial class AboutViewModel : ViewModelBase
             // there is no socket to dial, nothing answers at it, or its native nng library cannot be
             // loaded, and ApiException, with KiCad's status, when KiCad answers with an error.
             _logger.LogWarning(ex, "Could not ask KiCad: {Request} failed", request);
-            return ex is ApiException ? whenRefused : NotConnected;
+            return ex is ApiException ? KiCadQueryState.AnsweredWithError : KiCadQueryState.NotConnected;
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             _logger.LogWarning("KiCad did not answer {Request} within {Timeout}", request, KiCadQueryTimeout);
-            return $"KiCad did not answer within {KiCadQueryTimeout.TotalSeconds:0} s";
+            return KiCadQueryState.TimedOut;
         }
     }
 
-    /// <summary>Shows <paramref name="status"/>, and nothing known about KiCad.</summary>
-    private void ShowUnanswered(string status)
+    /// <summary>Shows <paramref name="state"/>, and nothing known about KiCad.</summary>
+    private void ShowUnanswered(KiCadQueryState state)
     {
         IsConnected = false;
-        ConnectionStatus = status;
+        ConnectionState = state;
         KicadVersion = Unknown;
         ProjectName = Unknown;
     }
@@ -231,4 +260,55 @@ public partial class AboutViewModel : ViewModelBase
     }
 
 
+}
+
+/// <summary>
+/// What came of asking KiCad a question: its answer, or why there is none. The About window's
+/// Connection Status line is one of these, and the view turns it into words.
+/// </summary>
+public enum KiCadQueryState
+{
+    /// <summary>The question has been asked and KiCad has not answered yet.</summary>
+    Asking,
+
+    /// <summary>KiCad answered.</summary>
+    Answered,
+
+    /// <summary>There was nothing at the socket to answer: no KiCad, or none reachable.</summary>
+    NotConnected,
+
+    /// <summary>KiCad did not answer within <see cref="AboutViewModel.KiCadQueryTimeout"/>.</summary>
+    TimedOut,
+
+    /// <summary>KiCad answered with an error, so it is there but did not say what was asked.</summary>
+    AnsweredWithError,
+}
+
+/// <summary>
+/// Where the address the KiCad client dials came from. <c>AddKiCad</c> takes it from
+/// <see cref="KiCadEnvironment.GetDefaultSocketPath"/>, which answers one or the other.
+/// </summary>
+public enum ApiSocketSource
+{
+    /// <summary>
+    /// The address KiCad 10 listens on when nothing names one, worked out as KiCad works it out:
+    /// <c>&lt;temp&gt;/kicad/api.sock</c>, or on Linux a Flathub KiCad's socket when only that exists.
+    /// </summary>
+    DefaultPath,
+
+    /// <summary><c>KICAD_API_SOCKET</c>, which KiCad sets for a plugin it launched itself.</summary>
+    KiCadEnvironment,
+}
+
+/// <summary>
+/// Whether KiCad's API token is set. The value itself is never shown and never logged, so this is
+/// all there is to say about it.
+/// </summary>
+public enum ApiTokenState
+{
+    /// <summary>No <c>KICAD_API_TOKEN</c>; the client reaches KiCad with an empty token.</summary>
+    NotSet,
+
+    /// <summary><c>KICAD_API_TOKEN</c> is set, as it is for a plugin KiCad launched itself.</summary>
+    Set,
 }
