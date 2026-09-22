@@ -78,10 +78,21 @@ public sealed record LibraryTableUpdate(LibraryTableUpdateStatus Status, string 
 /// The existing text is never re-rendered. The file is parsed with <see cref="SDocument"/> to validate
 /// it, find the rows and locate the last one, and the new row is inserted into the original text
 /// right after it. Everything that was there stays byte for byte, including its indentation, line
-/// endings and a UTF-8 BOM. Appending through <see cref="SExpression.AddChild"/> and writing back
-/// would not: SExpressions 0.1.1 lays out every gap of a form whose item list changed again, so a
-/// table indented with two spaces comes back indented with tabs, and through <see cref="SDocument"/>
-/// every row gains a second tab and the closing parenthesis a first.
+/// endings and a UTF-8 BOM.
+/// </para>
+/// <para>
+/// The splice was written for SExpressions 0.1.1, which laid the gaps of a form whose item list had
+/// changed out again, so a table indented with two spaces came back indented with tabs. SExpressions
+/// 0.2.0 no longer does: a node added beside rows that stand on one line is written on one line too,
+/// with the sibling's separators and indentation, and it breaks its lines the way the file does, so a
+/// CRLF table stays CRLF (sexpressions#35, #36). Measured on KiCad 10.0.6's template
+/// <c>sym-lib-table</c>, a CRLF copy, a copy with a BOM, a KiCad 9-style table and a table holding
+/// nothing but a <c>(version 7)</c>: appending the row <see cref="RenderRow"/> parses through
+/// <see cref="SExpression.AddChild"/> writes the same bytes as the splice in all five. A row built in
+/// memory rather than parsed does not, in the last two: it copies the KiCad 9 rows' missing spaces,
+/// and with no row to copy it is laid out one child per line where KiCad writes one row per line. So
+/// the splice stays: it is the path #118 measured under both SExpressions versions, and it writes
+/// KiCad's own row whatever the table holds.
 /// </para>
 /// <para>
 /// The table must also be one KiCad 10.0.6 can read. Its parser is a strict grammar
