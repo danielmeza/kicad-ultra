@@ -379,8 +379,16 @@ the GUI and `--mcp` containers. `Services/ServiceConfigurator.cs` is an older re
 - NLog's own `${specialfolder}` rendered `""` on a fresh Linux account for the whole session.
 - The internal log (`nlog-internal.log`, errors only) is set there too.
 - The `Microsoft.*` and `System.Net.Http.*` `final` rules sit first in `<rules>`, because `final` only
-  stops the rules below it. `KiCadClientSettings` is bound only in the dead
-path, so KiCad connection settings entered in Settings are lost on restart.
+  stops the rules below it.
+
+**No window builds its own `LoggerFactory`** (#121, #123). A window takes `ILoggerFactory` from the
+container and creates what it needs from it, as `AboutWindow` and `SettingsWindow` do, with
+`NullLoggerFactory.Instance` for the XAML designer. A `LoggerFactory.Create(b => b.AddConsole())`
+inside a window sends that window's lines to stdout in a different format and never reaches the log
+files, which is exactly what #98 removed from the app.
+
+`KiCadClientSettings` is bound only in the dead path, so KiCad connection settings entered in
+Settings are lost on restart.
 
 ### The MCP server (`--mcp`)
 
