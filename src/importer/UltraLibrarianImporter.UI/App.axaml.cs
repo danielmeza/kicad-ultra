@@ -1,11 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Data.Core.Plugins;
 using Avalonia.Markup.Xaml;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -15,8 +15,6 @@ using UltraLibrarianImporter.UI.Services;
 using UltraLibrarianImporter.UI.Services.Interfaces;
 using UltraLibrarianImporter.UI.ViewModels;
 using UltraLibrarianImporter.UI.Views;
-
-using WebViewControl;
 
 using Xilium.CefGlue;
 using Xilium.CefGlue.Common;
@@ -54,6 +52,11 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+#if DEBUG
+        // Avalonia 12's developer tools (AvaloniaUI.DiagnosticsSupport, a Debug-only reference). F12
+        // connects to them; Avalonia.Diagnostics' AttachDevTools, which this replaces, has no 12.x.
+        _ = this.AttachDeveloperTools();
+#endif
     }
 
     /// <summary>
@@ -66,10 +69,8 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 
-            // More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
-            DisableAvaloniaDataAnnotationValidation();
-
+            // No DataAnnotations validator to remove any more: Avalonia 12 removed binding plugins and
+            // leaves that validator off, which is what the CommunityToolkit needed.
             if (_serviceProvider != null)
             {
                 // CEF rejects a relative cache path and falls back to in-memory storage (#70).
@@ -103,15 +104,11 @@ public partial class App : Application
                         SchemeHandlerFactory = new SchemeHandlerFactory()
                     }).ToArray();
 
-                    GlobalSettings settings = new()
-                    {
-                        CachePath = cachePath,
-                        PersistCache = true,
-                    };
-
-
-                    settings.AddCommandLineSwitch("enable-experimental-web-platform-features", null);
-                    CefRuntimeLoader.Initialize(settings2, settings.CommandLineSwitches.ToArray(), customSchemes);
+                    // A switch with no value. These are the only CEF settings in effect now: until #67,
+                    // WebViewControl's WebView re-initialised CEF with its own settings before the first
+                    // browser loaded it, and those won.
+                    KeyValuePair<string, string>[] switches = [new("enable-experimental-web-platform-features", null!)];
+                    CefRuntimeLoader.Initialize(settings2, switches, customSchemes);
 
                     AppDomain.CurrentDomain.ProcessExit += delegate
                     {
@@ -122,9 +119,6 @@ public partial class App : Application
                 // Use dependency injection to create the main window and view model
                 MainViewModel viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
                 IConfigService configService = _serviceProvider.GetRequiredService<IConfigService>();
-                // Configure WebView settings before loading XAML
-                WebView.Settings.PersistCache = true;
-                WebView.Settings.CachePath = cachePath;
 
                 MainWindow = new MainWindow(configService) { DataContext = viewModel };
 
@@ -146,19 +140,6 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private void DisableAvaloniaDataAnnotationValidation()
-    {
-        // Get an array of plugins to remove
-        DataAnnotationsValidationPlugin[] dataValidationPluginsToRemove =
-            BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
-
-        // remove each entry found
-        foreach (DataAnnotationsValidationPlugin? plugin in dataValidationPluginsToRemove)
-        {
-            _ = BindingPlugins.DataValidators.Remove(plugin);
-        }
     }
 
     [DebuggerNonUserCode]

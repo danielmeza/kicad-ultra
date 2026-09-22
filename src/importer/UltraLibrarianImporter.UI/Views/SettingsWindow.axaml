@@ -44,7 +44,7 @@
 
                                 <Grid ColumnDefinitions="Auto,*">
                                     <TextBlock Grid.Column="0" Text="Custom Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Default naming if empty"/>
+                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" PlaceholderText="Default naming if empty"/>
                                 </Grid>
 
                                 <CheckBox Content="Clean up temporary files after successful import" IsChecked="{Binding CleanupAfterImport}"/>
@@ -60,7 +60,7 @@
                                       IsEnabled="{Binding !UseProjectPath}" 
                                       Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
                                     <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
+                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" PlaceholderText="Custom library destination folder..."/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
                                 </Grid>
                                 <!-- Why Save refused the target path (#112). Outside the grid above, so it
@@ -193,7 +193,7 @@
                                                 <TextBox Grid.Column="1" 
                                                          Text="{Binding ApiKey}" 
                                                          PasswordChar="*" 
-                                                         Watermark="{Binding ApiKeyPlaceholder}"/>
+                                                         PlaceholderText="{Binding ApiKeyPlaceholder}"/>
                                             </Grid>
                                         </StackPanel>
                                     </Border>
@@ -215,11 +215,11 @@
                                 </HyperlinkButton>
                                 <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="App ID:" VerticalAlignment="Center" FontSize="12"/>
-                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding JlcpcbAppId}" Watermark="The application's App ID"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding JlcpcbAppId}" PlaceholderText="The application's App ID"/>
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Access Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
-                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JlcpcbAccessKey}" PasswordChar="*" Watermark="The API key's access key" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JlcpcbAccessKey}" PasswordChar="*" PlaceholderText="The API key's access key" Margin="0,8,0,0"/>
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
-                                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding JlcpcbSecretKey}" PasswordChar="*" Watermark="The API key's secret key" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding JlcpcbSecretKey}" PasswordChar="*" PlaceholderText="The API key's secret key" Margin="0,8,0,0"/>
                                 </Grid>
                                 <TextBlock Text="Enter all three, or leave all three empty. They are kept with the API keys above, never in config.json."
                                            TextWrapping="Wrap"
@@ -238,7 +238,7 @@
                                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                     <TextBlock Grid.Column="0" Text="Path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                    <TextBox Grid.Column="1" Text="{Binding EasyEda2KiCadPath}" Watermark="easyeda2kicad, or a Python that has it installed (optional)"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EasyEda2KiCadPath}" PlaceholderText="easyeda2kicad, or a Python that has it installed (optional)"/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
                                     <Button Grid.Column="3" Content="Check" Command="{Binding CheckEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
                                 </Grid>

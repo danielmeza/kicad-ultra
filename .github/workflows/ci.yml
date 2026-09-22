@@ -18,6 +18,13 @@ jobs:
         with:
           global-json-file: global.json
 
+      # TEMPORARY (#67). The Avalonia 12 build of CefGlue.Avalonia is not published yet, so this
+      # builds it from the open upstream pull request OutSystems/CefGlue#249, at the commit pinned in
+      # the script, into local-packages/ for the Restore step below. Delete this step, and the
+      # script, once upstream publishes a release and Directory.Build.props points at it.
+      - name: Pack CefGlue.Avalonia (Avalonia 12, OutSystems/CefGlue#249)
+        run: scripts/pack-cefglue-avalonia12.sh
+
       # This is the gate that means something today: it proves SExpressions, KiCadSharp and
       # KiCadSharp.Protos resolve from nuget.org at the versions Directory.Build.props pins, which
       # is the whole point of consuming them as packages instead of project references.

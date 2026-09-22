@@ -7,36 +7,47 @@
   </PropertyGroup>
 
   <ItemGroup Label="Avalonia">
-    <!-- Held on the 11.3 line on purpose. WebViewControl-Avalonia (the CEF browser the import flow
-         runs inside) and Lemon.Hosting.AvaloniauiDesktop are both built against Avalonia 11, so a
-         12.x bump is a port rather than an upgrade. Take 11.3 patches. -->
-    <PackageVersion Include="Avalonia" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.21" />
-    <PackageVersion Include="Avalonia.Xaml.Interactions" Version="11.3.0.6" />
+    <!-- Avalonia 12 (#67). Avalonia.Diagnostics has no 12.x: AvaloniaUI.DiagnosticsSupport is its
+         replacement, used in Debug builds only (see the csproj). Avalonia.Xaml.Interactions has no
+         12.x either, and nothing here used it, so it was dropped rather than renamed to
+         Xaml.Behaviors.Avalonia. -->
+    <PackageVersion Include="Avalonia" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.2" />
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Embedded browser">
+    <!-- The CEF browser the import flow runs inside, used directly: WebViewControl-Avalonia, which
+         used to wrap it, has no Avalonia 12 build and its WebView constructor calls an Avalonia API
+         that 12 removed. CefGlue.Avalonia for Avalonia 12 is not published yet either; its version
+         comes from Directory.Build.props, which explains where the package comes from until it is.
+         CefGlue.Common is pinned here because that locally packed CefGlue.Avalonia declares a
+         dependency on a prerelease CefGlue.Common that does not exist: the pull request does not
+         change CefGlue.Common, so the published build of the same source is the one to use. -->
+    <PackageVersion Include="CefGlue.Avalonia" Version="$(CefGlueAvaloniaVersion)" />
+    <PackageVersion Include="CefGlue.Common" Version="120.6099.211" />
   </ItemGroup>
 
   <ItemGroup Label="Application">
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Built against Avalonia 11 and unmaintained since. Every method in it still JIT-compiles
+         against Avalonia 12.1.2 (checked for #67), so it stays until it gives trouble. -->
     <PackageVersion Include="Lemon.Hosting.AvaloniauiDesktop" Version="1.1.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.1" />
-    <!-- ReactiveUI 23.2.28 for the Part Explorer search (#49). 11.4.13 is the last ReactiveUI.Avalonia
-         for Avalonia 11; 12.x (ReactiveUI 24) requires Avalonia 12, which is the #67 port.
-         CefGlue.Avalonia still brings in the old Avalonia.ReactiveUI 11.0.9, built against ReactiveUI
-         18: with ReactiveUI unified to 23 only its AvaloniaScheduler, the one type CefGlue uses,
-         still binds. Its UseReactiveUI(), RoutedViewHost, ViewModelViewHost and AutoSuspendHelper do
-         not, so use the ReactiveUI.Avalonia namespace, never Avalonia.ReactiveUI. -->
-    <PackageVersion Include="ReactiveUI.Avalonia" Version="11.4.13" />
+    <!-- ReactiveUI 23.2.28 for the Part Explorer search (#49), on Avalonia 12 (#67). The CefGlue.Avalonia
+         built from OutSystems/CefGlue#249 depends on ReactiveUI.Avalonia >= 12.0.3 for its
+         AvaloniaScheduler, so this pin must stay at or above that, or restore fails with a package
+         downgrade (NU1605). That build no longer references the old Avalonia.ReactiveUI. -->
+    <PackageVersion Include="ReactiveUI.Avalonia" Version="12.0.3" />
     <!-- The BCL token-bucket and partitioned rate limiters (#55). dotnet/runtime ships this assembly
          in the ASP.NET Core shared framework only, not in Microsoft.NETCore.App, so a desktop app
          takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the
          Microsoft.Extensions packages above. -->
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.12" />
-    <PackageVersion Include="WebViewControl-Avalonia" Version="3.120.11" />
   </ItemGroup>
 
   <ItemGroup Label="Split-out libraries">
