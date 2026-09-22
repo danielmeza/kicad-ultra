@@ -65,7 +65,7 @@
                     <TextBlock Text="Connection Status" Classes="label"/>
                     <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
                         <Ellipse Width="12" Height="12" Fill="{Binding IsConnected, Converter={StaticResource BoolToColorConverter}}" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                        <TextBlock Text="{Binding IsConnected, Converter={StaticResource BoolToStatusConverter}}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -97,6 +97,5 @@
 
     <Window.Resources>
         <vm:BoolToColorConverter x:Key="BoolToColorConverter"/>
-        <vm:BoolToStatusConverter x:Key="BoolToStatusConverter"/>
     </Window.Resources>
 </Window>
