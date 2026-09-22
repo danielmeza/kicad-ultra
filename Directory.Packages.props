@@ -38,13 +38,11 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageVersion Include="NLog.Extensions.Logging" Version="6.2.1" />
-    <!-- ReactiveUI 23.2.28 for the Part Explorer search (#49). 11.4.13 is the last ReactiveUI.Avalonia
-         for Avalonia 11; 12.x (ReactiveUI 24) requires Avalonia 12, which is the #67 port.
-         CefGlue.Avalonia still brings in the old Avalonia.ReactiveUI 11.0.9, built against ReactiveUI
-         18: with ReactiveUI unified to 23 only its AvaloniaScheduler, the one type CefGlue uses,
-         still binds. Its UseReactiveUI(), RoutedViewHost, ViewModelViewHost and AutoSuspendHelper do
-         not, so use the ReactiveUI.Avalonia namespace, never Avalonia.ReactiveUI. -->
-    <PackageVersion Include="ReactiveUI.Avalonia" Version="11.4.13" />
+    <!-- ReactiveUI 23.2.28 for the Part Explorer search (#49), on Avalonia 12 (#67). The CefGlue.Avalonia
+         built from OutSystems/CefGlue#249 depends on ReactiveUI.Avalonia >= 12.0.3 for its
+         AvaloniaScheduler, so this pin must stay at or above that, or restore fails with a package
+         downgrade (NU1605). That build no longer references the old Avalonia.ReactiveUI. -->
+    <PackageVersion Include="ReactiveUI.Avalonia" Version="12.0.3" />
     <!-- The BCL token-bucket and partitioned rate limiters (#55). dotnet/runtime ships this assembly
          in the ASP.NET Core shared framework only, not in Microsoft.NETCore.App, so a desktop app
          takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the

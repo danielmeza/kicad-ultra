@@ -11,9 +11,10 @@ public interface IConfigService
     string DownloadDirectory { get; set; }
 
     /// <summary>
-    /// Whether to add components to the global library
+    /// Which of KiCad's library tables imported libraries are registered in: the project's, KiCad's
+    /// global ones, or the project's when there is a project and the global ones when there is not (#71)
     /// </summary>
-    bool AddToGlobalLibrary { get; set; }
+    LibraryRegistrationScope RegistrationScope { get; set; }
 
     /// <summary>
     /// Whether to clean up temporary files after import
@@ -41,6 +42,12 @@ public interface IConfigService
     string LibraryName { get; set; }
 
     /// <summary>
+    /// Path to the user-installed easyeda2kicad executable, or to a Python interpreter that has it
+    /// installed. Empty to look for it on PATH and then in KiCad's Python interpreter (#76).
+    /// </summary>
+    string EasyEda2KiCadPath { get; set; }
+
+    /// <summary>
     /// API token for Octopart / Nexar part search. Persisted in the OS credential store, never in
     /// config.json; see <see cref="SecretStorage"/>.
     /// </summary>
@@ -57,9 +64,28 @@ public interface IConfigService
     string SamacSysApiKey { get; set; }
 
     /// <summary>
-    /// Whether the three API keys above are being persisted in the OS credential store or, because
-    /// that store could not be used, held for this session only. Updated by <see cref="Load"/> and
-    /// <see cref="Save"/>.
+    /// App ID of the user's own application on JLCPCB's API platform, for the official Components
+    /// API (#51). Persisted like <see cref="OctopartApiToken"/>. With <see cref="JlcpcbAccessKey"/>
+    /// and <see cref="JlcpcbSecretKey"/>; empty, all three, to search the unofficial endpoint.
+    /// </summary>
+    string JlcpcbAppId { get; set; }
+
+    /// <summary>
+    /// Access key of the user's JLCPCB API key, sent with every request. Persisted like
+    /// <see cref="OctopartApiToken"/>.
+    /// </summary>
+    string JlcpcbAccessKey { get; set; }
+
+    /// <summary>
+    /// Secret key of the user's JLCPCB API key, which signs requests and is never sent. Persisted
+    /// like <see cref="OctopartApiToken"/>.
+    /// </summary>
+    string JlcpcbSecretKey { get; set; }
+
+    /// <summary>
+    /// Whether the API keys and credentials above are being persisted in the OS credential store
+    /// or, because that store could not be used, held for this session only. Updated by
+    /// <see cref="Load"/> and <see cref="Save"/>.
     /// </summary>
     SecretStorageStatus SecretStorage { get; }
 

@@ -14,7 +14,7 @@
 
     <Grid RowDefinitions="*,Auto" Margin="15">
         <!-- Main Settings Tabs -->
-        <TabControl Grid.Row="0">
+        <TabControl Grid.Row="0" SelectedIndex="{Binding SelectedTabIndex}">
             <!-- TAB 1: General & KiCad Storage -->
             <TabItem Header="💾 General">
                 <ScrollViewer Margin="0,10,0,0">
@@ -28,6 +28,12 @@
                                     <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}"/>
                                     <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="8,0,0,0"/>
                                 </Grid>
+                                <!-- Why Save refused the folder (#112) -->
+                                <TextBlock Text="{Binding DownloadDirectoryError}"
+                                           IsVisible="{Binding DownloadDirectoryError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
                             </StackPanel>
                         </Border>
 
@@ -41,7 +47,6 @@
                                     <TextBox Grid.Column="1" Text="{Binding LibraryName}" PlaceholderText="Default naming if empty"/>
                                 </Grid>
 
-                                <CheckBox Content="Add imported components to global library table" IsChecked="{Binding AddToGlobalLibrary}"/>
                                 <CheckBox Content="Clean up temporary files after successful import" IsChecked="{Binding CleanupAfterImport}"/>
                                 <CheckBox Content="Automatically trigger import when CAD package finishes downloading" IsChecked="{Binding AutoImportWhenDownloaded}"/>
                                 
@@ -58,6 +63,51 @@
                                     <TextBox Grid.Column="1" Text="{Binding TargetPath}" PlaceholderText="Custom library destination folder..."/>
                                     <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
                                 </Grid>
+                                <!-- Why Save refused the target path (#112). Outside the grid above, so it
+                                     stays readable while the project directory is in use. -->
+                                <TextBlock Text="{Binding TargetPathError}"
+                                           IsVisible="{Binding TargetPathError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
+
+                                <Separator Margin="0,5"/>
+
+                                <!-- Which of KiCad's library tables imported libraries are registered in (#71) -->
+                                <TextBlock Text="Register imported libraries in" FontWeight="SemiBold"/>
+                                <StackPanel Spacing="8">
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsAutomaticRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Automatic (recommended)"/>
+                                            <TextBlock Text="The project's library tables when importing into a KiCad project, by a path relative to the project, so the library moves with it. KiCad's global library tables when there is no project."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsProjectRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="The project's library tables only"/>
+                                            <TextBlock Text="Always the project's tables. Without a KiCad project to import into, the import fails and nothing is written."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsGlobalRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="KiCad's global library tables only"/>
+                                            <TextBlock Text="Always the global tables, by absolute path, even for a library imported into a project. Every project then lists it, and its entry breaks if the project is moved."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                                <TextBlock Text="KiCad does not reload its library tables by itself: after an import, reopen the project, or restart KiCad for the global tables."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -150,6 +200,62 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- The user's own JLCPCB API credentials (#51). Without them EasyEDA / LCSC search
+                             uses the unofficial JLCPCB website endpoint (#52). -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="JLCPCB API access (EasyEDA / LCSC search)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="Optional. Without credentials, EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint. It is not a published API and can change or stop working at any time without notice. With your own credentials from JLCPCB's API platform, LCSC part numbers (such as C2040) are looked up through JLCPCB's official Components API instead. That API has no keyword search, so other searches still use the unofficial endpoint."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <HyperlinkButton NavigateUri="{Binding JlcpcbApiGuideUri}" Padding="0" FontSize="12">
+                                    <TextBlock Text="{Binding JlcpcbApiGuideUri, StringFormat='How to apply for API access: {0}'}" TextWrapping="Wrap"/>
+                                </HyperlinkButton>
+                                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="App ID:" VerticalAlignment="Center" FontSize="12"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding JlcpcbAppId}" PlaceholderText="The application's App ID"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Access Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JlcpcbAccessKey}" PasswordChar="*" PlaceholderText="The API key's access key" Margin="0,8,0,0"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding JlcpcbSecretKey}" PasswordChar="*" PlaceholderText="The API key's secret key" Margin="0,8,0,0"/>
+                                </Grid>
+                                <TextBlock Text="Enter all three, or leave all three empty. They are kept with the API keys above, never in config.json."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- easyeda2kicad (#76): the optional, user-installed converter behind EasyEDA / LCSC import -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="easyeda2kicad (EasyEDA / LCSC import)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="EasyEDA / LCSC parts are imported by easyeda2kicad, an optional third-party tool under the AGPL-3.0 licence. It is not part of this application and is never bundled with it: you install it yourself, and it is run as a separate program. Leave the path empty to look for it on PATH, then in KiCad's Python."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Text="Path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EasyEda2KiCadPath}" PlaceholderText="easyeda2kicad, or a Python that has it installed (optional)"/>
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                    <Button Grid.Column="3" Content="Check" Command="{Binding CheckEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock Text="{Binding EasyEda2KiCadStatus}"
+                                           IsVisible="{Binding EasyEda2KiCadStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"/>
+                                <TextBlock Text="To install it:" FontSize="12" Margin="0,4,0,0"/>
+                                <SelectableTextBlock Text="{Binding EasyEda2KiCadInstallCommand}"
+                                                     FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                                     FontSize="12"/>
+                                <TextBlock Text="{Binding EasyEda2KiCadInstallNote}"
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

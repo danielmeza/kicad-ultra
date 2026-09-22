@@ -31,7 +31,9 @@ internal class ServiceTest : BackgroundService
         _ = await project.GetTextVariables();
         _ = kicad.GetOpenDocuments(Kiapi.Common.Types.DocumentType.DoctypeUnknown);
         _ = await kicad.GetTextVariables();
-        _ = await project.ExpandTextVariables("${KIPRJMOD}");
+        // Through the board: KiCad 10.0.6's pcbnew refuses the project-scoped call. Environment
+        // variables such as KIPRJMOD are expanded from KiCad 10.0.7 on; 10.0.6 ignores the flag.
+        _ = await board.ExpandTextVariables("${KIPRJMOD}", expandEnvironmentVariables: true);
 
     }
 }

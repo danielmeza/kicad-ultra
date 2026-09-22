@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
@@ -9,22 +8,58 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
 namespace UltraLibrarianImporter.UI.Services.Providers;
 
+/// <summary>
+/// EasyEDA / LCSC parts: found in JLCPCB's parts library, imported with the user-installed
+/// easyeda2kicad (#76).
+/// </summary>
+/// <remarks>
+/// Each search picks one of two JLCPCB sources (#51, #52):
+/// <list type="bullet">
+/// <item>JLCPCB's official Components API (<see cref="JlcpcbOpenApiClient"/>), when the user has
+/// entered their own API credentials and the query is an LCSC part number. The API cannot search
+/// by keyword.</item>
+/// <item>Otherwise the unofficial endpoint behind JLCPCB's parts search page
+/// (<see cref="JlcpcbWebsiteSearchClient"/>). It can break without notice; the Part Explorer says
+/// so while it is in use, and every result it produced says so in its Attribution.</item>
+/// </list>
+/// A failure of either source throws. A failed official lookup never falls back to the unofficial
+/// endpoint, so a problem with the user's credentials cannot hide behind other data. When the
+/// unofficial endpoint turns a search down as too frequent, the throw is a
+/// <see cref="ProviderRateLimitedException"/>, which the user is told about (#110).
+/// <para>
+/// The official API is used only where the container's <see cref="JlcpcbSourcePolicy"/> allows it:
+/// the GUI does, the <c>--mcp</c> server never does, because JLCPCB's terms forbid passing API data
+/// to a third party such as the AI client the server answers.
+/// </para>
+/// </remarks>
 public sealed class EasyEdaProvider : BaseArchiveComponentProvider
 {
+    public const string ProviderId = "easyeda";
+
+    /// <summary>The Attribution of results from the official Components API.</summary>
+    public const string OfficialApiAttribution = "Data from JLCPCB's official Components API";
+
+    /// <summary>The Attribution of results from the unofficial endpoint: what it is, and that it can break.</summary>
+    public const string UnofficialEndpointAttribution =
+        "Unofficial source: an internal JLCPCB website endpoint, not a published API. It can change or stop working at any time without notice.";
+
+    // Neither source names a currency. JLCPCB's international site charges in US dollars.
+    private const string PriceCurrency = "USD";
+
     private static readonly HttpClient _httpClient = new()
     {
         Timeout = TimeSpan.FromSeconds(10)
     };
 
-    // Search goes through tscircuit's independent index of JLCPCB's parts list (#52), not through
-    // JLCPCB or LCSC, so every result says so rather than implying either served it (#58).
-    private const string DataAttribution =
-        "Data from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts, not from JLCPCB or LCSC directly";
-
+    private readonly IConfigService _configService;
+    private readonly TimeProvider _timeProvider;
+    private readonly JlcpcbSourcePolicy _sourcePolicy;
     private readonly ILogger<EasyEdaProvider> _logger;
 
     static EasyEdaProvider()
@@ -32,12 +67,15 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("kicad-ultra/1.0 (KiCad Component Importer; +https://github.com/danielmeza/kicad-ultra)");
     }
 
-    public EasyEdaProvider(ILogger<EasyEdaProvider> logger)
+    public EasyEdaProvider(IConfigService configService, TimeProvider timeProvider, JlcpcbSourcePolicy sourcePolicy, ILogger<EasyEdaProvider> logger)
     {
+        _configService = configService;
+        _timeProvider = timeProvider;
+        _sourcePolicy = sourcePolicy;
         _logger = logger;
     }
 
-    public override string Id => "easyeda";
+    public override string Id => ProviderId;
     public override string DisplayName => "EasyEDA / LCSC";
     public override string SearchUrl => "https://easyeda.com/";
     public override string DefaultPrefix => "EEDA_";
@@ -48,99 +86,42 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
 
     public override async Task<IReadOnlyList<PartSearchResult>> SearchPartsAsync(string query, CancellationToken cancellationToken = default)
     {
-        var results = new List<PartSearchResult>();
-        if (string.IsNullOrWhiteSpace(query))
+        var keyword = query.Trim();
+        if (keyword.Length == 0)
         {
-            return results;
+            return [];
         }
 
+        // Where the policy forbids the official API (the --mcp server), the stored credentials are not
+        // even read, so no LCSC number can reach it.
+        if (!_sourcePolicy.AllowsOfficialApi)
+        {
+            return await SearchWebsiteAsync(keyword, cancellationToken);
+        }
+
+        var credentials = JlcpcbApiCredentials.FromConfig(_configService);
+        var lcscPartNumber = keyword.ToUpperInvariant();
+        if (credentials is not null && EasyEda2KiCadConverter.IsLcscPartNumber(lcscPartNumber))
+        {
+            return await LookUpWithOfficialApiAsync(credentials, lcscPartNumber, cancellationToken);
+        }
+
+        if (credentials is null && JlcpcbApiCredentials.GetState(_configService) == JlcpcbApiCredentialState.Incomplete)
+        {
+            _logger.LogWarning("JLCPCB API credentials are incomplete (missing {Missing}); searching the unofficial JLCPCB endpoint instead",
+                string.Join(", ", JlcpcbApiCredentials.GetMissing(_configService)));
+        }
+
+        return await SearchWebsiteAsync(keyword, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<PartSearchResult>> LookUpWithOfficialApiAsync(
+        JlcpcbApiCredentials credentials, string lcscPartNumber, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<JlcpcbPart> parts;
         try
         {
-            // JLCPCB / LCSC in-stock parts API (tscircuit jlcsearch index)
-            var url = $"https://jlcsearch.tscircuit.com/components/list.json?search={Uri.EscapeDataString(query)}&limit=25";
-            using HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken);
-            // Anything short of an answer throws, so the aggregator leaves it out and does not cache it.
-            _ = response.EnsureSuccessStatusCode();
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken);
-            using var doc = JsonDocument.Parse(json);
-
-            JsonElement componentsArray = doc.RootElement.ValueKind == JsonValueKind.Array
-                ? doc.RootElement
-                : doc.RootElement.TryGetProperty("components", out JsonElement comps) && comps.ValueKind == JsonValueKind.Array
-                    ? comps
-                    : throw new JsonException("Response has neither a top-level array nor a 'components' array.");
-
-            foreach (JsonElement item in componentsArray.EnumerateArray().Take(25))
-            {
-                var mpn = item.TryGetProperty("mfr", out JsonElement m) ? m.GetString() ?? query : query;
-                var desc = item.TryGetProperty("description", out JsonElement d) ? d.GetString() ?? "" : "";
-                var pkg = item.TryGetProperty("package", out JsonElement p) ? p.GetString() : null;
-                var subcat = item.TryGetProperty("subcategory", out JsonElement sc) ? sc.GetString() : null;
-                var cat = item.TryGetProperty("category", out JsonElement c) ? c.GetString() : null;
-
-                // Manufacturer field is not present in the third-party jlcsearch index.
-                // Leave blank rather than rendering category as manufacturer.
-                var mfg = string.Empty;
-
-                // Enrich description with category/subcategory if available
-                var categoryTag = !string.IsNullOrWhiteSpace(subcat) ? subcat : (!string.IsNullOrWhiteSpace(cat) ? cat : string.Empty);
-                if (!string.IsNullOrWhiteSpace(categoryTag) && !desc.Contains(categoryTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    desc = string.IsNullOrWhiteSpace(desc) ? categoryTag : $"{desc} ({categoryTag})";
-                }
-                if (!string.IsNullOrEmpty(pkg) && !desc.Contains(pkg, StringComparison.OrdinalIgnoreCase))
-                {
-                    desc = $"{desc} [{pkg}]";
-                }
-
-                // Stock count
-                int? stock = null;
-                if (item.TryGetProperty("stock", out JsonElement st) && st.TryGetInt32(out var stockVal))
-                {
-                    stock = stockVal;
-                }
-
-                // Price tiers
-                var priceStr = item.TryGetProperty("price", out JsonElement pr) ? pr.GetString() : null;
-                var bestPrice = ParseBestPrice(priceStr);
-
-                // LCSC code for direct component page
-                long lcscCode = 0;
-                if (item.TryGetProperty("lcsc", out JsonElement lc))
-                {
-                    if (lc.ValueKind == JsonValueKind.Number)
-                    {
-                        _ = lc.TryGetInt64(out lcscCode);
-                    }
-                    else if (lc.ValueKind == JsonValueKind.String && long.TryParse(lc.GetString(), out var parsedCode))
-                    {
-                        lcscCode = parsedCode;
-                    }
-                }
-
-                var datasheetUrl = lcscCode > 0
-                    ? $"https://jlcpcb.com/parts/componentSearch?searchTxt=C{lcscCode}"
-                    : $"https://jlcpcb.com/parts/componentSearch?searchTxt={Uri.EscapeDataString(mpn)}";
-
-                results.Add(new PartSearchResult(
-                    ProviderId: Id,
-                    ProviderName: DisplayName,
-                    PartNumber: mpn,
-                    Manufacturer: mfg,
-                    Description: desc,
-                    BestPrice: bestPrice,
-                    Currency: "USD",
-                    Stock: stock,
-                    HasSymbol: false,
-                    HasFootprint: false,
-                    Has3DModel: false,
-                    DatasheetUrl: datasheetUrl,
-                    PackageDownloadUrl: null,
-                    ProviderColor: ProviderColor,
-                    Attribution: DataAttribution
-                ));
-            }
+            parts = await JlcpcbOpenApiClient.GetComponentDetailAsync(_httpClient, credentials, lcscPartNumber, _timeProvider, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -148,45 +129,99 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "HTTP request failed while querying EasyEDA/JLCPCB endpoint");
+            _logger.LogWarning(ex, "JLCPCB Components API request for {LcscPartNumber} failed", lcscPartNumber);
+            throw;
+        }
+        catch (JlcpcbApiException ex)
+        {
+            _logger.LogWarning("JLCPCB Components API refused the lookup of {LcscPartNumber}: {Error}", lcscPartNumber, ex.Message);
             throw;
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse JSON response from EasyEDA/JLCPCB endpoint");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Unexpected error searching EasyEDA parts");
+            _logger.LogWarning(ex, "JLCPCB Components API returned an unexpected response for {LcscPartNumber}", lcscPartNumber);
             throw;
         }
 
-        return results;
+        _logger.LogDebug("JLCPCB Components API: {Count} part(s) for {LcscPartNumber}", parts.Count, lcscPartNumber);
+        return ToResults(parts, OfficialApiAttribution);
     }
 
-    private static decimal? ParseBestPrice(string? priceStr)
+    private async Task<IReadOnlyList<PartSearchResult>> SearchWebsiteAsync(string keyword, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(priceStr))
+        IReadOnlyList<JlcpcbPart> parts;
+        try
         {
-            return null;
+            parts = await JlcpcbWebsiteSearchClient.SearchAsync(_httpClient, keyword, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (ProviderRateLimitedException ex)
+        {
+            // The aggregator reports it and backs off (#110); this records what JLCPCB actually answered.
+            _logger.LogWarning("Unofficial JLCPCB search for '{Keyword}' was turned down as too frequent: HTTP {StatusCode}, Retry-After {RetryAfter}",
+                keyword, (int)ex.StatusCode, ex.RetryAfter?.ToString() ?? "not given");
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Unofficial JLCPCB search request for '{Keyword}' failed", keyword);
+            throw;
+        }
+        catch (JlcpcbApiException ex)
+        {
+            _logger.LogWarning("Unofficial JLCPCB search for '{Keyword}' returned an error: {Error}", keyword, ex.Message);
+            throw;
+        }
+        catch (JsonException ex)
+        {
+            // The endpoint is undocumented, so a change of shape is the expected way for it to break.
+            _logger.LogWarning(ex, "Unofficial JLCPCB search for '{Keyword}' returned an unexpected response", keyword);
+            throw;
         }
 
-        decimal? best = null;
-        var tiers = priceStr.Split(',');
-        foreach (var tier in tiers)
+        return ToResults(parts, UnofficialEndpointAttribution);
+    }
+
+    private List<PartSearchResult> ToResults(IReadOnlyList<JlcpcbPart> parts, string attribution) =>
+        parts.Select(part => new PartSearchResult(
+            ProviderId: Id,
+            ProviderName: DisplayName,
+            PartNumber: part.ManufacturerPartNumber ?? string.Empty,
+            Manufacturer: part.Manufacturer ?? string.Empty,
+            Description: Describe(part),
+            // The price for the smallest order, as Octopart's results show it, rather than the
+            // cheapest break, which only applies to thousands of pieces.
+            BestPrice: part.PriceBreaks.Count > 0 ? part.PriceBreaks[0].UnitPrice : null,
+            Currency: part.PriceBreaks.Count > 0 ? PriceCurrency : null,
+            Stock: part.Stock,
+            // Neither source says whether EasyEDA has a symbol, footprint or 3D model for the part, and
+            // easyeda2kicad can only tell by converting it. Unknown, not "none" (#48): an import marks
+            // on the row what it produced.
+            HasSymbol: CadAvailability.Unknown,
+            HasFootprint: CadAvailability.Unknown,
+            Has3DModel: CadAvailability.Unknown,
+            DatasheetUrl: part.DatasheetUrl,
+            ProviderColor: ProviderColor,
+            Attribution: attribution,
+            // As the source reported it, and nothing when it reported none: this is what the
+            // easyeda2kicad import converts (#76), so it is never derived from the MPN.
+            LcscPartNumber: part.LcscPartNumber,
+            PriceBreaks: part.PriceBreaks.Count > 0 ? part.PriceBreaks : null
+        )).ToList();
+
+    // The description as the source wrote it, with the package appended when it does not already
+    // mention it. JLCPCB writes "-" for a part without one.
+    private static string Describe(JlcpcbPart part)
+    {
+        var description = part.Description ?? string.Empty;
+        if (part.Package is { } package && package != "-" && !description.Contains(package, StringComparison.OrdinalIgnoreCase))
         {
-            var colonIdx = tier.IndexOf(':');
-            var valStr = colonIdx >= 0 ? tier[(colonIdx + 1)..].Trim() : tier.Trim();
-            if (decimal.TryParse(valStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var price) && price > 0)
-            {
-                if (!best.HasValue || price < best.Value)
-                {
-                    best = price;
-                }
-            }
+            description = description.Length == 0 ? $"[{package}]" : $"{description} [{package}]";
         }
 
-        return best.HasValue ? Math.Round(best.Value, 3) : null;
+        return description;
     }
 }

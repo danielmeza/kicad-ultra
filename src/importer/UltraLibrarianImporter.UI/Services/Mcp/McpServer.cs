@@ -11,6 +11,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
 namespace UltraLibrarianImporter.UI.Services.Mcp;
 
@@ -19,6 +21,7 @@ public class McpServer
     private readonly IPartAggregatorService _aggregatorService;
     private readonly IComponentProviderRegistry _providerRegistry;
     private readonly IConfigService _configService;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<McpServer> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -28,15 +31,35 @@ public class McpServer
         WriteIndented = false
     };
 
+    /// <summary>
+    /// Said beside EasyEDA / LCSC results: they never come from JLCPCB's official Components API here,
+    /// whatever credentials are stored, and why.
+    /// </summary>
+    public const string NoOfficialJlcpcbApiNote =
+        "EasyEDA / LCSC results from this MCP server never come from JLCPCB's official Components API, even when API credentials are configured: " +
+        "JLCPCB's API terms forbid passing data obtained through the API to third parties, and this server hands every result to the connected AI client.";
+
+    // jlcpcbSources must be JlcpcbSourcePolicy.WebsiteEndpointOnly: every result this server returns
+    // goes to a third party, the AI client, which JLCPCB's API terms forbid for data from its official
+    // API (#51). Refused here as well as chosen in Program, so a change to either cannot undo it.
     public McpServer(
         IPartAggregatorService aggregatorService,
         IComponentProviderRegistry providerRegistry,
         IConfigService configService,
+        JlcpcbSourcePolicy jlcpcbSources,
+        TimeProvider timeProvider,
         ILogger<McpServer> logger)
     {
+        if (jlcpcbSources.AllowsOfficialApi)
+        {
+            throw new InvalidOperationException(
+                "The MCP server must be built with JlcpcbSourcePolicy.WebsiteEndpointOnly: it would otherwise pass data from JLCPCB's official API to the AI client.");
+        }
+
         _aggregatorService = aggregatorService;
         _providerRegistry = providerRegistry;
         _configService = configService;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -167,6 +190,11 @@ public class McpServer
         return response;
     }
 
+    // What the CAD fields of a result mean (#48), for every tool that returns them.
+    private const string CadAvailabilityNote =
+        "HasSymbol, HasFootprint and Has3DModel are each Available, NotAvailable or Unknown, as the provider reports them. " +
+        "Unknown means the provider does not say, not that the part lacks it: EasyEDA / LCSC search never reports CAD availability.";
+
     private static List<McpToolDefinition> GetRegisteredTools()
     {
         return
@@ -174,7 +202,7 @@ public class McpServer
             new()
             {
                 Name = "search_components",
-                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with real-time stock, pricing, and CAD model availability for KiCad. A result's Attribution, when set, names where its data actually comes from; cite it when presenting that result.",
+                Description = "Search electronic components across providers (UltraLibrarian, EasyEDA / LCSC, Octopart, etc.) with stock and pricing where the provider reports them. A result's Attribution, when set, names where its data actually comes from, including when that source is unofficial and may be unreliable; cite it when presenting that result. " + CadAvailabilityNote,
                 InputSchema = new
                 {
                     type = "object",
@@ -193,7 +221,7 @@ public class McpServer
                         ["has_cad_only"] = new
                         {
                             type = "boolean",
-                            description = "If true, only returns components that have KiCad symbols, footprints, or 3D models available"
+                            description = "If true, only returns components whose provider reports a KiCad symbol, footprint or 3D model as Available. Components whose CAD availability is Unknown, which includes every EasyEDA / LCSC result, are left out."
                         },
                         ["max_results"] = new
                         {
@@ -217,7 +245,7 @@ public class McpServer
             new()
             {
                 Name = "get_component_details",
-                Description = "Get detailed information about a specific electronic component (datasheet, symbols, footprints, 3D model status, seller stock/prices).",
+                Description = "Get detailed information about a specific electronic component (datasheet, seller stock/prices, and symbol / footprint / 3D model availability). " + CadAvailabilityNote,
                 InputSchema = new
                 {
                     type = "object",
@@ -297,16 +325,20 @@ public class McpServer
         var hasCadOnly = args.TryGetProperty("has_cad_only", out JsonElement hasCadProp) && hasCadProp.GetBoolean();
         var maxResults = args.TryGetProperty("max_results", out JsonElement maxResultsProp) ? maxResultsProp.GetInt32() : 20;
 
-        IReadOnlyList<PartSearchResult> results = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
+        AggregatedSearchResult search = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
 
-        IEnumerable<PartSearchResult> filtered = results.AsEnumerable();
+        IEnumerable<PartSearchResult> filtered = search.Parts.AsEnumerable();
         if (inStockOnly)
         {
             filtered = filtered.Where(r => (r.Stock ?? 0) > 0);
         }
         if (hasCadOnly)
         {
-            filtered = filtered.Where(r => r.HasSymbol || r.HasFootprint || r.Has3DModel);
+            // Only what a provider reported: Unknown is not a CAD asset.
+            filtered = filtered.Where(r =>
+                r.HasSymbol == CadAvailability.Available ||
+                r.HasFootprint == CadAvailability.Available ||
+                r.Has3DModel == CadAvailability.Available);
         }
 
         var finalResults = filtered.Take(maxResults).ToList();
@@ -314,15 +346,46 @@ public class McpServer
         var json = JsonSerializer.Serialize(finalResults, new JsonSerializerOptions { WriteIndented = true });
         return new McpToolCallResult
         {
-            IsError = false,
+            // Nothing found while a provider was left out is not "no matches" (#110).
+            IsError = finalResults.Count == 0 && search.RateLimited.Count > 0,
             Content =
             [
                 new()
                 {
-                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{json}"
+                    Text = $"Found {finalResults.Count} component(s) matching '{query}':\n\n{DescribeSources(finalResults, search.RateLimited)}{json}"
                 }
             ]
         };
+    }
+
+    // The distinct Attributions ahead of the JSON, so a client reads where the data comes from before
+    // the data itself - above all when a source is unofficial and can break without notice (#52) -
+    // and, with EasyEDA / LCSC results, that this server never uses JLCPCB's official API (#51). Then
+    // the providers left out because they were rate-limiting (#110), so that their missing results are
+    // not read as "no matches".
+    private string DescribeSources(IReadOnlyCollection<PartSearchResult> results, IReadOnlyCollection<ProviderRateLimited> rateLimited)
+    {
+        // EasyEDA / LCSC results always carry an Attribution, so the note never appears without a list.
+        var sources = results.Select(r => r.Attribution).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        var note = results.Any(r => r.ProviderId == EasyEdaProvider.ProviderId) ? NoOfficialJlcpcbApiNote + "\n" : string.Empty;
+        var dataSources = sources.Count == 0
+            ? string.Empty
+            : "Data sources (each result's Attribution says which one applies to it; cite it with the result):\n" +
+              string.Concat(sources.Select(source => $"- {source}\n")) + note + "\n";
+        return rateLimited.Count == 0
+            ? dataSources
+            : dataSources +
+              "Not answered (these providers' results are missing from this answer, not empty):\n" +
+              string.Concat(rateLimited.Select(limited => $"- {limited.ProviderName}: {limited.Reason}. {DescribeRetry(limited.RetryAt)}\n")) + "\n";
+    }
+
+    // When this server will ask a rate-limiting provider again, as a wait: the client reads it at once.
+    private string DescribeRetry(DateTimeOffset retryAt)
+    {
+        var seconds = (int)Math.Ceiling((retryAt - _timeProvider.GetUtcNow()).TotalSeconds);
+        return seconds > 0
+            ? $"This server will not ask it again for {seconds} s; search again after that."
+            : "Search again to ask it again.";
     }
 
     private McpToolCallResult ExecuteListProviders()
@@ -357,17 +420,18 @@ public class McpServer
         }
 
         var query = queryProp.GetString()!.Trim();
-        IReadOnlyList<PartSearchResult> results = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
+        AggregatedSearchResult search = await _aggregatorService.SearchAllProvidersAsync(query, cancellationToken);
 
-        PartSearchResult? bestMatch = results.FirstOrDefault(r =>
-            string.Equals(r.PartNumber, query, StringComparison.OrdinalIgnoreCase)) ?? results.FirstOrDefault();
+        PartSearchResult? bestMatch = search.Parts.FirstOrDefault(r =>
+            string.Equals(r.PartNumber, query, StringComparison.OrdinalIgnoreCase)) ?? search.Parts.FirstOrDefault();
 
         if (bestMatch == null)
         {
             return new McpToolCallResult
             {
-                IsError = false,
-                Content = [new() { Text = $"No component details found for query: '{query}'." }]
+                // Nothing found while a provider was left out is not "no matches" (#110).
+                IsError = search.RateLimited.Count > 0,
+                Content = [new() { Text = $"No component details found for query: '{query}'.\n\n{DescribeSources([], search.RateLimited)}".TrimEnd() }]
             };
         }
 
@@ -375,7 +439,7 @@ public class McpServer
         return new McpToolCallResult
         {
             IsError = false,
-            Content = [new() { Text = json }]
+            Content = [new() { Text = DescribeSources([bestMatch], search.RateLimited) + json }]
         };
     }
 }

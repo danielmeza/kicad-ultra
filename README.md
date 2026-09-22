@@ -36,6 +36,58 @@ Needs KiCad 9.0 or newer, Python 3.8+ and wxPython.
 3. Choose what you want — symbol, footprint, 3D model.
 4. **Import.** It goes into your project's libraries.
 
+The **Part Explorer** tab searches EasyEDA / LCSC and, with your Nexar token, Octopart at once. Each
+result has the ways it can be imported:
+
+- **Import**, for a result with an LCSC part number: see
+  [EasyEDA / LCSC parts](#easyeda--lcsc-parts-optional-easyeda2kicad).
+- **Find on Ultra Librarian**, for a result with a manufacturer part number: it opens Ultra Librarian's
+  search for that part number in the Web Browser tab. Sign in, download the part's KiCad model, and it is
+  imported as above.
+
+A button that cannot be used says why when you hover over it.
+
+## EasyEDA / LCSC parts (optional: easyeda2kicad)
+
+Search results that carry an LCSC part number (`C2040`, …) have an **Import** button: those from
+**EasyEDA / LCSC**, and those from **Octopart** when LCSC sells the part (its LCSC SKU). It converts the
+part with [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) and adds the symbol, footprint and
+3D model to your KiCad libraries.
+
+**easyeda2kicad is an optional third-party tool, licensed under AGPL-3.0. It is not part of this project**,
+and this project does not bundle, vendor, install or modify it. You install it yourself; kicad-ultra only
+runs it as a separate program, through its documented command-line flags, and reads back the KiCad library
+files it writes. Without it, everything else works and the Import button stays disabled.
+
+Install it (it needs Python 3.9 or newer):
+
+| KiCad installed as | Command, in a terminal |
+|---|---|
+| a native package (Windows, macOS, Linux) | `pipx install easyeda2kicad` |
+| the **Flatpak** (Linux) | `flatpak run --command=pip3 org.kicad.KiCad install --user easyeda2kicad` |
+
+Under the Flatpak, KiCad — and this importer, which KiCad starts — run inside KiCad's sandbox, so a copy
+installed with `pip` or `pipx` on the host is invisible to them. The command above installs it inside the
+sandbox, where KiCad's own `pip3` puts user packages.
+
+The importer looks for it in this order, and **Settings → Component Providers → easyeda2kicad** shows what
+it found:
+
+1. the path set there — `easyeda2kicad` itself, or a Python interpreter that has it installed;
+2. `easyeda2kicad` on `PATH`;
+3. `python -m easyeda2kicad` with KiCad's Python interpreter (`api.interpreter_path` in `kicad_common.json`).
+
+The part is converted straight into the same library the other imports use (`<project>_EasyEDA` in the
+project folder, or `EasyEDA` next to KiCad's global tables), then registered in a library table. By
+default that is the project's table when there is a project and KiCad's global table when there is not;
+**Settings → General → Register imported libraries in** can pin it to either one.
+Re-importing a part replaces it rather than adding a second copy. When an import fails, times out or is
+cancelled, nothing is registered, the symbol library is restored and the files the run created are removed;
+the log names anything it could not undo.
+
+easyeda2kicad downloads the part's data from EasyEDA itself; that traffic comes from the tool you
+installed, not from kicad-ultra.
+
 ## How it works
 
 Two pieces:
@@ -94,9 +146,25 @@ UltraLibrarian, EasyEDA, LCSC, JLCPCB, Octopart, SnapEDA and SamacSys are tradem
 owners. They're named only to identify the services and data this plugin works with; this project
 isn't affiliated with or endorsed by any of them.
 
-Part search results labelled **EasyEDA / LCSC** come from
-[jlcsearch](https://github.com/tscircuit/jlcsearch), an independent index of JLCPCB's parts list
-run by tscircuit — not from JLCPCB or LCSC directly. The app says so beside each of those results.
+Part search results labelled **EasyEDA / LCSC** come from JLCPCB's parts library, by one of two
+routes. The app names the route beside each of those results.
+
+- **JLCPCB's official Components API**, if you enter your own API credentials in Settings →
+  Component Providers. JLCPCB reviews applications for API access; see
+  [its guide](https://jlcpcb.com/help/article/jlcpcb-online-api-available-now). The API looks parts
+  up by LCSC number (such as `C2040`) and has no keyword search, so keyword searches take the
+  second route even with credentials. The MCP server (`--mcp`) never uses it, even with credentials:
+  JLCPCB's API terms forbid passing API data to third parties, and the MCP server hands every result
+  to the connected AI client.
+- **An internal endpoint of JLCPCB's website**, otherwise. It is not a published API, so it can change
+  or stop working at any time without notice, and the Part Explorer says so while it is in use. Each
+  search asks for one page of 25 results, through the same cache as every other provider but a slower
+  rate limit of its own, with an honest `kicad-ultra/1.0` User-Agent. When JLCPCB turns searches down
+  as too frequent, the app says "JLCPCB is rate-limiting; try again shortly" and leaves it alone for a
+  while, at most two minutes.
+
+easyeda2kicad is © its authors and licensed under AGPL-3.0; it is a separate program that you install, not
+a part or a dependency of this MIT-licensed project.
 
 ## Contributing
 

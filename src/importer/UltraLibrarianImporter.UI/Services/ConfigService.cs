@@ -14,8 +14,9 @@ namespace UltraLibrarianImporter.UI.Services;
 /// </summary>
 /// <remarks>
 /// Two stores, split by sensitivity. Everything that is not a secret goes to <c>config.json</c>
-/// through the <see cref="ConfigData"/> DTO. The three provider API keys go to the OS credential
-/// store through <see cref="ISecretStore"/> and are never added to the file (#54): <c>config.json</c>
+/// through the <see cref="ConfigData"/> DTO. The provider API keys and the JLCPCB API credentials
+/// (#51) go to the OS credential store through <see cref="ISecretStore"/> and are never added to the
+/// file (#54): <c>config.json</c>
 /// gets shared for troubleshooting, and the Settings dialog masking the keys implied a protection
 /// the file never had. <see cref="LoadSecrets"/> moves keys an earlier version left in the file;
 /// <see cref="SaveSecrets"/> describes what happens when the credential store cannot be used.
@@ -31,7 +32,17 @@ public class ConfigService : IConfigService
     /// <summary>The name the SamacSys key is filed under in the credential store.</summary>
     public const string SamacSysApiKeyKey = "samacsys-api-key";
 
-    private static readonly string[] s_secretKeys = [OctopartApiTokenKey, SnapEdaApiKeyKey, SamacSysApiKeyKey];
+    /// <summary>The name the JLCPCB API App ID is filed under in the credential store.</summary>
+    public const string JlcpcbAppIdKey = "jlcpcb-app-id";
+
+    /// <summary>The name the JLCPCB API access key is filed under in the credential store.</summary>
+    public const string JlcpcbAccessKeyKey = "jlcpcb-access-key";
+
+    /// <summary>The name the JLCPCB API secret key is filed under in the credential store.</summary>
+    public const string JlcpcbSecretKeyKey = "jlcpcb-secret-key";
+
+    private static readonly string[] s_secretKeys =
+        [OctopartApiTokenKey, SnapEdaApiKeyKey, SamacSysApiKeyKey, JlcpcbAppIdKey, JlcpcbAccessKeyKey, JlcpcbSecretKeyKey];
 
     private readonly ILogger<ConfigService> _logger;
     private readonly ISecretStore _secretStore;
@@ -53,15 +64,19 @@ public class ConfigService : IConfigService
 
     // Configuration properties
     public string DownloadDirectory { get; set; } = DEFAULT_DOWNLOAD_DIR;
-    public bool AddToGlobalLibrary { get; set; } = true;
+    public LibraryRegistrationScope RegistrationScope { get; set; } = LibraryRegistrationScope.Automatic;
     public bool CleanupAfterImport { get; set; } = true;
     public string TargetPath { get; set; } = string.Empty;
     public bool UseProjectPath { get; set; } = true;
     public bool AutoImportWhenDownloaded { get; set; } = true;
     public string LibraryName { get; set; } = string.Empty;
+    public string EasyEda2KiCadPath { get; set; } = string.Empty;
     public string OctopartApiToken { get; set; } = string.Empty;
     public string SnapEdaApiKey { get; set; } = string.Empty;
     public string SamacSysApiKey { get; set; } = string.Empty;
+    public string JlcpcbAppId { get; set; } = string.Empty;
+    public string JlcpcbAccessKey { get; set; } = string.Empty;
+    public string JlcpcbSecretKey { get; set; } = string.Empty;
     public SecretStorageStatus SecretStorage { get; private set; } = new(false, "API keys have not been loaded yet.");
     public string DefaultProviderId { get; set; } = "ultralibrarian";
     public Dictionary<string, bool> EnabledProviders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -99,17 +114,19 @@ public class ConfigService : IConfigService
         _secretStore = secretStore;
 
         var appDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData),
             "UltraLibrarianImporter");
 
         _ = Directory.CreateDirectory(appDataDir);
         _configFilePath = Path.Combine(appDataDir, "config.json");
+        _logger.LogInformation("Configuration file: {ConfigFile}", _configFilePath);
 
-        // Set default download directory if not specified
+        // Set default download directory if not specified. ~/Documents is not created here; it is
+        // created with the download directory, by EnsureDownloadDirectoryExists or a download.
         if (string.IsNullOrEmpty(DownloadDirectory))
         {
             DownloadDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                SpecialFolders.GetPath(Environment.SpecialFolder.MyDocuments),
                 "UltraLibrarianDownloads");
         }
 
@@ -120,12 +137,17 @@ public class ConfigService : IConfigService
     private class ConfigData
     {
         public string? DownloadDirectory { get; set; }
-        public bool AddToGlobalLibrary { get; set; } = true;
+
+        // A LibraryRegistrationScope by name (#71). Kept as a string so that a value this version does
+        // not know costs only this setting, where an enum would fail the whole file.
+        public string? RegistrationScope { get; set; }
+
         public bool CleanupAfterImport { get; set; } = true;
         public string? TargetPath { get; set; }
         public bool UseProjectPath { get; set; } = true;
         public bool AutoImportWhenDownloaded { get; set; } = true;
         public string? LibraryName { get; set; }
+        public string? EasyEda2KiCadPath { get; set; }
         public string? DefaultProviderId { get; set; }
         public Dictionary<string, bool>? EnabledProviders { get; set; }
 
@@ -141,6 +163,11 @@ public class ConfigService : IConfigService
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? SamacSysApiKey { get; set; }
+
+        // Releases before #71 had this boolean where RegistrationScope is now. Load reads it only to
+        // migrate it (ReadRegistrationScope); Save leaves it null, so it is dropped from the file.
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? AddToGlobalLibrary { get; set; }
     }
 
     /// <summary>
@@ -150,6 +177,9 @@ public class ConfigService : IConfigService
     {
         ConfigData? config = null;
         var fileExists = File.Exists(_configFilePath);
+        var droppedRelativeDownloadDirectory = false;
+        var droppedRelativeTargetPath = false;
+        var scopeMigrated = false;
         try
         {
             if (fileExists)
@@ -162,13 +192,41 @@ public class ConfigService : IConfigService
 
                 if (config != null)
                 {
-                    DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
-                    AddToGlobalLibrary = config.AddToGlobalLibrary;
+                    if (config.DownloadDirectory is { Length: > 0 } savedDownloadDirectory
+                        && !Path.IsPathFullyQualified(savedDownloadDirectory))
+                    {
+                        // Until #70 the default became the relative path "UltraLibrarianDownloads"
+                        // when ~/Documents did not exist yet, and Save wrote it here. A relative
+                        // directory resolves against whatever the working directory is, so keep the
+                        // default, and rewrite the file with it below.
+                        _logger.LogWarning("Ignoring the relative download directory {SavedDirectory} in config.json; using {DownloadDirectory}", savedDownloadDirectory, DownloadDirectory);
+                        droppedRelativeDownloadDirectory = true;
+                    }
+                    else
+                    {
+                        DownloadDirectory = config.DownloadDirectory ?? DownloadDirectory;
+                    }
+
+                    RegistrationScope = ReadRegistrationScope(config, out scopeMigrated);
                     CleanupAfterImport = config.CleanupAfterImport;
-                    TargetPath = config.TargetPath ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(config.TargetPath) && !Path.IsPathFullyQualified(config.TargetPath))
+                    {
+                        // Settings accepted a relative target path until #112, and the import engine
+                        // writes libraries straight into it. Drop it like a relative download
+                        // directory: empty means not set, so imports go to the default location.
+                        _logger.LogWarning("Ignoring the relative target path {SavedTargetPath} in config.json", config.TargetPath);
+                        TargetPath = string.Empty;
+                        droppedRelativeTargetPath = true;
+                    }
+                    else
+                    {
+                        TargetPath = config.TargetPath ?? string.Empty;
+                    }
+
                     UseProjectPath = config.UseProjectPath;
                     AutoImportWhenDownloaded = config.AutoImportWhenDownloaded;
                     LibraryName = config.LibraryName ?? string.Empty;
+                    EasyEda2KiCadPath = config.EasyEda2KiCadPath ?? string.Empty;
                     DefaultProviderId = string.IsNullOrEmpty(config.DefaultProviderId) ? "ultralibrarian" : config.DefaultProviderId;
                     EnabledProviders = config.EnabledProviders != null
                         ? new Dictionary<string, bool>(config.EnabledProviders, StringComparer.OrdinalIgnoreCase)
@@ -190,11 +248,58 @@ public class ConfigService : IConfigService
         var migrated = LoadSecrets(config);
 
         // Create the default config file, or rewrite one whose cleartext keys were just moved into
-        // the credential store. A file that exists but failed to parse is left alone.
-        if (!fileExists || migrated)
+        // the credential store or whose relative download directory or target path was dropped. A
+        // file that exists but failed to parse is left alone.
+        if (!fileExists || migrated || droppedRelativeDownloadDirectory || droppedRelativeTargetPath)
         {
             Save();
         }
+        else if (scopeMigrated)
+        {
+            // Only the file needs rewriting: the credential store was just read, so it is not asked
+            // again, which could prompt to unlock a keyring a second time.
+            WriteFile();
+        }
+    }
+
+    /// <summary>
+    /// The library registration scope <paramref name="config"/> holds (#71).
+    /// </summary>
+    /// <remarks>
+    /// A file written before #71 has the <c>AddToGlobalLibrary</c> boolean instead, and
+    /// <paramref name="migrated"/> then asks for the file to be rewritten without it. Its <c>true</c>
+    /// was the default, not a choice anyone made, and meant the global table even with a project open,
+    /// the behaviour #71 replaces, so it becomes <see cref="LibraryRegistrationScope.Automatic"/>.
+    /// <c>false</c> did ask for the project's table, so it becomes
+    /// <see cref="LibraryRegistrationScope.Project"/>. No value at all is the default,
+    /// <see cref="LibraryRegistrationScope.Automatic"/>, and so is a name this version does not know.
+    /// </remarks>
+    private LibraryRegistrationScope ReadRegistrationScope(ConfigData config, out bool migrated)
+    {
+        migrated = config.AddToGlobalLibrary is not null;
+
+        if (config.RegistrationScope is { } name)
+        {
+            // By name only: Enum.TryParse would also take "1" or "Project, Global".
+            foreach (LibraryRegistrationScope scope in Enum.GetValues<LibraryRegistrationScope>())
+            {
+                if (string.Equals(scope.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return scope;
+                }
+            }
+
+            _logger.LogWarning("Unknown library registration scope '{Scope}' in the configuration file; using Automatic", name);
+            return LibraryRegistrationScope.Automatic;
+        }
+
+        LibraryRegistrationScope migratedScope = config.AddToGlobalLibrary == false ? LibraryRegistrationScope.Project : LibraryRegistrationScope.Automatic;
+        if (migrated)
+        {
+            _logger.LogInformation("Replacing AddToGlobalLibrary = {Old} in the configuration file with RegistrationScope = {New}", config.AddToGlobalLibrary, migratedScope);
+        }
+
+        return migratedScope;
     }
 
     /// <summary>
@@ -269,18 +374,26 @@ public class ConfigService : IConfigService
     public void Save()
     {
         SaveSecrets();
+        WriteFile();
+    }
 
+    /// <summary>
+    /// Writes everything but the API keys to the config file.
+    /// </summary>
+    private void WriteFile()
+    {
         try
         {
             var data = new ConfigData
             {
                 DownloadDirectory = DownloadDirectory,
-                AddToGlobalLibrary = AddToGlobalLibrary,
+                RegistrationScope = RegistrationScope.ToString(),
                 CleanupAfterImport = CleanupAfterImport,
                 TargetPath = TargetPath,
                 UseProjectPath = UseProjectPath,
                 AutoImportWhenDownloaded = AutoImportWhenDownloaded,
                 LibraryName = LibraryName,
+                EasyEda2KiCadPath = EasyEda2KiCadPath,
                 DefaultProviderId = DefaultProviderId,
                 EnabledProviders = EnabledProviders
             };
@@ -391,6 +504,9 @@ public class ConfigService : IConfigService
         OctopartApiTokenKey => OctopartApiToken,
         SnapEdaApiKeyKey => SnapEdaApiKey,
         SamacSysApiKeyKey => SamacSysApiKey,
+        JlcpcbAppIdKey => JlcpcbAppId,
+        JlcpcbAccessKeyKey => JlcpcbAccessKey,
+        JlcpcbSecretKeyKey => JlcpcbSecretKey,
         _ => throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key"),
     };
 
@@ -406,6 +522,15 @@ public class ConfigService : IConfigService
                 break;
             case SamacSysApiKeyKey:
                 SamacSysApiKey = value;
+                break;
+            case JlcpcbAppIdKey:
+                JlcpcbAppId = value;
+                break;
+            case JlcpcbAccessKeyKey:
+                JlcpcbAccessKey = value;
+                break;
+            case JlcpcbSecretKeyKey:
+                JlcpcbSecretKey = value;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(key), key, "Unknown secret key");
@@ -465,12 +590,13 @@ public class ConfigService : IConfigService
     {
         return new ImportOptions
         {
-            AddToGlobalLibrary = AddToGlobalLibrary,
+            RegistrationScope = RegistrationScope,
             CleanupAfterImport = CleanupAfterImport,
             TargetPath = TargetPath,
             UseProjectPath = UseProjectPath,
             AutoImportWhenDownloaded = AutoImportWhenDownloaded,
-            LibraryName = LibraryName
+            LibraryName = LibraryName,
+            EasyEda2KiCadPath = EasyEda2KiCadPath
         };
     }
 }

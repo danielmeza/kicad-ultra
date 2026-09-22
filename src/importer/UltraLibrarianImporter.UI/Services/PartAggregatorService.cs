@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -32,7 +33,7 @@ public class PartAggregatorService : IPartAggregatorService
         _logger = logger;
     }
 
-    public async IAsyncEnumerable<PartSearchResult> StreamAllProvidersAsync(
+    public async IAsyncEnumerable<ProviderSearchOutcome> StreamAllProvidersAsync(
         string query,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -51,26 +52,23 @@ public class PartAggregatorService : IPartAggregatorService
 
         _logger.LogInformation("Querying {Count} component provider(s) for '{Query}'", apiProviders.Count, normalized);
 
-        // Each provider writes its whole answer as one batch the moment it has it, so batches arrive in
+        // Each provider writes its whole outcome at once, the moment it has it, so outcomes arrive in
         // completion order and a slow provider holds up nobody but itself.
-        var answers = Channel.CreateUnbounded<IReadOnlyList<PartSearchResult>>(
+        var outcomes = Channel.CreateUnbounded<ProviderSearchOutcome>(
             new UnboundedChannelOptions { SingleReader = true });
 
         // Linked, so that a consumer who stops enumerating early also stops the provider calls it will
         // never read - not only a consumer who cancels its token.
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Task providers = QueryProvidersAsync(apiProviders, normalized, answers.Writer, stop.Token);
+        Task providers = QueryProvidersAsync(apiProviders, normalized, outcomes.Writer, stop.Token);
 
         var count = 0;
         try
         {
-            await foreach (IReadOnlyList<PartSearchResult> batch in answers.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            await foreach (ProviderSearchOutcome outcome in outcomes.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                foreach (PartSearchResult part in batch)
-                {
-                    count++;
-                    yield return part;
-                }
+                count += outcome is ProviderResults answer ? answer.Parts.Count : 0;
+                yield return outcome;
             }
         }
         finally
@@ -84,25 +82,40 @@ public class PartAggregatorService : IPartAggregatorService
         _logger.LogInformation("Streamed {Count} part(s) across providers for '{Query}'", count, normalized);
     }
 
-    public async Task<IReadOnlyList<PartSearchResult>> SearchAllProvidersAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<AggregatedSearchResult> SearchAllProvidersAsync(string query, CancellationToken cancellationToken = default)
     {
         var results = new List<PartSearchResult>();
-        await foreach (PartSearchResult part in StreamAllProvidersAsync(query, cancellationToken).ConfigureAwait(false))
+        var rateLimited = new List<ProviderRateLimited>();
+        await foreach (ProviderSearchOutcome outcome in StreamAllProvidersAsync(query, cancellationToken).ConfigureAwait(false))
         {
-            results.Add(part);
+            switch (outcome)
+            {
+                case ProviderResults answer:
+                    results.AddRange(answer.Parts);
+                    break;
+
+                case ProviderRateLimited refused:
+                    rateLimited.Add(refused);
+                    break;
+
+                default:
+                    throw new UnreachableException($"Unknown provider outcome {outcome.GetType().Name}");
+            }
         }
 
         // The order this method returned before results were streamed.
-        return results
-            .OrderByDescending(r => r.Stock ?? 0)
-            .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
-            .ToList();
+        return new AggregatedSearchResult(
+            results
+                .OrderByDescending(r => r.Stock ?? 0)
+                .ThenBy(r => r.BestPrice ?? decimal.MaxValue)
+                .ToList(),
+            rateLimited);
     }
 
     private async Task QueryProvidersAsync(
         IReadOnlyList<IComponentProvider> providers,
         string query,
-        ChannelWriter<IReadOnlyList<PartSearchResult>> answers,
+        ChannelWriter<ProviderSearchOutcome> outcomes,
         CancellationToken cancellationToken)
     {
         try
@@ -110,25 +123,33 @@ public class PartAggregatorService : IPartAggregatorService
             // Task.Run keeps each provider's synchronous work - building the request, parsing the
             // response - off the caller's thread, which for the Part Explorer is the UI thread.
             await Task.WhenAll(providers.Select(provider =>
-                    Task.Run(() => QueryProviderAsync(provider, query, answers, cancellationToken), cancellationToken)))
+                    Task.Run(() => QueryProviderAsync(provider, query, outcomes, cancellationToken), cancellationToken)))
                 .ConfigureAwait(false);
         }
         finally
         {
-            _ = answers.TryComplete();
+            _ = outcomes.TryComplete();
         }
     }
 
     private async Task QueryProviderAsync(
         IComponentProvider provider,
         string query,
-        ChannelWriter<IReadOnlyList<PartSearchResult>> answers,
+        ChannelWriter<ProviderSearchOutcome> outcomes,
         CancellationToken cancellationToken)
     {
         if (_cache.TryGet(provider.Id, query, out IReadOnlyList<PartSearchResult>? cached))
         {
             _logger.LogDebug("{Provider}: {Count} cached result(s) for '{Query}'", provider.DisplayName, cached.Count, query);
-            Publish(answers, cached);
+            Publish(outcomes, cached);
+            return;
+        }
+
+        // Refused as too frequent moments ago (#110): not asked again until the back-off has passed, and
+        // reported, because its results are missing, not empty. A cached answer is still served meanwhile.
+        if (_rateLimiter.GetBackoff(provider.Id) is { } backoff)
+        {
+            ReportRateLimited(outcomes, provider, query, backoff, refusedNow: false);
             return;
         }
 
@@ -138,6 +159,13 @@ public class PartAggregatorService : IPartAggregatorService
         {
             _logger.LogWarning("{Provider} left out of the search for '{Query}': too many requests are already waiting for its rate limit",
                 provider.DisplayName, query);
+            return;
+        }
+
+        // A request that waited for its permit may have waited through another request's refusal.
+        if (_rateLimiter.GetBackoff(provider.Id) is { } refusedWhileWaiting)
+        {
+            ReportRateLimited(outcomes, provider, query, refusedWhileWaiting, refusedNow: false);
             return;
         }
 
@@ -156,6 +184,14 @@ public class PartAggregatorService : IPartAggregatorService
             _logger.LogDebug("{Provider} skipped for '{Query}': {Reason}", provider.DisplayName, query, ex.Message);
             return;
         }
+        catch (ProviderRateLimitedException ex)
+        {
+            // A failure, so nothing is cached, as below. But the user can act on this one, by waiting, so
+            // it is reported rather than only logged, and the provider is left alone for a while instead
+            // of being asked again by the very next search (#110).
+            ReportRateLimited(outcomes, provider, query, _rateLimiter.BackOff(provider.Id, ex.Message, ex.RetryAfter), refusedNow: true);
+            return;
+        }
         catch (Exception ex)
         {
             // The isolation boundary, so deliberately broad: an HTTP error, a timeout (HttpClient
@@ -168,17 +204,42 @@ public class PartAggregatorService : IPartAggregatorService
             return;
         }
 
+        _rateLimiter.Answered(provider.Id);
         _cache.Set(provider.Id, query, results);
         _logger.LogDebug("{Provider}: {Count} result(s) for '{Query}'", provider.DisplayName, results.Count, query);
-        Publish(answers, results);
+        Publish(outcomes, results);
     }
 
-    private static void Publish(ChannelWriter<IReadOnlyList<PartSearchResult>> answers, IReadOnlyList<PartSearchResult> results)
+    private static void Publish(ChannelWriter<ProviderSearchOutcome> outcomes, IReadOnlyList<PartSearchResult> results)
     {
         if (results.Count > 0)
         {
             // Unbounded, and completed only after every provider has finished, so this cannot fail.
-            _ = answers.TryWrite(results);
+            _ = outcomes.TryWrite(new ProviderResults(results));
         }
+    }
+
+    private void ReportRateLimited(
+        ChannelWriter<ProviderSearchOutcome> outcomes,
+        IComponentProvider provider,
+        string query,
+        ProviderBackoff backoff,
+        bool refusedNow)
+    {
+        if (refusedNow)
+        {
+            _logger.LogWarning(
+                "{Provider} left out of the results for '{Query}' and not cached: its service refused the request as too frequent " +
+                "({Refusals} refusal(s) since it last answered); not asked again before {RetryAt:u}",
+                provider.DisplayName, query, backoff.Refusals, backoff.RetryAt);
+        }
+        else
+        {
+            _logger.LogInformation("{Provider} left out of the results for '{Query}': backing off after a refusal until {RetryAt:u}",
+                provider.DisplayName, query, backoff.RetryAt);
+        }
+
+        // Unbounded, and completed only after every provider has finished, so this cannot fail.
+        _ = outcomes.TryWrite(new ProviderRateLimited(provider.Id, provider.DisplayName, backoff.Reason, backoff.RetryAt));
     }
 }

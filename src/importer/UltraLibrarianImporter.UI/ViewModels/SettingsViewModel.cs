@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Threading.Tasks;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,7 +12,10 @@ using KiCadSharp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using UltraLibrarianImporter.UI.Services;
+using UltraLibrarianImporter.UI.Services.EasyEda2KiCad;
 using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 
 namespace UltraLibrarianImporter.UI.ViewModels;
 
@@ -37,6 +42,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IOptionsMonitor<KiCadClientSettings> _kicadSettings;
     private readonly IComponentProviderRegistry? _providerRegistry;
+    private readonly EasyEda2KiCadLocator? _easyEda2KiCadLocator;
+    private readonly ProviderResponseCache? _responseCache;
     private readonly KiCadClientSettings _originalSettings;
 
     [ObservableProperty]
@@ -51,14 +58,47 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _downloadDirectory = string.Empty;
 
+    /// <summary>Why Save refused the download folder, shown under it. Empty when it did not (#112).</summary>
     [ObservableProperty]
-    private bool _addToGlobalLibrary;
+    private string _downloadDirectoryError = string.Empty;
+
+    /// <summary>The selected tab, so that a refused Save can show the error on the General tab.</summary>
+    [ObservableProperty]
+    private int _selectedTabIndex;
+
+    /// <summary>Which of KiCad's library tables imported libraries are registered in (#71).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAutomaticRegistration), nameof(IsProjectRegistration), nameof(IsGlobalRegistration))]
+    private LibraryRegistrationScope _registrationScope;
+
+    // One per radio button. The button a new choice unchecks writes false, which changes nothing.
+    public bool IsAutomaticRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Automatic;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Automatic, value);
+    }
+
+    public bool IsProjectRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Project;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Project, value);
+    }
+
+    public bool IsGlobalRegistration
+    {
+        get => RegistrationScope == LibraryRegistrationScope.Global;
+        set => SelectRegistrationScope(LibraryRegistrationScope.Global, value);
+    }
 
     [ObservableProperty]
     private bool _cleanupAfterImport;
 
     [ObservableProperty]
     private string _targetPath = string.Empty;
+
+    /// <summary>Why Save refused the target path, shown under it. Empty when it did not (#112).</summary>
+    [ObservableProperty]
+    private string _targetPathError = string.Empty;
 
     [ObservableProperty]
     private bool _useProjectPath = true;
@@ -68,6 +108,36 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _libraryName = string.Empty;
+
+    /// <summary>
+    /// easyeda2kicad, or a Python interpreter that has it installed (#76). Empty to look on PATH and
+    /// then in KiCad's Python.
+    /// </summary>
+    [ObservableProperty]
+    private string _easyEda2KiCadPath = string.Empty;
+
+    /// <summary>What the last "Check" found, for the path as typed (saved or not).</summary>
+    [ObservableProperty]
+    private string _easyEda2KiCadStatus = string.Empty;
+
+    /// <summary>The command that installs easyeda2kicad on this system.</summary>
+    public string EasyEda2KiCadInstallCommand => EasyEda2KiCadLocator.InstallHelp.Command;
+
+    public string EasyEda2KiCadInstallNote => EasyEda2KiCadLocator.InstallHelp.Note;
+
+    // The user's own JLCPCB API credentials (#51). Kept in the credential store like the API keys
+    // below; all three empty means EasyEDA / LCSC search uses the unofficial endpoint (#52).
+    [ObservableProperty]
+    private string _jlcpcbAppId = string.Empty;
+
+    [ObservableProperty]
+    private string _jlcpcbAccessKey = string.Empty;
+
+    [ObservableProperty]
+    private string _jlcpcbSecretKey = string.Empty;
+
+    /// <summary>JLCPCB's guide to applying for API access.</summary>
+    public Uri JlcpcbApiGuideUri { get; } = new(JlcpcbApiCredentials.ApiGuideUrl);
 
     // Provider configuration
     public ObservableCollection<ProviderConfigItemViewModel> ConfiguredProviders { get; } = [];
@@ -122,6 +192,7 @@ public partial class SettingsViewModel : ObservableObject
     // Events
     public event EventHandler<EventArgs>? BrowseForFolderRequested;
     public event EventHandler<EventArgs>? BrowseForTargetPathRequested;
+    public event EventHandler<EventArgs>? BrowseForEasyEda2KiCadRequested;
     public event EventHandler<bool>? SettingsSaved;
     public event EventHandler<string>? CopyToClipboardRequested;
 
@@ -129,12 +200,16 @@ public partial class SettingsViewModel : ObservableObject
         IConfigService configService,
         ILogger<SettingsViewModel> logger,
         IOptionsMonitor<KiCadClientSettings> kicadSettings,
-        IComponentProviderRegistry? providerRegistry = null)
+        IComponentProviderRegistry? providerRegistry = null,
+        EasyEda2KiCadLocator? easyEda2KiCadLocator = null,
+        ProviderResponseCache? responseCache = null)
     {
         _configService = configService;
         _logger = logger;
         _kicadSettings = kicadSettings;
         _providerRegistry = providerRegistry;
+        _easyEda2KiCadLocator = easyEda2KiCadLocator;
+        _responseCache = responseCache;
 
         _originalSettings = new KiCadClientSettings
         {
@@ -156,12 +231,16 @@ public partial class SettingsViewModel : ObservableObject
                      KiCadEnvironment.GenerateRandomClientName();
 
         DownloadDirectory = _configService.DownloadDirectory;
-        AddToGlobalLibrary = _configService.AddToGlobalLibrary;
+        RegistrationScope = _configService.RegistrationScope;
         CleanupAfterImport = _configService.CleanupAfterImport;
         TargetPath = _configService.TargetPath;
         UseProjectPath = _configService.UseProjectPath;
         AutoImportWhenDownloaded = _configService.AutoImportWhenDownloaded;
         LibraryName = _configService.LibraryName;
+        EasyEda2KiCadPath = _configService.EasyEda2KiCadPath;
+        JlcpcbAppId = _configService.JlcpcbAppId;
+        JlcpcbAccessKey = _configService.JlcpcbAccessKey;
+        JlcpcbSecretKey = _configService.JlcpcbSecretKey;
 
         SelectedDefaultProviderId = string.IsNullOrEmpty(_configService.DefaultProviderId)
             ? "ultralibrarian"
@@ -178,32 +257,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 AvailableProviderIds.Add(p.Id);
 
-                var reqKey = p.Id is "octopart" or "snapeda" or "samacsys";
-                var key = p.Id switch
-                {
-                    "octopart" => _configService.OctopartApiToken,
-                    "snapeda" => _configService.SnapEdaApiKey,
-                    "samacsys" => _configService.SamacSysApiKey,
-                    _ => string.Empty
-                };
-
-                var caps = p.Id switch
-                {
-                    "easyeda" => "Direct API: Yes • Stock & Pricing from jlcsearch.tscircuit.com, a third-party index of JLCPCB parts • Symbols, Footprints, 3D Models",
-                    "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets",
-                    "snapeda" => "Direct API: Yes • SnapMagic Symbols, Footprints, 3D Models",
-                    "samacsys" => "Direct API: Yes • SamacSys / Component Search Engine CAD Models",
-                    "ultralibrarian" => "Browser-Assisted • Official UltraLibrarian CAD Models & 3D Assets",
-                    _ => "Component Library Provider"
-                };
-
-                var placeholder = p.Id switch
-                {
-                    "octopart" => "Nexar API Bearer token...",
-                    "snapeda" => "SnapEDA / SnapMagic API key...",
-                    "samacsys" => "SamacSys / Component Search Engine key...",
-                    _ => "API Key / Token..."
-                };
+                var reqKey = ReadsApiKey(p.Id);
 
                 ConfiguredProviders.Add(new ProviderConfigItemViewModel
                 {
@@ -211,40 +265,88 @@ public partial class SettingsViewModel : ObservableObject
                     DisplayName = p.DisplayName,
                     SearchUrl = p.SearchUrl,
                     SupportsDirectApi = p.SupportsDirectApi,
-                    CapabilitiesDescription = caps,
+                    CapabilitiesDescription = DescribeCapabilities(p.Id),
                     RequiresApiKey = reqKey,
-                    ApiKeyPlaceholder = placeholder,
+                    ApiKeyPlaceholder = reqKey ? "Nexar API Bearer token..." : string.Empty,
                     IsEnabled = _configService.IsProviderEnabled(p.Id),
-                    ApiKey = key
+                    ApiKey = reqKey ? _configService.OctopartApiToken : string.Empty
                 });
             }
         }
         else
         {
             // Fallback default list if no registry provided
-            AddFallbackProvider("ultralibrarian", "UltraLibrarian", false, "Browser-Assisted • CAD Models & 3D Assets", false, "");
-            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true, "Direct API • Stock & Pricing from third-party jlcsearch.tscircuit.com", false, "");
-            AddFallbackProvider("octopart", "Octopart (Nexar)", true, "Direct API • Multi-Distributor Stock & Pricing", true, _configService.OctopartApiToken);
-            AddFallbackProvider("snapeda", "SnapEDA / SnapMagic", true, "Direct API • CAD Models & Footprints", true, _configService.SnapEdaApiKey);
-            AddFallbackProvider("samacsys", "Component Search Engine", true, "Direct API • SamacSys CAD Models", true, _configService.SamacSysApiKey);
+            AddFallbackProvider("ultralibrarian", "UltraLibrarian", false);
+            AddFallbackProvider("easyeda", "EasyEDA / LCSC", true);
+            AddFallbackProvider("octopart", "Octopart (Nexar)", true);
+            AddFallbackProvider("snapeda", "SnapEDA (SnapMagic)", false);
+            AddFallbackProvider("componentsearchengine", "Component Search Engine (SamacSys)", false);
         }
     }
 
-    private void AddFallbackProvider(string id, string name, bool directApi, string caps, bool reqKey, string key)
+    private void SelectRegistrationScope(LibraryRegistrationScope scope, bool selected)
     {
+        if (selected)
+        {
+            RegistrationScope = scope;
+        }
+    }
+
+    // Each error was about the path as it was; the next Save checks the new one.
+    partial void OnDownloadDirectoryChanged(string value) => DownloadDirectoryError = string.Empty;
+
+    partial void OnTargetPathChanged(string value) => TargetPathError = string.Empty;
+
+    // Since #111 the browser saves into this folder as it is given, so a relative one would resolve
+    // against whatever directory the app happens to run in (#112). Returns why it is refused, or null.
+    private static string? CheckDownloadDirectory(string directory) =>
+        string.IsNullOrWhiteSpace(directory)
+            ? "Not saved: enter the download folder as a full path, or choose one with Browse."
+        : !Path.IsPathFullyQualified(directory)
+            ? $"Not saved: \"{directory}\" is not a full path. A relative folder would depend on the directory the app was started in. Enter a full path, or choose a folder with Browse."
+        : null;
+
+    // The import engine writes libraries straight into the target path when the project directory is
+    // not used, so the same goes for it. Empty is valid: it means not set, and the engine then uses its
+    // default location. Checked whether or not the path is in use, so config.json never holds a relative one.
+    private static string? CheckTargetPath(string path) =>
+        string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path)
+            ? null
+            : $"Not saved: \"{path}\" is not a full path. Imported libraries would go wherever the app was started from. Enter a full path, choose a folder with Browse, or leave it empty.";
+
+    private void AddFallbackProvider(string id, string name, bool directApi)
+    {
+        var reqKey = ReadsApiKey(id);
         AvailableProviderIds.Add(id);
         ConfiguredProviders.Add(new ProviderConfigItemViewModel
         {
             Id = id,
             DisplayName = name,
             SupportsDirectApi = directApi,
-            CapabilitiesDescription = caps,
+            CapabilitiesDescription = DescribeCapabilities(id),
             RequiresApiKey = reqKey,
-            ApiKeyPlaceholder = $"{name} API key...",
+            ApiKeyPlaceholder = reqKey ? "Nexar API Bearer token..." : string.Empty,
             IsEnabled = _configService.IsProviderEnabled(id),
-            ApiKey = key
+            ApiKey = reqKey ? _configService.OctopartApiToken : string.Empty
         });
     }
+
+    // Only Octopart reads a key. SnapEDA's and SamacSys's stay in the credential store as they are,
+    // but nothing reads them (#56, #57), so Settings neither asks for them nor rewrites them.
+    private static bool ReadsApiKey(string providerId) => providerId == "octopart";
+
+    // What each provider does today, keyed by its real Id. Claim nothing it does not do (#48): a
+    // provider that makes no call is not "Direct API", and one whose search cannot tell whether a part
+    // has a symbol, footprint or 3D model does not list them.
+    private static string DescribeCapabilities(string providerId) => providerId switch
+    {
+        "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Search cannot tell whether a part has a symbol, footprint or 3D model: importing it with easyeda2kicad, an optional third-party tool (below), converts whichever of them EasyEDA has",
+        "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets and CAD availability where your Nexar plan includes them",
+        "snapeda" => "Browser-Assisted • No direct search: SnapMagic has no public API, and grants API keys per application after review (github.com/danielmeza/kicad-ultra/issues/56)",
+        "componentsearchengine" => "Browser-Assisted • No direct search integration yet (github.com/danielmeza/kicad-ultra/issues/57)",
+        "ultralibrarian" => "Browser-Assisted • Official UltraLibrarian CAD Models & 3D Assets",
+        _ => "Component Library Provider"
+    };
 
     [RelayCommand]
     private void CopyMcpConfig()
@@ -256,6 +358,26 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
+        // Checked before anything is written: a refused path leaves every setting as it was, and the
+        // dialog open on the General tab with the reason under the path.
+        DownloadDirectoryError = CheckDownloadDirectory(DownloadDirectory) ?? string.Empty;
+        TargetPathError = CheckTargetPath(TargetPath) ?? string.Empty;
+        if (DownloadDirectoryError.Length > 0 || TargetPathError.Length > 0)
+        {
+            SelectedTabIndex = 0;
+            if (DownloadDirectoryError.Length > 0)
+            {
+                _logger.LogWarning("Settings not saved: the download folder \"{Directory}\" is not a full path", DownloadDirectory);
+            }
+
+            if (TargetPathError.Length > 0)
+            {
+                _logger.LogWarning("Settings not saved: the target path \"{TargetPath}\" is not a full path", TargetPath);
+            }
+
+            return;
+        }
+
         try
         {
             KiCadClientSettings currentSettings = _kicadSettings.CurrentValue;
@@ -263,26 +385,31 @@ public partial class SettingsViewModel : ObservableObject
             currentSettings.Token = Token;
 
             _configService.DownloadDirectory = DownloadDirectory;
-            _configService.AddToGlobalLibrary = AddToGlobalLibrary;
+            _configService.RegistrationScope = RegistrationScope;
             _configService.CleanupAfterImport = CleanupAfterImport;
             _configService.TargetPath = TargetPath;
             _configService.UseProjectPath = UseProjectPath;
             _configService.AutoImportWhenDownloaded = AutoImportWhenDownloaded;
             _configService.LibraryName = LibraryName;
+            _configService.EasyEda2KiCadPath = EasyEda2KiCadPath.Trim();
+            _configService.JlcpcbAppId = JlcpcbAppId.Trim();
+            _configService.JlcpcbAccessKey = JlcpcbAccessKey.Trim();
+            _configService.JlcpcbSecretKey = JlcpcbSecretKey.Trim();
 
             _configService.DefaultProviderId = SelectedDefaultProviderId;
 
             foreach (ProviderConfigItemViewModel p in ConfiguredProviders)
             {
                 _configService.SetProviderEnabled(p.Id, p.IsEnabled);
+                // Only keys Settings shows are written back; see ReadsApiKey.
                 if (p.Id == "octopart") _configService.OctopartApiToken = p.ApiKey ?? string.Empty;
-                if (p.Id == "snapeda") _configService.SnapEdaApiKey = p.ApiKey ?? string.Empty;
-                if (p.Id == "samacsys") _configService.SamacSysApiKey = p.ApiKey ?? string.Empty;
             }
 
             _configService.Save();
             _configService.EnsureDownloadDirectoryExists();
 
+            // A cached answer may come from a source these settings no longer select.
+            _responseCache?.Clear();
             _providerRegistry?.RefreshProviders();
 
             _logger.LogInformation("Settings saved successfully.");
@@ -304,6 +431,37 @@ public partial class SettingsViewModel : ObservableObject
     private void BrowseTargetPath()
     {
         BrowseForTargetPathRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    [RelayCommand]
+    private void BrowseEasyEda2KiCad()
+    {
+        BrowseForEasyEda2KiCadRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Looks for easyeda2kicad with the path as it is typed now, before it is saved.</summary>
+    [RelayCommand]
+    private async Task CheckEasyEda2KiCad()
+    {
+        if (_easyEda2KiCadLocator is null)
+        {
+            EasyEda2KiCadStatus = "easyeda2kicad cannot be checked from here.";
+            return;
+        }
+
+        EasyEda2KiCadStatus = "Looking for easyeda2kicad...";
+        try
+        {
+            EasyEda2KiCadDetection detection = await _easyEda2KiCadLocator.LocateAsync(EasyEda2KiCadPath);
+            EasyEda2KiCadStatus = detection.Command is { } command
+                ? $"Found: {command.Description}."
+                : $"Not found. {string.Join(" ", detection.Attempts)}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error looking for easyeda2kicad");
+            EasyEda2KiCadStatus = $"Could not look for easyeda2kicad: {ex.Message}";
+        }
     }
 
     [RelayCommand]

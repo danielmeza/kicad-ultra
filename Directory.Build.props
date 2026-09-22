@@ -30,8 +30,8 @@
        line to build against a locally packed build; see README, "Developing against local library
        sources". -->
   <PropertyGroup>
-    <SExpressionsVersion Condition="'$(SExpressionsVersion)' == ''">0.1.3</SExpressionsVersion>
-    <KiCadSharpVersion Condition="'$(KiCadSharpVersion)' == ''">0.1.1</KiCadSharpVersion>
+    <SExpressionsVersion Condition="'$(SExpressionsVersion)' == ''">0.2.0</SExpressionsVersion>
+    <KiCadSharpVersion Condition="'$(KiCadSharpVersion)' == ''">0.4.0</KiCadSharpVersion>
   </PropertyGroup>
 
   <!-- CefGlue.Avalonia built against Avalonia 12 (#67). Nothing on nuget.org is yet: this version is

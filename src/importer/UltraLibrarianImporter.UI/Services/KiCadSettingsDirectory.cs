@@ -42,10 +42,10 @@ public static class KiCadSettingsDirectory
 
         if (OperatingSystem.IsWindows())
         {
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "kicad");
+            return Path.Combine(SpecialFolders.GetPath(Environment.SpecialFolder.ApplicationData), "kicad");
         }
 
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = SpecialFolders.GetPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsMacOS())
         {
             return Path.Combine(home, "Library", "Preferences", "kicad");

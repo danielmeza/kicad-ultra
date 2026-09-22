@@ -17,7 +17,62 @@
   <Window.Resources>
     <vm:HexToBrushConverter x:Key="HexToBrushConverter" />
     <vm:ImportTypeDisplayConverter x:Key="ImportTypeDisplayConverter" />
+    <x:String x:Key="CadAvailabilityLegend">Symbol, footprint and 3D model, as each provider reports them. Filled: available. Struck through: the provider reports none. "?": the provider does not say. EasyEDA / LCSC search never does; importing a part marks what easyeda2kicad produced. Sorting puts reported assets first, then unknown ones.</x:String>
   </Window.Resources>
+
+  <Window.Styles>
+    <!-- CAD availability badges (#48). Filled: the provider reports the asset. Struck through: it
+         reports none. Outlined with "?": it does not say, which is not a "no". Later styles win. The
+         text is styled by its cadLabel class, not as any TextBlock in the badge: the badge's tooltip
+         text is in its logical tree too, and would be struck through with it. -->
+    <Style Selector="Border.cad">
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Padding" Value="3,0"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="ToolTip.Tip" Value="Not available: the provider reports that this part has none."/>
+    </Style>
+    <Style Selector="Border.cad TextBlock.cadLabel">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+      <Setter Property="TextDecorations" Value="Strikethrough"/>
+    </Style>
+    <Style Selector="Border.cad TextBlock.unknownMark">
+      <Setter Property="IsVisible" Value="False"/>
+    </Style>
+
+    <Style Selector="Border.cad.unknown">
+      <Setter Property="ToolTip.Tip" Value="Unknown: this provider does not say whether the part has one. That is not a no."/>
+    </Style>
+    <Style Selector="Border.cad.unknown TextBlock.cadLabel">
+      <Setter Property="TextDecorations" Value="{x:Null}"/>
+    </Style>
+    <Style Selector="Border.cad.unknown TextBlock.unknownMark">
+      <Setter Property="IsVisible" Value="True"/>
+    </Style>
+
+    <Style Selector="Border.cad.available">
+      <Setter Property="ToolTip.Tip" Value="Available: the provider reports it, or importing this part produced it."/>
+    </Style>
+    <Style Selector="Border.cad.available TextBlock.cadLabel">
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="TextDecorations" Value="{x:Null}"/>
+    </Style>
+    <Style Selector="Border.cad.symbol.available">
+      <Setter Property="Background" Value="#2E7D32"/>
+      <Setter Property="BorderBrush" Value="#2E7D32"/>
+    </Style>
+    <Style Selector="Border.cad.footprint.available">
+      <Setter Property="Background" Value="#1565C0"/>
+      <Setter Property="BorderBrush" Value="#1565C0"/>
+    </Style>
+    <Style Selector="Border.cad.model3d.available">
+      <Setter Property="Background" Value="#6A1B9A"/>
+      <Setter Property="BorderBrush" Value="#6A1B9A"/>
+    </Style>
+  </Window.Styles>
 
   <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,320">
     <!-- Top Action Bar -->
@@ -55,7 +110,7 @@
       
       <!-- TAB 1: Unified Multi-Provider Part Explorer -->
       <TabItem Header="🔍 Part Explorer (Aggregated Search)">
-        <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="10">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" Margin="10">
           <!-- Search Header -->
           <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,5,0,8">
             <TextBox Grid.Column="0" 
@@ -114,10 +169,11 @@
               </StackPanel>
             </Button>
 
-            <Button Grid.Column="3" 
-                    Command="{Binding SortCommand}" 
-                    CommandParameter="CAD" 
-                    Padding="10,4" 
+            <Button Grid.Column="3"
+                    Command="{Binding SortCommand}"
+                    CommandParameter="CAD"
+                    ToolTip.Tip="{StaticResource CadAvailabilityLegend}"
+                    Padding="10,4"
                     Margin="0,0,6,0"
                     FontSize="11" 
                     CornerRadius="3"
@@ -138,8 +194,82 @@
                        Height="3" 
                        Margin="0,0,0,8"/>
 
+          <!-- EasyEDA / LCSC import needs the user-installed easyeda2kicad (#76). Shown only once a
+               check has found it missing, with the command that installs it on this system. -->
+          <Border Grid.Row="3"
+                  IsVisible="{Binding IsEasyEda2KiCadMissing}"
+                  Background="#20F57C00"
+                  BorderBrush="#F57C00"
+                  BorderThickness="1"
+                  CornerRadius="4"
+                  Padding="10,8"
+                  Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="EasyEDA / LCSC import is unavailable: easyeda2kicad is not installed. It is an optional third-party tool (AGPL-3.0) that you install yourself; it is not part of this application. Install it with:"
+                         TextWrapping="Wrap"
+                         FontWeight="SemiBold"
+                         FontSize="12"/>
+              <SelectableTextBlock Grid.Row="1" Grid.Column="0"
+                                   Text="{Binding EasyEda2KiCadInstallCommand}"
+                                   FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                   FontSize="12"
+                                   Margin="0,6,0,0"/>
+              <TextBlock Grid.Row="2" Grid.Column="0"
+                         Text="{Binding EasyEda2KiCadInstallNote}"
+                         TextWrapping="Wrap"
+                         FontSize="11"
+                         Opacity="0.75"
+                         Margin="0,4,0,0"/>
+              <StackPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0,0,0">
+                <Button Content="Check again" Command="{Binding CheckEasyEda2KiCadCommand}" Padding="10,4" FontSize="11"/>
+                <Button Content="Settings..." Command="{Binding OpenSettingsCommand}" Padding="10,4" FontSize="11"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <!-- Which JLCPCB source EasyEDA / LCSC search uses (#51, #52): the unofficial endpoint can break
+               without notice, so say so, link to JLCPCB's API guide and point at the credentials. Blocks nothing.
+               While the last search's EasyEDA / LCSC request was turned down as too frequent, it says that instead (#110). -->
+          <Border Grid.Row="4"
+                  IsVisible="{Binding IsJlcpcbNoticeVisible}"
+                  Background="#201976D2"
+                  BorderBrush="#1976D2"
+                  BorderThickness="1"
+                  CornerRadius="4"
+                  Padding="10,8"
+                  Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <TextBlock Grid.Row="0" Grid.Column="0"
+                         Text="{Binding JlcpcbNoticeTitle}"
+                         TextWrapping="Wrap"
+                         FontWeight="SemiBold"
+                         FontSize="12"/>
+              <TextBlock Grid.Row="1" Grid.Column="0"
+                         Text="{Binding JlcpcbNoticeText}"
+                         TextWrapping="Wrap"
+                         FontSize="11"
+                         Margin="0,4,0,0"/>
+              <HyperlinkButton Grid.Row="2" Grid.Column="0"
+                               NavigateUri="{Binding JlcpcbApiGuideUri}"
+                               Padding="0"
+                               FontSize="11"
+                               Margin="0,4,0,0">
+                <TextBlock Text="{Binding JlcpcbApiGuideUri, StringFormat='JLCPCB API access guide: {0}'}" TextWrapping="Wrap"/>
+              </HyperlinkButton>
+              <StackPanel Grid.Row="0" Grid.RowSpan="3" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="10,0,0,0">
+                <Button Content="Settings..." Command="{Binding OpenSettingsCommand}" Padding="10,4" FontSize="11"/>
+                <Button Content="Hide"
+                        Command="{Binding HideJlcpcbNoticeCommand}"
+                        ToolTip.Tip="{Binding JlcpcbNoticeHideToolTip}"
+                        Padding="10,4"
+                        FontSize="11"/>
+              </StackPanel>
+            </Grid>
+          </Border>
+
           <!-- Results List / Table -->
-          <Border Grid.Row="3" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
+          <Border Grid.Row="5" BorderThickness="1" BorderBrush="{DynamicResource SystemControlHighlightBaseMediumLowBrush}" CornerRadius="4">
             <Grid RowDefinitions="Auto,*">
               <!-- Table Header -->
               <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="10,8">
@@ -179,10 +309,11 @@
                   </Button>
 
                   <!-- CAD Assets Header (Clickable Sort) -->
-                  <Button Grid.Column="5" 
-                          Command="{Binding SortCommand}" 
+                  <Button Grid.Column="5"
+                          Command="{Binding SortCommand}"
                           CommandParameter="CAD"
-                          Background="Transparent" 
+                          ToolTip.Tip="{StaticResource CadAvailabilityLegend}"
+                          Background="Transparent"
                           BorderThickness="0" 
                           Padding="0" 
                           Cursor="Hand"
@@ -212,8 +343,14 @@
                         <TextBlock Text="{Binding ProviderName}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
                       </Border>
 
-                      <!-- MPN -->
-                      <TextBlock Grid.Column="1" Text="{Binding PartNumber}" FontWeight="Bold" VerticalAlignment="Center"/>
+                      <!-- MPN, and the LCSC code when the provider reported one -->
+                      <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding PartNumber}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding LcscPartNumber, StringFormat='LCSC {0}'}"
+                                   IsVisible="{Binding LcscPartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   FontSize="10"
+                                   Opacity="0.7"/>
+                      </StackPanel>
 
                       <!-- Manufacturer -->
                       <TextBlock Grid.Column="2" Text="{Binding Manufacturer}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
@@ -228,34 +365,84 @@
                                  Text="{Binding BestPrice, StringFormat='${0:F2}', TargetNullValue='-'}" 
                                  VerticalAlignment="Center"/>
 
-                      <!-- CAD Flags -->
-                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                        <Border Background="#2E7D32" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasSymbol}">
-                          <TextBlock Text="Sym" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                      <!-- CAD availability, as the provider reports it (#48); the badge styles are in Window.Styles -->
+                      <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                        <Border Classes="cad symbol"
+                                Classes.available="{Binding HasSymbol, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding HasSymbol, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="Sym"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
-                        <Border Background="#1565C0" CornerRadius="2" Padding="4,1" IsVisible="{Binding HasFootprint}">
-                          <TextBlock Text="FP" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        <Border Classes="cad footprint"
+                                Classes.available="{Binding HasFootprint, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding HasFootprint, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="FP"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
-                        <Border Background="#6A1B9A" CornerRadius="2" Padding="4,1" IsVisible="{Binding Has3DModel}">
-                          <TextBlock Text="3D" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                        <Border Classes="cad model3d"
+                                Classes.available="{Binding Has3DModel, Converter={x:Static vm:CadAvailabilityConverters.IsAvailable}}"
+                                Classes.unknown="{Binding Has3DModel, Converter={x:Static vm:CadAvailabilityConverters.IsUnknown}}">
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock Classes="cadLabel" Text="3D"/>
+                            <TextBlock Classes="cadLabel unknownMark" Text="?"/>
+                          </StackPanel>
                         </Border>
                       </StackPanel>
 
-                      <!-- Action Button -->
-                      <Button Grid.Column="6" 
-                              Content="Open &amp; Import" 
-                              Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                              CommandParameter="{Binding}"
-                              Padding="10,4" 
-                              VerticalContentAlignment="Center"
-                              FontSize="11"
-                              HorizontalAlignment="Left"/>
+                      <!-- Actions: the import routes this result has (#47), and open the part's page. A
+                           disabled route says why in its tip; a result with no route at all says so. -->
+                      <WrapPanel Grid.Column="6" ItemSpacing="6" LineSpacing="4" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <!-- Results with an LCSC code, through easyeda2kicad (#76) -->
+                        <Button Content="Import"
+                                Command="{Binding ((vm:MainViewModel)DataContext).ImportPartCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding LcscPartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                ToolTip.Tip="{Binding ((vm:MainViewModel)DataContext).ImportPartToolTip, RelativeSource={RelativeSource AncestorType=Window}}"
+                                ToolTip.ShowOnDisabled="True"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                        <!-- Results with a manufacturer part number, through the Web Browser tab's Ultra Librarian download -->
+                        <Button Content="Find on Ultra Librarian"
+                                Command="{Binding ((vm:MainViewModel)DataContext).FindOnUltraLibrarianCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                IsVisible="{Binding PartNumber, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                ToolTip.Tip="{Binding ((vm:MainViewModel)DataContext).FindOnUltraLibrarianToolTip, RelativeSource={RelativeSource AncestorType=Window}}"
+                                ToolTip.ShowOnDisabled="True"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                        <TextBlock Text="No import route"
+                                   ToolTip.Tip="This result has neither an LCSC code nor a manufacturer part number to look up."
+                                   FontSize="11"
+                                   Opacity="0.6"
+                                   VerticalAlignment="Center">
+                          <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                              <Binding Path="LcscPartNumber" Converter="{x:Static StringConverters.IsNullOrEmpty}"/>
+                              <Binding Path="PartNumber" Converter="{x:Static StringConverters.IsNullOrEmpty}"/>
+                            </MultiBinding>
+                          </TextBlock.IsVisible>
+                        </TextBlock>
+                        <Button Content="Open Page"
+                                Command="{Binding ((vm:MainViewModel)DataContext).OpenInWebBrowserCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                CommandParameter="{Binding}"
+                                ToolTip.Tip="Open the part's page in the Web Browser tab"
+                                Padding="10,4"
+                                VerticalContentAlignment="Center"
+                                FontSize="11"/>
+                      </WrapPanel>
 
                       <!-- Data source, when it is not the provider itself -->
                       <TextBlock Grid.Row="1"
                                  Grid.Column="1"
                                  Grid.ColumnSpan="6"
                                  Text="{Binding Attribution}"
+                                 ToolTip.Tip="{Binding Attribution}"
                                  IsVisible="{Binding Attribution, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                  FontSize="10"
                                  Opacity="0.6"
@@ -285,6 +472,15 @@
               </StackPanel>
             </Grid>
           </Border>
+
+          <!-- Enabled providers the search above does not reach, so that their absence says why -->
+          <TextBlock Grid.Row="6"
+                     Text="{Binding BrowserOnlyProviders}"
+                     IsVisible="{Binding BrowserOnlyProviders, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                     TextWrapping="Wrap"
+                     FontSize="11"
+                     Opacity="0.65"
+                     Margin="0,6,0,0"/>
         </Grid>
       </TabItem>
 
@@ -382,9 +578,12 @@
     </Grid>
 
     <!-- Status Bar -->
-    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+    <Grid Grid.Row="2" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto,Auto" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
       <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" VerticalAlignment="Center" Margin="10,4"/>
-      <ProgressBar Grid.Column="1" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+      <Button Grid.Column="1" Content="Cancel Import" Command="{Binding ImportPartCancelCommand}" IsVisible="{Binding IsImportingPart}"
+              Padding="8,2" FontSize="11" VerticalAlignment="Center"/>
+      <ProgressBar Grid.Column="2" Width="200" Height="14" IsVisible="{Binding IsProgressVisible}"
+                   IsIndeterminate="{Binding IsProgressIndeterminate}"
                    Value="{Binding ProgressValue}" Margin="10,0,10,0"/>
     </Grid>
   </Grid>
