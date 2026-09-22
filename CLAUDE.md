@@ -166,9 +166,16 @@ It passes the environment through: KiCad exports the IPC socket path, the API to
 directory, and `KiCadSharp` reads them from there (`KiCadEnvironment.GetApiToken()` /
 `GetDefaultSocketPath()` / `GetProjectDirectory()`). Launched any other way, there is no project
 directory, because it comes only from that environment. The connection itself still works since
-KiCadSharp 0.3.1 (#99): with no token in the environment, it dials KiCad's default socket
-(`/tmp/kicad/api.sock`, or `%TEMP%\kicad\api.sock`) with an empty token. So an importer started by
-hand reaches a running KiCad whose API server is on, and otherwise falls back to reading the disk.
+KiCadSharp 0.3.1 (#99): with no token in the environment, it dials the socket KiCad opens by default,
+with an empty token. Since 0.4.0 that path is worked out as KiCad 10 does (kicad-sharp#113):
+- `<temp>/kicad/api.sock`, where `<temp>` is the first of `TMPDIR`, `TMP` and `TEMP` that names an
+  existing directory, else `/tmp` (on Windows the system temp path; on macOS always `/tmp`);
+- on Linux, when nothing is there but a Flathub KiCad's socket exists, that one:
+  `~/.var/app/org.kicad.KiCad/cache/tmp/kicad/api.sock` (kicad-sharp#126).
+
+The importer's own `TMPDIR` picks `<temp>`, so one started by hand under another `TMPDIR` than KiCad's
+misses the socket. An importer started by hand reaches a running KiCad whose API server is on, and
+otherwise falls back to reading the disk.
 `plugin/requirements.txt` is deliberately empty; its comment explains why.
 
 Still missing: **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
@@ -280,8 +287,8 @@ needed any more.
     and its symbols at `<name>:<footprint>`.
     - `--project-relative` is passed only for project-table libraries. It resolves against the working
       directory, so that run's cwd is the project.
-    - The output **never** goes through `ImportSymbolsAsync` / `ImportFootprintsAsync`: a KiCadSharp
-      re-save hits #68, and prefix renaming breaks the links.
+    - The output **never** goes through `ImportSymbolsAsync` / `ImportFootprintsAsync`: their prefix
+      renaming would break the links.
     - A non-zero exit, a timeout or a cancel rolls back: the symbol library is restored from a copy,
       created files are removed, and nothing is registered.
     - Both import paths share one `_importGate` in the engine.
@@ -308,6 +315,15 @@ created if missing, `${KIPRJMOD}`-relative; the global table is **never created*
 `KiCadSettingsDirectory` resolves KiCad's config directory for the running version. KiCad does not
 reload tables on its own, so the user must reopen the project or restart KiCad.
 
+The engine asks the running KiCad for its version only when it needs that directory: for the global
+table, or with no project. It calls `GetVersion` directly with a 5 s deadline as a token:
+- KiCadSharp 0.4.0 dials on a thread of its own and waits for the reply without blocking the caller
+  (kicad-sharp#127), so the call needs no `Task.Run`.
+- The token ends the dial or the wait itself. A `WaitAsync` around the call would only stop
+  watching it, and leave it running.
+- A `KiCadIpcException` (kicad-sharp#46), or the deadline, falls back to the newest settings
+  directory on disk. Nothing else is caught there.
+
 **Which table is the `RegistrationScope` setting** (#71): **Automatic** (the default) picks the project
 table when the import goes into a KiCad project, and the global table only when it does not. **Project**
 always picks the project table, and with no project the import fails before any library is written.
@@ -317,17 +333,27 @@ once per import, for both paths; `--project-relative` follows the resolved table
 the scope by name. A pre-#71 `AddToGlobalLibrary` is migrated on load and the file is rewritten
 without it: `true`, the old default rather than a choice, becomes Automatic, and `false` becomes Project.
 
-**The Ultra Librarian `.zip` path writes symbols through KiCadSharp, and two 0.3.1 traps are worked
-around in `ImportSymbolsAsync` (#99):**
-- **`AddSymbol` moves the node** out of its source library (0.2.0+). The loop therefore iterates a
-  snapshot (`.ToList()`); iterating the live view silently skipped every other symbol, 18 of 35.
-- **Setting `KiCadSymbol.Id` does not rename the symbol's sub-units.** KiCad 10 refuses the whole
-  library over one mismatched `NAME_1_1`, so `RenameSymbol` renames them too.
+**The Ultra Librarian `.zip` path writes symbols through KiCadSharp.** `ImportSymbolsAsync` gives every
+symbol the provider prefix by setting `KiCadSymbol.Id`. KiCad 10 refuses the whole library over one
+name left behind, and since KiCadSharp 0.4.0 the setter renames everything that carries the name
+(kicad-sharp#48, #68):
+- the symbol's sub-units, `NAME_1_1`;
+- every `(extends …)` that names it and is **still in the same library**.
 
-With those, kicad-cli 10.0.6 loads the imported libraries. The exception is a symbol that
-`(extends …)` another: that reference is not renamed, and KiCad refuses the library (#68).
-danielmeza/kicad-sharp#48 fixes both renames upstream, and kicad-sharp#53 fixes the enumeration.
-Once a KiCadSharp release carries them, delete `RenameSymbol` and the `.ToList()`.
+Two rules follow, and #68's check depends on both:
+- **Rename every symbol before moving any.** A derived symbol can come before its parent in the file;
+  KiCad's own libraries are in name order. Renamed and moved one at a time, such a symbol leaves before
+  its parent is renamed and keeps the old name, and KiCad refuses the library.
+- **`AddSymbol` moves the node** out of its source library. The move loop is a plain `foreach` over the
+  live `Symbols` view, which since 0.4.0 walks what was there when it started (kicad-sharp#53). Before
+  0.4.0 such a walk skipped every other symbol, 18 of 35.
+
+Checked with kicad-cli 10.0.6: 271 imported symbols, 141 of them derived, load and plot. An ERC through
+the project's table finds no `lib_symbol_issues` or `lib_symbol_mismatch`.
+
+A new library takes the version of the first library its symbols come from (kicad-sharp#57), and
+keeps it for every later import. KiCad reads some content by that version: a lone `~` is empty text
+before `20250318`. KiCadSharp does not convert symbols between versions.
 
 The rest of this path:
 - **Re-importing replaces** symbols, footprints and 3D models by name and says so (#69).
@@ -421,10 +447,14 @@ Open, and each of these waits on something outside this repo:
   granted by the vendor.
 - **Upstream code:**
   - #67 / #75: Avalonia 12, waiting on OutSystems/CefGlue#249;
-  - #68: `extends` rename, waiting on a KiCadSharp release with kicad-sharp#48;
-  - #72 and #73: KiCad 11's IPC library commands are declared on KiCad master, but nothing handles them.
+  - #72 and #73: KiCad 11's IPC library commands are declared on KiCad master, but nothing handles
+    them. KiCadSharp 0.4.0 wraps them (kicad-sharp#47), gated on `KiCadVersion.SupportsLibraryCommands`,
+    and KiCad master answers them `AS_UNHANDLED`. Its `KiCad.ImportLibrary` sends one of them, so do
+    not use it for registration yet.
 
-Upstream: danielmeza/kicad-sharp#46 and #47, danielmeza/sexpressions#24.
+The upstream issues this repo reported are all closed and released: kicad-sharp#46 and kicad-sharp#47
+in KiCadSharp 0.4.0, and danielmeza/sexpressions#24 in SExpressions 0.2.0. `KiCadLibraryTable` still
+splices rows into the text, and under 0.2.0 it writes the same bytes as under 0.1.3.
 
 **Careful with issue numbers in PR descriptions and commit messages.** GitHub closes an issue when a
 PR merges if its text contains `close`, `fix` or `resolve` (in any tense) followed by `#N`, anywhere in

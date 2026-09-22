@@ -71,8 +71,8 @@ public sealed record EasyEda2KiCadConversion(
 /// path).
 /// </para>
 /// <para>
-/// Nothing here reads, loads or re-saves those files. In particular they never pass through
-/// KiCadSharp's writer, whose <c>.kicad_sym</c> KiCad 10 rejects (#68).
+/// Nothing here reads, loads or re-saves those files: they reach KiCad exactly as the tool wrote
+/// them, and never pass through KiCadSharp.
 /// </para>
 /// <para>
 /// Because the run writes into the live library, a run that does not complete (non-zero exit,
