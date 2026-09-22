@@ -927,7 +927,7 @@ public partial class MainViewModel : ObservableObject
             if (serviceProvider != null)
             {
                 SettingsViewModel viewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
-                settingsWindow = new SettingsWindow(viewModel);
+                settingsWindow = new SettingsWindow(viewModel, _loggerFactory);
             }
             else
             {

@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using UltraLibrarianImporter.UI.Services;
-using UltraLibrarianImporter.UI.Services.Interfaces;
+using UltraLibrarianImporter.UI.Services.Secrets;
 using UltraLibrarianImporter.UI.ViewModels;
 
 namespace UltraLibrarianImporter.UI.Views;
@@ -28,21 +28,29 @@ public partial class SettingsWindow : Window
     private readonly TaskCompletionSource<bool> _resultCompletionSource;
 
     /// <summary>
-    /// Fallback constructor used when no dependency-injection container is available (and by the
-    /// Avalonia XAML designer).
+    /// Parameterless constructor for the Avalonia XAML designer, which has no container. It chains to
+    /// the real constructor with a view model of its own and a factory that logs nowhere, so that
+    /// every construction path leaves <c>_logger</c> and <c>_viewModel</c> assigned; an earlier body
+    /// left both null, and the first Browse or Save raised a NullReferenceException.
     /// </summary>
-    /// <remarks>
-    /// The previous body only created the completion source, leaving <c>_viewModel</c> and
-    /// <c>_logger</c> null: the window opened, but the first Browse or Save raised a
-    /// NullReferenceException. It now chains to the real constructor with default settings and a
-    /// no-op logger, so the fallback window is genuinely usable instead of merely constructible.
-    /// </remarks>
     public SettingsWindow()
-        : this(new ConfigService(NullLogger<ConfigService>.Instance),
-               NullLogger<SettingsWindow>.Instance,
-               DefaultSettingsMonitor())
+        : this(DesignerViewModel(), NullLoggerFactory.Instance)
     {
     }
+
+    /// <summary>
+    /// The view model for the fallback above, and the only one this window builds: every other path
+    /// resolves it from the container, so that it shares the app's single <see cref="ConfigService"/>
+    /// rather than a second instance of a singleton. This one has no container to take it from, so it
+    /// constructs one — with no credential store, so that the designer neither reads nor writes the
+    /// developer's keyring and <see cref="ConfigService"/> keeps its secrets in memory.
+    /// </summary>
+    private static SettingsViewModel DesignerViewModel() =>
+        new(new ConfigService(
+                NullLogger<ConfigService>.Instance,
+                new UnavailableSecretStore("The XAML designer has no credential store.")),
+            NullLogger<SettingsViewModel>.Instance,
+            DefaultSettingsMonitor());
 
     /// <summary>
     /// Builds an <see cref="IOptionsMonitor{TOptions}"/> carrying default
@@ -55,45 +63,26 @@ public partial class SettingsWindow : Window
             .BuildServiceProvider()
             .GetRequiredService<IOptionsMonitor<KiCadClientSettings>>();
 
-    public SettingsWindow(SettingsViewModel viewModel, ILogger<SettingsWindow>? logger = null)
+    /// <param name="viewModel">
+    /// The view model, resolved from the container by the caller so that it holds the app's
+    /// <see cref="ConfigService"/> singleton and logs through the container's factory.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// The container's factory, so that this window logs through NLog like the rest of the app (#123).
+    /// Its logger came from a <see cref="LoggerFactory"/> this window built itself with a console
+    /// provider, as did the view model's and the config service's on the constructor removed with it:
+    /// that wrote to stdout, which #98 removed everywhere else, and none of the three was disposed.
+    /// </param>
+    public SettingsWindow(SettingsViewModel viewModel, ILoggerFactory loggerFactory)
     {
         InitializeComponent();
 #if DEBUG
         this.AttachDevTools();
 #endif
-        _resultCompletionSource = new TaskCompletionSource<bool>();
-        _logger = logger ?? LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsWindow>();
-        _viewModel = viewModel;
-        DataContext = _viewModel;
-        BindViewModelEvents();
-    }
-
-    public SettingsWindow(
-        IConfigService configService,
-        ILogger logger,
-        IOptionsMonitor<KiCadClientSettings> kicadSettings,
-        IComponentProviderRegistry? providerRegistry = null)
-    {
-        InitializeComponent();
-#if DEBUG
-        this.AttachDevTools();
-#endif
-
         // Set up the task completion source for the dialog result
         _resultCompletionSource = new TaskCompletionSource<bool>();
-
-        // Convert the generic logger to a typed logger
-        _logger = logger as ILogger<SettingsWindow> ??
-                 LoggerFactory.Create(builder => builder.AddConsole())
-                 .CreateLogger<SettingsWindow>();
-
-        // Create the view model with dependencies
-        _viewModel = new SettingsViewModel(
-            configService,
-            LoggerFactory.Create(builder => builder.AddConsole()).CreateLogger<SettingsViewModel>(),
-            kicadSettings,
-            providerRegistry);
-
+        _logger = loggerFactory.CreateLogger<SettingsWindow>();
+        _viewModel = viewModel;
         DataContext = _viewModel;
         BindViewModelEvents();
     }
