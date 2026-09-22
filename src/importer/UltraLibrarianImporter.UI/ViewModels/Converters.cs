@@ -66,6 +66,41 @@ public static class CadAvailabilityConverters
 }
 
 /// <summary>
+/// The words for the About window's KiCad lines (#121): what came of asking KiCad, where the socket
+/// address the client dials came from, and whether a token is set. The view model carries the state
+/// alone -- <see cref="KiCadQueryState"/>, <see cref="ApiSocketSource"/>, <see cref="ApiTokenState"/> --
+/// so it has no sentence to word differently and no token value to put on screen.
+/// </summary>
+public static class KiCadApiConverters
+{
+    /// <summary>What the three KiCad lines say while the query is still out.</summary>
+    private const string Loading = "Loading ...";
+
+    public static readonly IValueConverter ConnectionStatus =
+        new FuncValueConverter<KiCadQueryState, string>(state => state switch
+        {
+            KiCadQueryState.Answered => "Connected",
+            KiCadQueryState.NotConnected => "Not connected to KiCad",
+            KiCadQueryState.TimedOut => $"KiCad did not answer within {AboutViewModel.KiCadQueryTimeout.TotalSeconds:0} s",
+            KiCadQueryState.AnsweredWithError => "KiCad answered with an error",
+            KiCadQueryState.Asking => Loading,
+            _ => Loading,
+        });
+
+    public static readonly IValueConverter SocketSource =
+        new FuncValueConverter<ApiSocketSource, string>(source =>
+            source == ApiSocketSource.KiCadEnvironment
+                ? "Set by KiCad for this plugin"
+                : "KiCad's default path; no socket was named");
+
+    public static readonly IValueConverter TokenState =
+        new FuncValueConverter<ApiTokenState, string>(state =>
+            state == ApiTokenState.Set
+                ? "Set by KiCad for this plugin"
+                : "Not set; connecting with an empty token");
+}
+
+/// <summary>
 /// Converts an ImportType enum value to a human-readable display label.
 /// </summary>
 public class ImportTypeDisplayConverter : IValueConverter

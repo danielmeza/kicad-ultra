@@ -21,32 +21,33 @@ public partial class AboutWindow : Window
     private readonly ILogger<AboutWindow> _logger;
 
     /// <summary>
-    /// Parameterless constructor for the Avalonia XAML designer. It chains to the real
-    /// constructor with a no-op logger so that every construction path leaves
+    /// Parameterless constructor for the Avalonia XAML designer, which has no container. It chains to
+    /// the real constructor with a factory that logs nowhere, so that every construction path leaves
     /// <c>_logger</c> and <c>_viewModel</c> assigned; the previous body left both null.
     /// </summary>
     public AboutWindow()
-        : this(NullLogger.Instance)
+        : this(NullLoggerFactory.Instance)
     {
     }
 
-    public AboutWindow(ILogger logger, KiCad? kiCad = null)
+    /// <param name="loggerFactory">
+    /// The container's factory, so that this window and its view model log through NLog like the rest
+    /// of the app (#121). Both loggers used to come from a <see cref="LoggerFactory"/> this window
+    /// built itself with a console provider: that wrote to stdout, which #98 removed everywhere else,
+    /// and neither factory was ever disposed.
+    /// </param>
+    /// <param name="kiCad">KiCad client (can be null)</param>
+    public AboutWindow(ILoggerFactory loggerFactory, KiCad? kiCad = null)
     {
         InitializeComponent();
 #if DEBUG
         this.AttachDevTools();
 #endif
 
-        // Convert the generic logger to a typed logger
-        _logger = logger as ILogger<AboutWindow> ??
-                 LoggerFactory.Create(builder => builder.AddConsole())
-                 .CreateLogger<AboutWindow>();
+        _logger = loggerFactory.CreateLogger<AboutWindow>();
 
         // Create the view model with a typed logger and KiCad instance
-        _viewModel = new AboutViewModel(
-            LoggerFactory.Create(builder => builder.AddConsole())
-            .CreateLogger<AboutViewModel>(),
-            kiCad);
+        _viewModel = new AboutViewModel(loggerFactory.CreateLogger<AboutViewModel>(), kiCad);
 
         DataContext = _viewModel;
 
