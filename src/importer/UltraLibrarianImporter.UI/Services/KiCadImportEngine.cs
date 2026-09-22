@@ -209,10 +209,9 @@ public class KiCadImportEngine : IKiCadImportEngine
     /// <summary>
     /// The easyeda2kicad path (#76). The tool writes the library itself, straight into the directory
     /// the other path would use, and this only registers it. The files are deliberately not passed
-    /// through <see cref="ImportSymbolsAsync"/> and <see cref="ImportFootprintsAsync"/>: those re-save
-    /// symbols with KiCadSharp's writer, whose output KiCad 10 rejects (#68), and rename every symbol
-    /// and footprint with the provider prefix, which would break the links between the tool's
-    /// symbols, footprints and 3D models.
+    /// through <see cref="ImportSymbolsAsync"/> and <see cref="ImportFootprintsAsync"/>: those rename
+    /// every symbol and footprint with the provider prefix, which would break the links between the
+    /// tool's symbols, footprints and 3D models.
     /// </summary>
     private async Task<ImportResult> ImportLcscPartCoreAsync(
         IComponentProvider provider,
@@ -500,11 +499,20 @@ public class KiCadImportEngine : IKiCadImportEngine
                 var sourceLibrary = KiCadSymbolLibrary.Load(symbolFile);
                 var addedCount = 0;
 
-                // Copied out of the live view first: AddSymbol moves each form out of sourceLibrary,
-                // and moving while enumerating the view would skip every other symbol.
-                foreach (KiCadSymbol symbol in sourceLibrary.Symbols.ToList())
+                // Every symbol is renamed before any is moved. Setting Id renames the sub-units too,
+                // and points each (extends ...) still in sourceLibrary at the new name (#68); KiCad 10
+                // refuses the whole library over either one left with the old name. A derived symbol
+                // can come before its parent, as in KiCad's own libraries, which are in name order, so
+                // renaming each one as it moves would leave it pointing at the parent's old name.
+                foreach (KiCadSymbol symbol in sourceLibrary.Symbols)
                 {
-                    RenameSymbol(symbol, $"{provider.DefaultPrefix}{symbol.Id}");
+                    symbol.Id = $"{provider.DefaultPrefix}{symbol.Id}";
+                }
+
+                // AddSymbol moves each symbol out of sourceLibrary, and the loop still visits every one:
+                // since KiCadSharp 0.4.0 a walk over the live view lists the symbols when it starts.
+                foreach (KiCadSymbol symbol in sourceLibrary.Symbols)
+                {
                     var replaced = RemoveSymbolsNamed(symbolLibrary, symbol.Id);
                     _ = symbolLibrary.AddSymbol(symbol);
                     written.Add(replaced switch
@@ -563,25 +571,6 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
 
         return previous.Count;
-    }
-
-    /// <summary>
-    /// Renames a symbol together with its sub-units, the nested <c>(symbol "NAME_1_1" ...)</c> forms
-    /// that hold its pins and drawing. KiCad 10 refuses a library in which a sub-unit's name does not
-    /// start with its symbol's name. The Value property keeps the original name.
-    /// </summary>
-    private static void RenameSymbol(KiCadSymbol symbol, string newId)
-    {
-        var oldId = symbol.Id;
-        foreach (KiCadSymbolUnit unit in symbol.Units)
-        {
-            if (unit.Id.StartsWith($"{oldId}_", StringComparison.Ordinal))
-            {
-                unit.Id = $"{newId}{unit.Id[oldId.Length..]}";
-            }
-        }
-
-        symbol.Id = newId;
     }
 
     private async Task<bool> ImportFootprintsAsync(
@@ -861,24 +850,11 @@ public class KiCadImportEngine : IKiCadImportEngine
             return null;
         }
 
-        try
+        if (await AskKiCadVersionAsync() is { } version)
         {
-            // KiCadSharp 0.3.1 still connects and sends on the calling thread, blocking, and the caller
-            // is the UI thread when the import comes from MainViewModel. Run it on the pool and stop
-            // waiting after a few seconds rather than hang the import on a KiCad that never answers.
-            KiCadVersion version = await Task.Run(() => _kicad.GetVersion().AsTask()).WaitAsync(KiCadQueryTimeout);
             var directory = KiCadSettingsDirectory.ForVersion(version.Major, version.Minor);
             _logger.LogDebug("KiCad {Version} is running; its settings directory is {Directory}", version, directory);
             return directory;
-        }
-        catch (Exception ex)
-        {
-            // Deliberately broad. KiCadSharp 0.3.1 throws KiCadConnectionException when there is no
-            // socket to dial or its native nng library cannot be loaded, and ApiException when KiCad
-            // answers with an error; a KiCad that does not answer in time is a TimeoutException from
-            // the wait above. Every one of them means the same thing here: KiCad cannot be asked, so
-            // fall back to looking at the disk.
-            _logger.LogWarning(ex, "Could not ask KiCad for its version; looking for its settings directory on disk instead");
         }
 
         var newest = KiCadSettingsDirectory.FindNewestContaining(KiCadLibraryTable.FileName(kind));
@@ -892,6 +868,39 @@ public class KiCadImportEngine : IKiCadImportEngine
         }
 
         return newest;
+    }
+
+    /// <summary>
+    /// The running KiCad's version, or <see langword="null"/> when KiCad cannot be asked: nothing is
+    /// listening, it answered with an error, or it did not answer within <see cref="KiCadQueryTimeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// KiCadSharp 0.4.0 dials on a thread of its own and waits for the reply without blocking the
+    /// calling thread, which is the UI thread when the import comes from MainViewModel, so the call is
+    /// made here directly. The deadline is a token rather than a wait around the call: the token ends
+    /// the dial or the wait for the reply, where a wait would only stop watching and leave the call
+    /// running against a KiCad that never answers.
+    /// </remarks>
+    private async Task<KiCadVersion?> AskKiCadVersionAsync()
+    {
+        using var deadline = new CancellationTokenSource(KiCadQueryTimeout);
+        try
+        {
+            return await _kicad.GetVersion(deadline.Token);
+        }
+        catch (KiCadIpcException ex)
+        {
+            // Every IPC failure is one of these since KiCadSharp 0.4.0: KiCadConnectionException when
+            // there is no socket to dial, nothing answers at it, or its native nng library cannot be
+            // loaded, and ApiException, with KiCad's status, when KiCad answers with an error.
+            _logger.LogWarning(ex, "Could not ask KiCad for its version; looking for its settings directory on disk instead");
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            _logger.LogWarning("KiCad did not report its version within {Timeout}; looking for its settings directory on disk instead", KiCadQueryTimeout);
+        }
+
+        return null;
     }
 
     private Task<string> Get3DModelPath(string projectDirectory)
