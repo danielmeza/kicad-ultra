@@ -340,7 +340,7 @@ public partial class SettingsViewModel : ObservableObject
     // has a symbol, footprint or 3D model does not list them.
     private static string DescribeCapabilities(string providerId) => providerId switch
     {
-        "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Search cannot tell whether a part has a symbol, footprint or 3D model: importing it with easyeda2kicad, an optional third-party tool (below), converts whichever of them EasyEDA has",
+        "easyeda" => "Direct API: Yes • Stock, pricing and datasheets from JLCPCB's parts library: LCSC numbers through JLCPCB's official API with your own credentials (below), where JLCPCB has approved your application's Parts permission; everything else through an unofficial JLCPCB website endpoint that can stop working without notice • Search cannot tell whether a part has a symbol, footprint or 3D model: importing it with easyeda2kicad, an optional third-party tool (below), converts whichever of them EasyEDA has",
         "octopart" => "Direct API: Yes • Multi-Distributor Stock & Pricing • Datasheets and CAD availability where your Nexar plan includes them",
         "snapeda" => "Browser-Assisted • No direct search: SnapMagic has no public API, and grants API keys per application after review (github.com/danielmeza/kicad-ultra/issues/56)",
         "componentsearchengine" => "Browser-Assisted • No direct search integration yet (github.com/danielmeza/kicad-ultra/issues/57)",

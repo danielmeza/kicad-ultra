@@ -33,6 +33,12 @@ namespace UltraLibrarianImporter.UI.Services.Providers;
 /// unofficial endpoint turns a search down as too frequent, the throw is a
 /// <see cref="ProviderRateLimitedException"/>, which the user is told about (#110).
 /// <para>
+/// The one exception is JLCPCB refusing this application the Components API altogether (#126), which
+/// is not a failed lookup but a standing answer: it costs the user no search. That lookup is
+/// answered from the website endpoint, <see cref="JlcpcbOfficialApiAccess"/> remembers the refusal
+/// for those credentials, and the Part Explorer's notice says what JLCPCB refused.
+/// </para>
+/// <para>
 /// The official API is used only where the container's <see cref="JlcpcbSourcePolicy"/> allows it:
 /// the GUI does, the <c>--mcp</c> server never does, because JLCPCB's terms forbid passing API data
 /// to a third party such as the AI client the server answers.
@@ -60,6 +66,7 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
     private readonly IConfigService _configService;
     private readonly TimeProvider _timeProvider;
     private readonly JlcpcbSourcePolicy _sourcePolicy;
+    private readonly JlcpcbOfficialApiAccess _officialApiAccess;
     private readonly ILogger<EasyEdaProvider> _logger;
 
     static EasyEdaProvider()
@@ -67,11 +74,17 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("kicad-ultra/1.0 (KiCad Component Importer; +https://github.com/danielmeza/kicad-ultra)");
     }
 
-    public EasyEdaProvider(IConfigService configService, TimeProvider timeProvider, JlcpcbSourcePolicy sourcePolicy, ILogger<EasyEdaProvider> logger)
+    public EasyEdaProvider(
+        IConfigService configService,
+        TimeProvider timeProvider,
+        JlcpcbSourcePolicy sourcePolicy,
+        JlcpcbOfficialApiAccess officialApiAccess,
+        ILogger<EasyEdaProvider> logger)
     {
         _configService = configService;
         _timeProvider = timeProvider;
         _sourcePolicy = sourcePolicy;
+        _officialApiAccess = officialApiAccess;
         _logger = logger;
     }
 
@@ -103,7 +116,12 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         var lcscPartNumber = keyword.ToUpperInvariant();
         if (credentials is not null && EasyEda2KiCadConverter.IsLcscPartNumber(lcscPartNumber))
         {
-            return await LookUpWithOfficialApiAsync(credentials, lcscPartNumber, cancellationToken);
+            // Null only where JLCPCB refuses this application the API (#126); the search then goes on
+            // to the website endpoint, as it does for a user who entered no credentials at all.
+            if (await LookUpWithOfficialApiAsync(credentials, lcscPartNumber, cancellationToken) is { } parts)
+            {
+                return parts;
+            }
         }
 
         if (credentials is null && JlcpcbApiCredentials.GetState(_configService) == JlcpcbApiCredentialState.Incomplete)
@@ -115,9 +133,18 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         return await SearchWebsiteAsync(keyword, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<PartSearchResult>> LookUpWithOfficialApiAsync(
+    /// <summary>
+    /// The part JLCPCB's official API described, or null where JLCPCB refuses this application that
+    /// API (#126) — this call and every later one, until the credentials change.
+    /// </summary>
+    private async Task<IReadOnlyList<PartSearchResult>?> LookUpWithOfficialApiAsync(
         JlcpcbApiCredentials credentials, string lcscPartNumber, CancellationToken cancellationToken)
     {
+        if (_officialApiAccess.GetRefusal(credentials) is not null)
+        {
+            return null;
+        }
+
         IReadOnlyList<JlcpcbPart> parts;
         try
         {
@@ -126,6 +153,21 @@ public sealed class EasyEdaProvider : BaseArchiveComponentProvider
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (JlcpcbApiAccessDeniedException ex)
+        {
+            // A standing answer about the account, not a failed lookup: it is remembered so that the
+            // API is not called again, and this search is answered from the website endpoint. The
+            // message is JLCPCB's own and carries no credential.
+            if (_officialApiAccess.Remember(credentials, ex.Refusal))
+            {
+                _logger.LogWarning(
+                    "JLCPCB refuses this application the Components API ({Refusal}): {Error}. " +
+                    "EasyEDA / LCSC searches use JLCPCB's website endpoint until the credentials change in Settings",
+                    ex.Refusal, ex.Message);
+            }
+
+            return null;
         }
         catch (HttpRequestException ex)
         {

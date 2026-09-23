@@ -215,7 +215,27 @@ needed any more.
     each search reports it again without a request, and cached answers are still served. The Part
     Explorer's JLCPCB notice and status line and the MCP "Not answered" line say so, and an MCP call
     that found nothing while a provider was left out is `isError`. Other failures are still only logged.
-  - A failed official lookup throws. It never falls back to the website endpoint.
+  - A failed official lookup throws. It never falls back to the website endpoint — **except when JLCPCB
+    refuses this application the API altogether** (#126), which is not a failed lookup but a standing
+    answer about the account, and must not cost the user the search. JLCPCB grants API access per
+    service and the Components API needs the **Parts** permission approved, so an account can hold
+    working credentials that it refuses.
+    - **Only the two statuses JLCPCB documents as the platform turning the caller away count**
+      (https://api.jlcpcb.com/docs/start, "Error Information"): 401 "Unauthorized request. Usually due
+      to signature verification failure" → `CredentialsRejected`, and 403 "Forbidden. The request is
+      not allowed" → `NotApproved`. A credential holding a character no HTTP header can carry is
+      `CredentialsRejected` too, before any request. **Everything else stays strict and throws**: 400,
+      500, any other status, and *every* business `code` in a 200 body. JLCPCB documents the
+      `{code, message}` envelope and one example code (1001, "Insufficient prepaid balance") and
+      publishes no code meaning "this application is not approved for this interface", so none is
+      guessed at.
+    - `JlcpcbApiAccessDeniedException` carries which one. `EasyEdaProvider` records it in
+      `JlcpcbOfficialApiAccess` (one per process, in DI), logs it once, and answers that same search
+      from the website endpoint. Later LCSC-number searches go straight there.
+    - The memory is keyed to a **hash** of the three credentials, never the values, so editing any of
+      them in Settings clears it, as #109 does for the Nexar token. Nothing logs or shows a credential.
+    - The Part Explorer's JLCPCB notice says which refusal it was, and Settings says the application
+      needs the Parts permission approved.
   - **`--mcp` never uses the official API**, even with credentials stored. JLCPCB's API terms (III.6(9))
     forbid passing API data to third parties, and the MCP server hands every result to the AI client.
     Each container passes a `JlcpcbSourcePolicy` to `AddUltraLibrarianKiCadServices` (a required
