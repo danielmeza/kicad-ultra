@@ -4,7 +4,7 @@ name: Release
 #
 #   * the Plugin and Content Manager bundle - the Python side, the icons and metadata.json, and
 #     nothing else. It is a few kilobytes, and that is the point;
-#   * the importer itself, as Velopack packages for linux-x64, win-x64, osx-x64 and osx-arm64.
+#   * the importer itself, as Velopack packages for linux-x64, win-x64 and osx-x64.
 #
 # Why the two are separate (#128). A self-contained build of the importer is 453 MB, 341 MB of it
 # the CEF browser the Web Browser tab runs inside - larger than KiCad's own Flatpak, and far past
@@ -62,8 +62,15 @@ jobs:
           #
           # The channel is baked into each package's manifest, so UpdateManager asks for the matching
           # releases.{channel}.json with no configuration in the app. `win` and `linux` are Velopack's
-          # defaults for their platforms; the two macOS builds must differ from each other, or their
-          # assets would collide in one release and an Intel Mac could be offered an arm64 build.
+          # defaults for their platforms; the macOS one is named for its architecture because it is
+          # the architecture that distinguishes it.
+          #
+          # **There is no osx-arm64 channel, and adding one back needs an upstream change first.**
+          # CefGlue.Common ships binaries for linux-x64, osx-x64 and win-x64 and no other
+          # architecture, so `dotnet publish -r osx-arm64` fails outright - CS8012, "targets a
+          # different processor", on all five CEF assemblies. The v0.1.0 run found this the first
+          # time this matrix was ever executed. Apple Silicon is served the osx-x64 package instead,
+          # under Rosetta 2, which plugin/importer_launcher.py does deliberately and says so.
           - runner: ubuntu-latest
             rid: linux-x64
             channel: linux
@@ -73,11 +80,6 @@ jobs:
             rid: win-x64
             channel: win
             directive: '[win]'
-            icon: ''
-          - runner: macos-latest
-            rid: osx-arm64
-            channel: osx-arm64
-            directive: ''
             icon: ''
           - runner: macos-latest
             rid: osx-x64
@@ -418,8 +420,7 @@ jobs:
             "$PACK_ID.AppImage" \
             "$PACK_ID-win-Portable.zip" \
             "$PACK_ID-osx-x64-Portable.zip" \
-            "$PACK_ID-osx-arm64-Portable.zip" \
-            releases.linux.json releases.win.json releases.osx-x64.json releases.osx-arm64.json \
+            releases.linux.json releases.win.json releases.osx-x64.json \
             kicad-compatibility.json
           do
             if [ -f "dist/$asset" ]; then

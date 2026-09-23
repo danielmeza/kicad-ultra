@@ -651,12 +651,13 @@ class AssetNameTests(unittest.TestCase):
             "KiCadUltra.AppImage",
             "KiCadUltra-win-Portable.zip",
             "KiCadUltra-osx-x64-Portable.zip",
-            "KiCadUltra-osx-arm64-Portable.zip",
         }
         cases = [
             ("nt", "win32", "AMD64", "KiCadUltra-win-Portable.zip"),
             ("nt", "win32", "ARM64", "KiCadUltra-win-Portable.zip"),
-            ("posix", "darwin", "arm64", "KiCadUltra-osx-arm64-Portable.zip"),
+            # Apple Silicon is served the Intel package, under Rosetta 2: CefGlue publishes no
+            # arm64 binaries, so there is no osx-arm64 channel for it to ask for.
+            ("posix", "darwin", "arm64", "KiCadUltra-osx-x64-Portable.zip"),
             ("posix", "darwin", "x86_64", "KiCadUltra-osx-x64-Portable.zip"),
             ("posix", "linux", "x86_64", "KiCadUltra.AppImage"),
         ]
