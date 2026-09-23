@@ -19,6 +19,8 @@ using UltraLibrarianImporter.UI.Services.Mcp;
 using UltraLibrarianImporter.UI.Services.Providers.Jlcpcb;
 using UltraLibrarianImporter.UI.Services.Secrets;
 
+using Velopack;
+
 namespace UltraLibrarianImporter.UI;
 
 internal sealed class Program
@@ -32,6 +34,8 @@ internal sealed class Program
     [SupportedOSPlatform("macos")]
     public static void Main(string[] args)
     {
+        // Read first, because both startup contracts below key off it. Reading the array has no side
+        // effects, which is what lets it precede VelopackApp's "first code in Main".
         var isMcp = Array.Exists(args, a =>
             string.Equals(a, "--mcp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "-mcp", StringComparison.OrdinalIgnoreCase) ||
@@ -55,6 +59,24 @@ internal sealed class Program
             }
             return;
         }
+
+        // Velopack's contract is that VelopackApp.Build().Run() is the first code on the path, and
+        // the reason is that it may not return: it runs the --veloapp-* install and uninstall hooks
+        // and exits, and when a package this app downloaded earlier is waiting it hands the process
+        // to the updater and exits, so the update is applied before the application starts (#128).
+        // Anything done above it is work a restart throws away, and anything left half-done is worse.
+        //
+        // Which is why it sits above HarfBuzzPreload.Apply() rather than below, and that only looks
+        // like a contradiction of #78. #78's rule is about the dynamic loader: the preload has to
+        // bind libHarfBuzzSharp's own hb_* slots to itself before CEF pulls in GTK - and with it the
+        // system libharfbuzz, RTLD_GLOBAL - or those calls land in the system copy and the process
+        // dies. Run() loads no graphics stack at all: it reads the package manifest, may start the
+        // separate updater process, and returns. The preload still happens before the first line of
+        // Avalonia or CEF code, which is what #78 actually asks for.
+        //
+        // Never in --mcp mode: stdout there is the JSON-RPC channel, and a staged update would
+        // restart the process in the middle of a session. That path returned above.
+        VelopackApp.Build().Run();
 
         // Initialize NLog. If SetLogDirectory throws, there is no ApplicationData folder, which
         // ConfigService and the browser cache need as well, so its exception is left to end the GUI.
@@ -224,6 +246,9 @@ internal sealed class Program
             .AddTransient<ViewModels.AboutViewModel>()
             .AddSingleton(_ => PlatformSecretStore.Create())
             .AddSingleton<IConfigService, ConfigService>()
+            // Downloads new releases in the background and stages them for the next start (#128). The
+            // GUI container only: the `--mcp` container above must not update or prompt.
+            .AddHostedService<AppUpdateService>()
             // The GUI shows results to the user whose credentials they are, so it may use the API (#51).
             .AddUltraLibrarianKiCadServices(JlcpcbSourcePolicy.OfficialApiWhenConfigured)
             .AddAvaloniauiDesktopApplication<App>(BuildAvaloniaApp)
