@@ -11,6 +11,7 @@ using KiCadSharp;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using KiCadUltra.Services.Interfaces;
 using KiCadUltra.ViewModels;
 
 namespace KiCadUltra.Views;
@@ -37,7 +38,10 @@ public partial class AboutWindow : Window
     /// and neither factory was ever disposed.
     /// </param>
     /// <param name="kiCad">KiCad client (can be null)</param>
-    public AboutWindow(ILoggerFactory loggerFactory, KiCad? kiCad = null)
+    /// <param name="compatibility">
+    /// What this build supports (#138), or <see langword="null"/> for the designer.
+    /// </param>
+    public AboutWindow(ILoggerFactory loggerFactory, KiCad? kiCad = null, IKiCadCompatibility? compatibility = null)
     {
         InitializeComponent();
 #if DEBUG
@@ -47,7 +51,7 @@ public partial class AboutWindow : Window
         _logger = loggerFactory.CreateLogger<AboutWindow>();
 
         // Create the view model with a typed logger and KiCad instance
-        _viewModel = new AboutViewModel(loggerFactory.CreateLogger<AboutViewModel>(), kiCad);
+        _viewModel = new AboutViewModel(loggerFactory.CreateLogger<AboutViewModel>(), kiCad, compatibility);
 
         DataContext = _viewModel;
 

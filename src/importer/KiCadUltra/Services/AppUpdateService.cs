@@ -1,6 +1,11 @@
 ﻿using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+
+using KiCadSharp;
+
+using KiCadUltra.Services.Interfaces;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -30,6 +35,11 @@ namespace KiCadUltra.Services;
 /// Registered in the GUI container only. <c>--mcp</c> must not update, and must not write to
 /// stdout; <see cref="Program"/> does not bring Velopack into that path at all.
 /// </para>
+/// <para>
+/// <b>Nothing is downloaded until the candidate release has been checked against the running
+/// KiCad</b> (#138). <see cref="KiCadUpdateGate"/> holds that decision, with the reasoning for each
+/// of its five answers; this service only asks it and logs what it said.
+/// </para>
 /// </remarks>
 internal sealed class AppUpdateService : BackgroundService
 {
@@ -48,11 +58,13 @@ internal sealed class AppUpdateService : BackgroundService
 
     private readonly ILogger<AppUpdateService> _logger;
     private readonly TimeProvider _time;
+    private readonly IKiCadCompatibility _compatibility;
 
-    public AppUpdateService(ILogger<AppUpdateService> logger, TimeProvider time)
+    public AppUpdateService(ILogger<AppUpdateService> logger, TimeProvider time, IKiCadCompatibility compatibility)
     {
         _logger = logger;
         _time = time;
+        _compatibility = compatibility;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -65,6 +77,13 @@ internal sealed class AppUpdateService : BackgroundService
             // thread while the main window is being built. Constructing the locator reads the
             // package manifest from disk; it belongs after the delay, not in front of the window.
             await Task.Delay(FirstCheckDelay, _time, stoppingToken).ConfigureAwait(false);
+
+            // Said once per session, and before the check below returns early: an importer that
+            // cannot update itself - a `dotnet run` build, a directory copied out of a package - is
+            // still one that was launched by some KiCad, and "was I started by a KiCad I support?"
+            // is worth a line in the log whatever the answer to "can I update?" is (#138).
+            _compatibility.ReportRunningKiCad(
+                await _compatibility.AskKiCadVersionAsync(stoppingToken).ConfigureAwait(false));
 
             UpdateManager? updates = CreateUpdateManager();
             if (updates == null)
@@ -137,7 +156,39 @@ internal sealed class AppUpdateService : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("Release {Version} is available; downloading it in the background.", available.TargetFullRelease.Version);
+            // Before the download, not after it: the point of the check is not to spend a package on
+            // a KiCad the release does not support, and not to stage one that would break the plugin
+            // for that user on the next start (#138).
+            //
+            // KiCad is asked again here rather than reused from the line logged at startup. The
+            // check runs every CheckInterval for as long as the session lasts, and a KiCad started,
+            // restarted or upgraded in the meantime is exactly the case where a stale answer would
+            // decide it.
+            var tag = string.Create(CultureInfo.InvariantCulture, $"v{available.TargetFullRelease.Version}");
+            KiCadCompatibilityManifest? declared = await _compatibility
+                .GetReleaseManifestAsync(tag, cancellationToken).ConfigureAwait(false);
+            KiCadVersion? kicad = await _compatibility.AskKiCadVersionAsync(cancellationToken).ConfigureAwait(false);
+
+            UpdateGateDecision decision = KiCadUpdateGate.Decide(
+                tag,
+                declared,
+                kicad is null ? null : KiCadCompatibilityManifest.ToVersion(kicad));
+
+            if (!decision.Proceed)
+            {
+                _logger.LogWarning("{Reason} This importer stays on {Version}.", decision.Reason, updates.CurrentVersion);
+                return;
+            }
+
+            if (decision.Outcome == UpdateGateOutcome.Supported)
+            {
+                _logger.LogInformation("{Reason}", decision.Reason);
+            }
+            else
+            {
+                _logger.LogWarning("{Reason}", decision.Reason);
+            }
+
             await updates.DownloadUpdatesAsync(available, progress: null, cancellationToken).ConfigureAwait(false);
             _logger.LogInformation(
                 "Release {Version} is staged, and is installed the next time the importer starts.",

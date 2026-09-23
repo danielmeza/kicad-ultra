@@ -174,6 +174,24 @@ class BootstrapTests(unittest.TestCase):
                 handle.write("%s  %s\n" % (hashlib.sha256(payload).hexdigest(), asset))
         return asset
 
+    def _publish_compatibility(self, minimum, tested_up_to, maximum=None, manifest_version=1):
+        """Put a kicad-compatibility.json in the release, the way release.yml does (#138)."""
+        declared = {
+            "manifest_version": manifest_version,
+            "kicad": {"minimum": minimum, "tested_up_to": tested_up_to, "maximum": maximum},
+        }
+        with open(os.path.join(self.release, "kicad-compatibility.json"), "w", encoding="utf-8") as handle:
+            json.dump(declared, handle)
+
+    def _say_this_is_kicad(self, version):
+        """Pin the KiCad this plugin belongs to, however the machine underneath is laid out."""
+        for name in [name for name in os.environ if name.startswith("KICAD") and name.endswith("_3RD_PARTY")]:
+            del os.environ[name]
+        if version is None:
+            os.environ.pop("KICAD_ULTRA_KICAD_VERSION", None)
+        else:
+            os.environ["KICAD_ULTRA_KICAD_VERSION"] = version
+
     def _launcher(self, origin):
         """The launcher module, loaded afresh against *origin*.
 
@@ -376,6 +394,101 @@ class BootstrapTests(unittest.TestCase):
         self.assertEqual(1, launcher.launch_importer())
         self.assertIsNone(launcher.find_importer())
 
+    # -- the KiCad the release says it supports (#138) -----------------------------------------
+
+    def _asset_was_downloaded(self, server):
+        return any(path.endswith("KiCadUltra.AppImage") for path, _ in server.requests)
+
+    def test_a_release_that_needs_a_newer_kicad_is_not_downloaded(self):
+        """The 200 MB this whole check exists to not spend."""
+        self._publish()
+        self._publish_compatibility(minimum="11.0", tested_up_to="11.0")
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("10.0")
+
+        self.assertEqual(1, launcher.launch_importer())
+        self.assertIsNone(launcher.find_importer())
+        self.assertFalse(self._asset_was_downloaded(server),
+                         "the refusal has to come before the download, not after it")
+
+    def test_a_release_above_its_declared_maximum_is_not_downloaded(self):
+        self._publish()
+        self._publish_compatibility(minimum="10.0", tested_up_to="10.99", maximum="10.99")
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("11.0")
+
+        self.assertEqual(1, launcher.launch_importer())
+        self.assertIsNone(launcher.find_importer())
+        self.assertFalse(self._asset_was_downloaded(server))
+
+    def test_a_kicad_newer_than_the_release_was_tested_against_is_installed_anyway(self):
+        """"Tested up to" is not "known broken", and refusing on it would strand every user on the
+        day a new KiCad ships - which is exactly when a new release is most likely to be the one
+        that supports it."""
+        self._publish()
+        self._publish_compatibility(minimum="10.0", tested_up_to="10.99")
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("11.0")
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+
+    def test_a_kicad_at_the_declared_minimum_is_installed(self):
+        """10.0.6 against a minimum of 10.0: a missing patch number reads as 0 in a lower bound,
+        and as 999 in an upper one, which is how KiCad's own Plugin and Content Manager reads it."""
+        self._publish()
+        self._publish_compatibility(minimum="10.0", tested_up_to="10.99")
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("10.0.6")
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+
+    def test_a_kicad_that_cannot_be_worked_out_does_not_block_the_install(self):
+        """A working tree, a package unpacked by hand, or a KiCad whose paths have been moved.
+
+        None of those is evidence that the release is wrong for this machine, and the application's
+        own check still runs once it has started - so the download goes ahead. Without this the
+        plugin would install nothing at all whenever it is not where the Plugin and Content Manager
+        put it.
+        """
+        self._publish()
+        self._publish_compatibility(minimum="11.0", tested_up_to="11.0")
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad(None)
+
+        self.assertIsNone(launcher.detect_kicad_version()[0],
+                          "the test's own assumption: this file is not under a 3rdparty directory")
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+
+    def test_a_release_that_declares_nothing_is_installed(self):
+        """Every release cut before #138 publishes no manifest, and has to stay installable."""
+        self._publish()
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("9.0")
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+
+    def test_a_manifest_this_plugin_is_too_old_to_read_is_installed(self):
+        """A format from the future is "not declared", not "refused": guessing is worse than not
+        checking, and a plugin that cannot read a newer manifest must still be able to update."""
+        self._publish()
+        self._publish_compatibility(minimum="11.0", tested_up_to="11.0", manifest_version=99)
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        self._say_this_is_kicad("10.0")
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+
 
 # The bootstrap fetches an AppImage on Linux and a portable .zip on Windows and macOS, and the fake
 # application above is a shell script. CI runs Linux, which is the platform the plugin's own
@@ -438,6 +551,75 @@ class ArchiveTests(unittest.TestCase):
         with self.assertRaises(self.launcher.BootstrapError):
             self.launcher._extract_zip(self._archive(build), target)
         self.assertFalse(os.path.exists(os.path.join(self._workspace.name, "escaped.txt")))
+
+
+class KiCadVersionTests(unittest.TestCase):
+    """Working out which KiCad this plugin belongs to, before anything has talked to KiCad (#138)."""
+
+    def setUp(self):
+        specification = importlib.util.spec_from_file_location("importer_launcher_kicad_version", LAUNCHER)
+        self.launcher = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(self.launcher)
+        self._saved_environment = dict(os.environ)
+        self.addCleanup(self._restore_environment)
+        for name in [name for name in os.environ if name.startswith("KICAD")]:
+            del os.environ[name]
+
+    def _restore_environment(self):
+        os.environ.clear()
+        os.environ.update(self._saved_environment)
+
+    @staticmethod
+    def _path(*parts):
+        return os.path.join(os.sep + "home", "someone", *parts)
+
+    def test_a_missing_component_reads_as_0_below_and_999_above(self):
+        """Which is how KiCad's own Plugin and Content Manager compares these numbers, and what
+        makes "tested up to 10.99" cover a KiCad that calls itself 10.99.0."""
+        self.assertEqual((10, 99, 0), self.launcher._version_tuple("10.99", 0))
+        self.assertEqual((10, 99, 999), self.launcher._version_tuple("10.99", 999))
+        self.assertEqual((10, 0, 6), self.launcher._version_tuple("10.0.6", 999))
+        self.assertLess(self.launcher._version_tuple("10.0", 0), self.launcher._version_tuple("10.0.6", 0))
+        self.assertLess(self.launcher._version_tuple("10.99.0", 0), self.launcher._version_tuple("10.99", 999))
+        for rubbish in ("", "kicad", "10.x", "10.0.6.1", "v10"):
+            with self.subTest(text=rubbish), self.assertRaises(ValueError):
+                self.launcher._version_tuple(rubbish, 0)
+
+    def test_the_install_path_names_the_kicad_that_will_load_the_plugin(self):
+        """`<documents>/kicad/<major.minor>/3rdparty/plugins/<identifier>/` is where the Plugin and
+        Content Manager puts a package, and that path is per KiCad version."""
+        installed = self._path("Documents", "kicad", "10.0", "3rdparty", "plugins",
+                               "com.github.danielmeza.kicad-ultralibrarian-importer",
+                               "importer_launcher.py")
+        self.assertEqual("10.0", self.launcher.kicad_version_from_install_path(installed))
+
+        nightly = self._path("Documents", "kicad", "10.99", "3rdparty", "plugins", "x", "importer_launcher.py")
+        self.assertEqual("10.99", self.launcher.kicad_version_from_install_path(nightly))
+
+    def test_a_path_that_is_not_a_plugin_directory_says_nothing(self):
+        self.assertIsNone(self.launcher.kicad_version_from_install_path(
+            self._path("src", "kicad-ultra", "plugin", "importer_launcher.py")))
+        # A "3rdparty" whose parent is not a version is not KiCad's layout.
+        self.assertIsNone(self.launcher.kicad_version_from_install_path(
+            self._path("opt", "3rdparty", "plugins", "importer_launcher.py")))
+
+    def test_kicads_path_variables_are_the_fallback(self):
+        """KiCad promises an API plugin only KICAD_API_SOCKET and KICAD_API_TOKEN, neither of which
+        carries a version. The versioned path variables do, in their value."""
+        os.environ["KICAD10_3RD_PARTY"] = self._path("Documents", "kicad", "10.99", "3rdparty")
+        self.assertEqual("10.99", self.launcher.kicad_version_from_environment())
+        self.assertEqual(("10.99", "KiCad's path variables in the environment"),
+                         self.launcher.detect_kicad_version())
+
+    def test_nothing_to_go_on_is_an_answer_of_its_own(self):
+        self.assertIsNone(self.launcher.kicad_version_from_environment())
+        self.assertIsNone(self.launcher.detect_kicad_version()[0],
+                          "this checkout is not under a 3rdparty directory")
+
+    def test_the_override_wins(self):
+        os.environ["KICAD10_3RD_PARTY"] = self._path("Documents", "kicad", "10.0", "3rdparty")
+        os.environ["KICAD_ULTRA_KICAD_VERSION"] = "9.0"
+        self.assertEqual(("9.0", "KICAD_ULTRA_KICAD_VERSION"), self.launcher.detect_kicad_version())
 
 
 class AssetNameTests(unittest.TestCase):

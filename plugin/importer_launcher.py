@@ -11,6 +11,14 @@ first run downloads the one asset for this platform, checks it against a SHA-256
 same release, unpacks it, and starts it. Every later run starts it straight away, offline, and the
 application updates itself from then on.
 
+**Nothing is downloaded until the release says it supports this KiCad (#138).** Every release
+publishes a ``kicad-compatibility.json`` naming the KiCad versions that build was built for, and
+this file reads it before it spends 200 MB. Which KiCad this is comes from this file's own location:
+the Plugin and Content Manager unpacks a package into ``<documents>/kicad/<version>/3rdparty/plugins/``,
+and because that path is per KiCad version, the directory holding this file names the only KiCad
+that will ever load it. A release that declares nothing, and a KiCad that cannot be worked out, are
+both installed rather than refused - see ``_check_kicad_compatibility``.
+
 Only the standard library is used, on purpose: KiCad installs ``requirements.txt`` into the
 interpreter that loads this plugin, and nothing may be added to it.
 
@@ -66,6 +74,19 @@ REPOSITORY = os.environ.get("KICAD_ULTRA_REPOSITORY", "danielmeza/kicad-ultra")
 # The release asset that carries a SHA-256 for every other asset, in `sha256sum` format. A release
 # without it is refused rather than trusted: an unverified 450 MB download is not something to run.
 CHECKSUM_ASSET = "SHA256SUMS.txt"
+
+# The release asset that names the KiCad versions that build supports (#138). One file, written from
+# kicad-compatibility.json at the root of the repository, which is also what the Plugin and Content
+# Manager metadata's kicad_version comes from and what ships beside the application itself.
+#
+# Unlike the checksum above, a release without it is *not* refused. Every release cut before #138
+# has none, and "this release does not say" has to mean "install it" or the plugin could never
+# install anything published before the feature existed.
+COMPATIBILITY_ASSET = "kicad-compatibility.json"
+
+# The only manifest_version this file knows how to read. A newer one is treated as no manifest,
+# which permits the install; guessing at a format is worse than not checking.
+KNOWN_MANIFEST_VERSION = 1
 
 # Honest, and the same identity the .NET side sends.
 USER_AGENT = "kicad-ultra/1.0"
@@ -275,6 +296,178 @@ def _expected_checksum(release, asset_name):
     raise BootstrapError(
         "{0} in release {1} has no line for {2}, so the download cannot be verified.".format(
             CHECKSUM_ASSET, release.get("tag_name", "?"), asset_name))
+
+
+# ---------------------------------------------------------------------------------------------
+# Which KiCad this is, and whether the release supports it
+# ---------------------------------------------------------------------------------------------
+
+
+def _version_tuple(text, missing):
+    """``(major, minor, patch)`` from ``"10"``, ``"10.0"`` or ``"10.0.6"``.
+
+    *missing* fills in every component the string does not carry: 0 for a lower bound and 999 for an
+    upper one, which is how KiCad's own Plugin and Content Manager compares these numbers
+    (``PLUGIN_CONTENT_MANAGER::PreparePackage`` in ``kicad/pcm/pcm.cpp``). It is what makes
+    "tested up to 10.99" cover a KiCad that calls itself 10.99.0 instead of treating it as newer.
+
+    Raises ``ValueError`` for anything that is not a version, which is how the path search below
+    tells a version directory from any other directory name.
+    """
+    parts = text.strip().split(".")
+    if not 1 <= len(parts) <= 3 or not all(part.isdigit() for part in parts):
+        raise ValueError("{0!r} is not a major[.minor[.patch]] version".format(text))
+    numbers = [int(part) for part in parts]
+    return tuple(numbers + [missing] * (3 - len(numbers)))
+
+
+def kicad_version_from_install_path(path=None):
+    """The KiCad version whose plugin directory holds *path*, or ``None``.
+
+    **This is the reliable source, and it is the one asked first.** The Plugin and Content Manager
+    unpacks a package into ``<documents>/kicad/<major.minor>/3rdparty/plugins/<identifier>/``:
+    ``PATHS::GetDefault3rdPartyPath()`` is ``getUserDocumentPath()`` - itself
+    ``<documents>/kicad/<major.minor>`` - with ``3rdparty`` appended. That path is per KiCad
+    version, so the directory this file sits in does not merely name the KiCad that installed the
+    plugin; it names the only KiCad that will ever load it. It is also there before anything has
+    talked to KiCad, which is what lets the check happen before the download.
+
+    The search is for the ``3rdparty`` component rather than for a fixed depth, because
+    ``KICAD_DOCUMENTS_HOME`` can move everything above it and a package may nest its own files.
+    """
+    parts = os.path.abspath(path or __file__).split(os.sep)
+    for index in range(len(parts) - 1, 0, -1):
+        if parts[index] != "3rdparty":
+            continue
+        try:
+            _version_tuple(parts[index - 1], 0)
+        except ValueError:
+            continue
+        return parts[index - 1]
+    return None
+
+
+def kicad_version_from_environment():
+    """The KiCad version KiCad's own environment names, or ``None``.
+
+    The fallback, not the first answer. KiCad promises an API plugin exactly two variables -
+    ``KICAD_API_SOCKET`` and ``KICAD_API_TOKEN`` (``API_PLUGIN_MANAGER`` sets those and nothing
+    else) - and neither carries a version. What does carry one is the versioned path variables KiCad
+    sets into its own environment and a child inherits: ``KICAD10_3RD_PARTY`` and its siblings,
+    whose value ends in ``kicad/<major.minor>/3rdparty``. They are user-editable under
+    Preferences -> Paths and they are inherited rather than set for the plugin, which is why they
+    are consulted only when the install path says nothing - a working tree, mostly.
+    """
+    for name, value in os.environ.items():
+        if name.startswith("KICAD") and name.endswith("_3RD_PARTY") and value:
+            found = kicad_version_from_install_path(value)
+            if found is not None:
+                return found
+    return None
+
+
+def detect_kicad_version():
+    """``(version, where it came from)``. *version* is ``None`` when it cannot be worked out."""
+    override = os.environ.get("KICAD_ULTRA_KICAD_VERSION")
+    if override:
+        return override, "KICAD_ULTRA_KICAD_VERSION"
+
+    found = kicad_version_from_install_path()
+    if found is not None:
+        return found, "this plugin's install path"
+
+    found = kicad_version_from_environment()
+    if found is not None:
+        return found, "KiCad's path variables in the environment"
+
+    return None, "nowhere"
+
+
+def _declared_compatibility(release):
+    """What *release* says about KiCad as ``(minimum, tested_up_to, maximum)``, or ``None``.
+
+    ``None`` for a release that publishes nothing, for one whose manifest this file is too old to
+    read, and for one whose manifest could not be fetched or made sense of. Every one of those is
+    "not declared", and the caller installs rather than refuses.
+    """
+    url = _asset_url(release, COMPATIBILITY_ASSET)
+    if url is None:
+        return None
+
+    try:
+        with _open(url) as response:
+            declared = json.loads(response.read().decode("utf-8"))
+        manifest_version = declared.get("manifest_version", KNOWN_MANIFEST_VERSION)
+        if manifest_version > KNOWN_MANIFEST_VERSION:
+            _say("release {0} declares {1} version {2}, which this plugin cannot read".format(
+                release.get("tag_name", "?"), COMPATIBILITY_ASSET, manifest_version))
+            return None
+
+        kicad = declared["kicad"]
+        minimum, tested = kicad["minimum"], kicad["tested_up_to"]
+        maximum = kicad.get("maximum")
+        # Parsed here so a malformed file is one message rather than a traceback further down.
+        _version_tuple(minimum, 0)
+        _version_tuple(tested, 999)
+        if maximum is not None:
+            _version_tuple(maximum, 999)
+        return minimum, tested, maximum
+    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        _say("{0} in release {1} could not be read ({2}); installing without the check".format(
+            COMPATIBILITY_ASSET, release.get("tag_name", "?"), error))
+        return None
+
+
+def _check_kicad_compatibility(release):
+    """Refuse a release that says it will not work with the KiCad this plugin belongs to.
+
+    Before the download, which is the point: a refusal after 200 MB has arrived has cost the user
+    everything the check was meant to save.
+
+    **Two of the three ways this can end without an answer let the install through, deliberately.**
+    A release that declares nothing is every release cut before #138, and refusing those would leave
+    a plugin that installs nothing at all. A KiCad that cannot be worked out is a working tree, a
+    package unpacked by hand, or a KiCad whose paths have been moved - none of which is evidence
+    that the release is wrong for it, and all of which are cases where the application's own check
+    still runs once it has started. Only what the release itself declares can refuse: KiCad older
+    than its minimum, or newer than a maximum somebody set on purpose.
+    """
+    tag = release.get("tag_name", "?")
+    declared = _declared_compatibility(release)
+    if declared is None:
+        _say("release {0} declares no KiCad versions, so there is nothing to check it against".format(tag))
+        return
+
+    minimum, tested, maximum = declared
+    version, source = detect_kicad_version()
+    if version is None:
+        _say("which KiCad this plugin belongs to could not be worked out, so release {0} "
+             "(KiCad {1} and up, tested to {2}) is installed unchecked".format(tag, minimum, tested))
+        return
+
+    try:
+        running = _version_tuple(version, 0)
+    except ValueError:
+        _say("{0} does not look like a KiCad version, so release {1} is installed unchecked".format(version, tag))
+        return
+
+    if running < _version_tuple(minimum, 0):
+        raise BootstrapError(
+            "release {0} of the importer needs KiCad {1} or newer, and this is KiCad {2} (from {3}). "
+            "Nothing was downloaded. Update KiCad, or install a plugin release that supports "
+            "it.".format(tag, minimum, version, source))
+
+    if maximum is not None and running > _version_tuple(maximum, 999):
+        raise BootstrapError(
+            "release {0} of the importer supports KiCad up to {1}, and this is KiCad {2} (from {3}). "
+            "Nothing was downloaded.".format(tag, maximum, version, source))
+
+    if running > _version_tuple(tested, 999):
+        _say("release {0} was tested up to KiCad {1} and this is KiCad {2}; installing it anyway, "
+             "because tested up to is not known broken".format(tag, tested, version))
+        return
+
+    _say("release {0} supports KiCad {1} and up, and this is KiCad {2}".format(tag, minimum, version))
 
 
 def _download(url, destination, heartbeat=None):
@@ -530,6 +723,12 @@ def bootstrap():
 
         release = _latest_release()
         version = release.get("tag_name") or "?"
+
+        # Before the asset is looked up, the checksum is fetched or a byte is downloaded (#138):
+        # "this release does not support your KiCad" is the most useful thing that can be said
+        # about it, and saying it after 200 MB has arrived saves nobody anything.
+        _check_kicad_compatibility(release)
+
         url = _asset_url(release, asset_name)
         if url is None:
             raise BootstrapError(
