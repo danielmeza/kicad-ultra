@@ -35,7 +35,14 @@ import urllib.request
 import zipfile
 
 # The published apphost. Windows is the only platform that gets an extension; the name follows the
-# assembly's, which is what `dotnet publish` writes. It changes when the .NET projects are renamed.
+# assembly's, which is what `dotnet publish` writes.
+#
+# It changes with the rename in #132, together with `--mainExe` in .github/workflows/release.yml -
+# the two have to name the same file, and the rename tool rewrites both because both are plain
+# strings. The one visible consequence is on Windows and macOS, where this name is what is looked
+# for inside an already-unpacked application: an installed copy from before the rename stops being
+# found and is downloaded once more. Linux is unaffected, because there the AppImage is named after
+# PACK_ID rather than the assembly.
 EXE_NAME = "UltraLibrarianImporter.UI.exe" if os.name == "nt" else "UltraLibrarianImporter.UI"
 
 # The Velopack package id, which is what every asset name is built from. Keep it in step with
