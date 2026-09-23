@@ -60,6 +60,19 @@ resolve their `PackageVersion` from `$(KiCadSharpVersion)` / `$(SExpressionsVers
 `Directory.Build.props`, which is what keeps `scripts/use-local-libs.sh`'s command-line override
 working — verified: `-p:KiCadSharpVersion=0.1.0` still resolves 0.1.0.
 
+**The version in a binary comes from the tag, and three strings have to agree.**
+`Directory.Build.props` sets `$(Product)` (`KiCad Ultra`) and `$(Company)` (`Daniel Meza`), and
+`release.yml` passes the tag as `-p:Version=`; the SDK derives AssemblyVersion, FileVersion and
+InformationalVersion from that one property, and the local fallback is `0.0.0-dev`. Velopack stamps
+its installer's own version resource from `vpk pack`'s packTitle, packAuthors and packVersion, so
+**packTitle must keep reading exactly like `$(Product)` and packAuthors like `$(Company)`** — a
+signed release is refused when they disagree, because SignPath enforces one product name and one
+product version across every signed file (`docs/signpath-application.md` has the measured table and
+the artifact configuration). `IncludeSourceRevisionInInformationalVersion` is `false` for the same
+reason: the SDK has bundled SourceLink since .NET 8, so in a git checkout it appends the commit to
+the informational version — which is exactly what a Windows PE file reports as `ProductVersion`, so
+a `0.1.0` build called itself `0.1.0+<sha>` while the installer called itself `0.1.0`.
+
 `GenerateDocumentationFile=true` is set for one reason: IDE0005 (unnecessary usings) is silently
 skipped during a build unless the compiler is also emitting a doc file
 ([roslyn#41640](https://github.com/dotnet/roslyn/issues/41640)). `CS1591` is in `NoWarn` because of
