@@ -7,6 +7,7 @@
 | [Troubleshooting](troubleshooting.md) | A disabled Import button, a part that does not appear, what the About window is telling you, rate limiting, failed imports, and where the logs are |
 | [Building and testing](building.md) | The build gates, running the app during development, and building against local checkouts of SExpressions and KiCadSharp |
 | [Releasing](releasing.md) | What this repository publishes, and where the .NET libraries went |
+| [Applying to SignPath Foundation](signpath-application.md) | The free code-signing application, field by field: the order it has to happen in, what acceptance costs, the code signing policy to publish, and the SignPath and repository configuration that follows |
 
 [CLAUDE.md](../CLAUDE.md) at the repository root is the deeper guide: the architecture, every build
 constraint, and the traps that have already cost someone a day. It is kept current as the code
