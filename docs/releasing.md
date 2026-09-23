@@ -5,7 +5,7 @@ nuget.org moved out, and each new repository publishes its own. `release.yml` ha
 and its `v*` tag trigger removed rather than being left pointed at a solution that no longer exists.
 What it should release instead - the importer as a downloadable app, the KiCad plugin bundle, or
 nothing at all - is written up at the top of
-[`.github/workflows/release.yml`](.github/workflows/release.yml) and is the owner's call.
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) and is the owner's call.
 
 The stale nuget.org Trusted Publishing policy for `danielmeza/kicad-ultra` should be deleted once that
 is settled: it grants push rights for a workflow file that no longer pushes anything.
