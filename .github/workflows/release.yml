@@ -18,11 +18,18 @@ name: Release
 # before": it has been, the update path is now the app's own, and the alternative was a plugin that
 # installs nothing that runs.
 #
-# **Code signing, half done.** The same note said shipping self-contained binaries "would need code
-# signing on Windows to avoid SmartScreen". Windows is now signed through SignPath Foundation's free
-# Open Source programme, when the SIGNPATH_* secrets exist - see the long note in the `app` job and
-# docs/signing.md, including what stays unsigned on purpose and why. With no secrets, every signing
-# step skips and the release is built exactly as it was before, which is what a fork gets.
+# **Code signing, wired but not switched on.** The same note said shipping self-contained binaries
+# "would need code signing on Windows to avoid SmartScreen". Windows can now be signed through
+# SignPath Foundation's free Open Source programme - see the long note in the `app` job and
+# docs/signing.md, including what stays unsigned on purpose and why.
+#
+# **The unsigned path is the normal one**, not a fallback: there is no certificate yet, the
+# programme requires a release to exist before it will sign one, and the next few releases will go
+# out unsigned on purpose. With the SIGNPATH_* secrets absent every signing step skips, nothing
+# errors, and the release is built, published and installed exactly as it was before this was
+# added. That is also what a fork gets. What an unsigned build means for a user - the SmartScreen
+# dialog, Smart App Control, and the fact that updating is unaffected either way - is the first
+# section of docs/signing.md.
 #
 # macOS is still unsigned and un-notarized, so a .app is refused by Gatekeeper until the user allows
 # it by hand; vpk takes --signAppIdentity / --notaryProfile when there is an Apple Developer account
@@ -587,6 +594,9 @@ jobs:
       # unsigned Windows binaries, because uploading them is how SignPath receives them. They must
       # not reach the release - and until this was spelled out they would have, because the
       # installer would then arrive twice and the duplicate check below would fail the release.
+      #
+      # With signing off there are no such uploads, and these two steps fetch exactly what the one
+      # step before them fetched: the same files, the same basenames, the same `dist`.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts

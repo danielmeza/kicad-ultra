@@ -1,16 +1,70 @@
 # Code signing
 
 The importer ships as a self-contained Windows build that a user downloads and runs, and that then
-replaces its own binaries through Velopack. Unsigned, Windows SmartScreen warns about the installer
-and Microsoft Defender has nothing to check the download against.
+replaces its own binaries through Velopack. Unsigned, Windows tells that user the app is
+unrecognized and its publisher unknown, and no release ever earns a reputation that the next one
+can inherit.
 
 This page is the whole story: what the release workflow signs today, what it deliberately does not,
 which programme was chosen and why, and — the part only the maintainer can do — what to apply for,
 in what order, and what to paste into repository secrets.
 
-**Nothing here is done yet.** No certificate exists, no application has been made, and no secret is
-set. The workflow is wired and skips cleanly until all four secrets are present, so every release
-built before then is a complete, unsigned release.
+**Nothing here is done yet, and that is the plan for now.** No certificate exists, no application
+has been made, and no secret is set. The workflow is wired and every signing step skips when the
+secrets are absent, so the releases cut in the near future are complete, unsigned releases that
+build, publish and install exactly as they do today. Read the next section before deciding how
+urgent a certificate is.
+
+## What an unsigned build means for a user
+
+**The installer.** Someone who downloads `KiCadUltra-win-Setup.exe` from a GitHub release gets it
+with the Mark of the Web, and running it shows *Windows protected your PC — Microsoft Defender
+SmartScreen prevented an unrecognized app from starting*. There is no Run button on that dialog:
+they have to click **More info** and then **Run anyway**, and the details read *Publisher: Unknown
+publisher*. Microsoft's own table for "No signature" says exactly that, and adds "Enterprise policy
+can prevent continuation entirely"
+([SmartScreen reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation))
+— on a managed machine the warning is a refusal with nothing to click through.
+
+**The portable zip**, extracted with Explorer, behaves the same way: Explorer copies the Mark of the
+Web onto the extracted files.
+
+**The plugin's own path mostly escapes that, but not entirely.** `importer_launcher.py` downloads
+the portable zip with Python and unpacks it with `zipfile`; neither writes a Mark of the Web, so the
+SmartScreen download prompt does not appear for the copy the plugin runs. Two things are not
+MOTW-gated, though:
+
+* **Smart App Control** on Windows 11 — "Smart App Control will block execution of unsigned files
+  unless the file has a positive reputation. Smart App Control signature checks apply to all
+  executable files, not just those downloaded from the Internet"
+  ([SmartScreen reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)).
+  On a machine where it is on, the unsigned importer can simply refuse to start, with no dialog to
+  accept.
+* **Antivirus heuristics.** A 200 MB unsigned binary that unpacks itself into `%LOCALAPPDATA%` and
+  then rewrites its own files is a shape scanners dislike, and a signature is the cheapest signal
+  that it is not what it looks like.
+
+**Reputation never accumulates while nothing is signed.** "When a file is not signed, SmartScreen
+reputation must build for each new version of your files, starting with zero reputation. Reputation
+cannot transfer from previous versions unless both were signed using the same publisher identity."
+Every release starts from zero, for ever. Signing does not make the first-download warning go away
+— a new certificate has no reputation either, and EV stopped bypassing SmartScreen in 2024 — but it
+is the only thing that lets one release's reputation carry to the next.
+
+**Updating is unaffected, signed or not.** Velopack does not check Authenticode on an update: it
+fetches the `.nupkg` over HTTPS from GitHub Releases, checks it against the SHA-256 in
+`releases.win.json`, unpacks it and swaps `current/`. Nothing fails, nothing warns, and the user is
+not prompted — a self-update of an unsigned build works exactly like a self-update of a signed one.
+Two consequences worth being clear about:
+
+* Because the updater writes the new files itself, they carry no Mark of the Web, so a user who
+  clicked through the warning once does not meet it again on later versions. SmartScreen is a
+  first-install problem here, not a per-update one. Smart App Control is the exception, since it
+  does not care where a file came from.
+* Signing would **not** add a check to the update path, because nothing in that path verifies
+  signatures. What protects an update is HTTPS to GitHub plus that SHA-256, and `SHA256SUMS.txt`
+  for the plugin's first download. Signing is about what Windows does when a *user* launches a
+  file, not about what the updater accepts.
 
 ## What the release workflow does
 
@@ -53,18 +107,18 @@ launcher runs `current/UltraLibrarianImporter.UI.exe` inside the extracted archi
 that file is signed. Closing the gap needs a signing route that `vpk` can call per file; see
 [If the project ever pays for signing](#if-the-project-ever-pays-for-signing).
 
-### Two things signing does not do
+It also leaves the two unsigned Velopack binaries exposed to **Smart App Control**, which does not
+care about the Mark of the Web and blocks unsigned executables outright on the Windows 11 machines
+where it is enabled. Signing the application does not help `Update.exe`; only `vpk` doing the
+signing would.
 
-* **It does not make the updater verify anything.** Velopack does not check Authenticode on an
-  update. What protects the update path is the HTTPS release feed and the SHA-256 in
-  `releases.{channel}.json`, plus `SHA256SUMS.txt` for the plugin's first-run download. Signing
-  makes Windows trust the file a *user* launched; it does not add a check inside the updater.
-* **It does not buy instant SmartScreen clearance.** Microsoft's own guidance is that reputation
-  builds over time for OV certificates and for Azure Artifact Signing alike, and that EV
-  certificates stopped bypassing SmartScreen in 2024
-  ([Code signing options for Windows app developers](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)).
-  What matters is signing every release with the same identity so reputation accumulates instead of
-  restarting.
+And to repeat the two limits from [the first section](#what-an-unsigned-build-means-for-a-user),
+because they do not go away once a certificate exists: signing adds **no** check to the update path,
+which is protected by HTTPS and SHA-256 and nothing else, and it buys **no** instant SmartScreen
+clearance — reputation builds over time for OV certificates and Azure Artifact Signing alike, and
+EV stopped bypassing SmartScreen in 2024
+([Code signing options](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)).
+What signing buys is that reputation carries from one release to the next instead of restarting.
 
 ## Why SignPath Foundation
 
@@ -79,6 +133,22 @@ that file is signed. Closing the gap needs a signing route that `vpk` can call p
 Free was the requirement, and SignPath Foundation is the only free route: Microsoft's own code
 signing page sends open source projects there, and it is the only programme that provides the
 *certificate* rather than only a place to keep one.
+
+Two of the others can be ruled out plainly rather than left as options:
+
+* **Certum's Open Source certificate cannot sign from CI at all.** It arrives as a cryptographic
+  card with a reader, by courier; the private key is on that card and a GitHub-hosted runner cannot
+  reach it. Using it would mean a self-hosted runner with the card plugged into it, or signing
+  every release by hand on a desk. For €69 that is not a bargain, it is a different workflow.
+* **Azure Artifact Signing may simply not be purchasable**, which is a question only the maintainer
+  can answer: Public Trust certificates are open to *organizations* in the US, Canada, the EU, the
+  UK, Australia, New Zealand, Japan, South Korea, Singapore, Switzerland, Norway and Israel, but
+  "Individual developers must be located in the United States or Canada"
+  ([quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)).
+  **If you are eligible, it is worth the ~$10/month even though SignPath is free**, and not for the
+  cost: it is the only route `vpk` can drive itself, so it signs the updater and the portable stub
+  as well — see [If the project ever pays for signing](#if-the-project-ever-pays-for-signing). If
+  you are not eligible, SignPath Foundation is not merely the free option, it is the only one.
 
 **The free tier and the Foundation programme are different things**, and the terms page is explicit
 about the boundary: the conditions are split into "Conditions for free OSS SignPath.io
@@ -258,13 +328,14 @@ single file on demand from CI: the change is to delete every SignPath step and a
 `--azureTrustedSignFile <metadata.json>` (or `--signTemplate "AzureSignTool sign … {{file}}"`) to the
 existing `vpk pack` command.
 
-The catch is eligibility, not money: Public Trust certificates are available to **organizations** in
-the US, Canada, the EU, the UK, Australia, New Zealand, Japan, South Korea, Singapore, Switzerland,
-Norway and Israel, but **individual developers must be located in the United States or Canada**, and
-identity validation takes 1–20 business days
-([quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)). An individual
-maintainer outside the US or Canada cannot buy it at all, which is what makes SignPath Foundation
-not merely the free option but the only one.
+The catch is eligibility rather than money, and it is the one question worth answering before
+applying to SignPath at all: identity validation takes 1–20 business days, and **individual
+developers must be located in the United States or Canada**
+([quickstart](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)). If that is you,
+~$10/month buys a route with no manual approval on every release, no "the project must already be
+released in the form that should be signed" precondition, your own name on the certificate instead
+of the Foundation's, and — because `vpk` does the signing — the updater and the portable stub signed
+too. If it is not, the question does not arise.
 
 ## Code signing policy
 
