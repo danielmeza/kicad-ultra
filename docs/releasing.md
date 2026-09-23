@@ -1,14 +1,15 @@
-# Releasing, and an open decision
+# Releasing
 
-**Open decision.** This repository no longer publishes anything: the four packages it used to push to
-nuget.org moved out, and each new repository publishes its own. `release.yml` has had its publish jobs
-and its `v*` tag trigger removed rather than being left pointed at a solution that no longer exists.
-What it should release instead - the importer as a downloadable app, the KiCad plugin bundle, or
-nothing at all - is written up at the top of
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) and is the owner's call.
+**The decision this page used to leave open has been made** (#128): a `v*` tag releases the KiCad
+plugin bundle *and* the importer, and the two travel separately. The bundle is a few kilobytes of
+Python that the Plugin and Content Manager installs; the importer is a 453 MB self-contained build
+that the launcher downloads from the same release on its first run and then updates itself from
+through Velopack. Why, and why not GitHub Packages, is written up at the top of
+[`.github/workflows/release.yml`](../.github/workflows/release.yml).
 
-The stale nuget.org Trusted Publishing policy for `danielmeza/kicad-ultra` should be deleted once that
-is settled: it grants push rights for a workflow file that no longer pushes anything.
+This repository still publishes nothing to nuget.org - the four packages it used to push moved to
+their own repositories. **The stale nuget.org Trusted Publishing policy for `danielmeza/kicad-ultra`
+should be deleted**: it grants push rights for a workflow file that no longer pushes anything.
 
 ## History: where the libraries went
 

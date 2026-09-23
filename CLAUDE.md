@@ -226,6 +226,42 @@ misses the socket. An importer started by hand reaches a running KiCad whose API
 otherwise falls back to reading the disk.
 `plugin/requirements.txt` is deliberately empty; its comment explains why.
 
+### Which KiCad a build supports (#138)
+
+**One declaration, `kicad-compatibility.json` at the root, and everything derives from it**: the
+Plugin and Content Manager metadata's `kicad_version`, the copy published as a release asset, the
+copy that ships beside the executable, and what the About window reports. Three hand-maintained
+copies of the same numbers would drift; one file cannot. Today it declares a minimum of 10.0, tested
+up to 10.99, and no maximum — KiCad 9 has never been run, which is why the minimum is not lower.
+
+Two rules that are easy to get wrong in opposite directions:
+
+- **`kicad_version_max` is written only when the manifest declares a hard `maximum`, and
+  "tested up to" is not one.** KiCad treats it as a limit —
+  `PLUGIN_CONTENT_MANAGER::PreparePackage` marks the package incompatible once the running KiCad is
+  past it — so publishing a tested-up-to number there would hide the plugin from the Plugin and
+  Content Manager the day the next KiCad ships.
+- **A missing patch number reads as 0 in the minimum and 999 in the upper bounds**, as KiCad's own
+  PCM compares them. That is what makes `tested_up_to: "10.99"` cover a nightly that calls itself
+  10.99.0, instead of warning every KiCad 11 user from the first release onwards.
+
+`KiCadUpdateGate.Decide` is a pure function of (what the candidate release declares, which KiCad is
+running), and **three of its five answers permit the update**. The gate must never become a way for
+the plugin to stop updating for good, so KiCad not answering, a release declaring nothing, and a
+KiCad newer than "tested up to" all proceed with a warning. Only what the release says about itself
+refuses: older than its minimum, or newer than a maximum somebody set on purpose. The same decision
+is checked in three places — `importer_launcher.py` before it spends the download, the updater
+before it downloads or stages, and the application's log and About window afterwards — and
+`KiCadUltra --kicad-compatibility` prints the table by running the gate itself, so what it shows
+cannot drift from what runs.
+
+The launcher works out which KiCad from **its own install path**: the Plugin and Content Manager
+unpacks into `<documents>/kicad/<major.minor>/3rdparty/plugins/`, which is per version, so the
+directory holding the launcher names the only KiCad that will ever load it — and it is readable
+before anything has talked to KiCad. KiCad's versioned path variables are the fallback, because the
+API plugin manager sets only `KICAD_API_SOCKET` and `KICAD_API_TOKEN`, neither of which carries a
+version.
+
 **`release.yml` does not stage `plugin/bin/`, and that is now the design rather than a gap** (#128).
 A self-contained build is 453 MB, 341 MB of it CEF; the PCM package carries the Python side and the
 launcher fetches the rest. Do not add it back.
@@ -586,8 +622,29 @@ finishes the issue, and otherwise use `Part of #N`, or put the number before the
 
 ## Release state
 
-Nothing publishes to nuget.org any more. `release.yml` builds a Plugin and Content Manager bundle on
-`v*` tags, but it stages only the Python files and icons — an installed bundle has no `plugin/bin/`,
-so the launcher has nothing to start. Shipping the Avalonia app was consciously deferred (it has no
-smoke test and would need Windows code signing); the reasoning is in `docs/releasing.md` and the
-header comment of `.github/workflows/release.yml`. Read both before touching packaging.
+Nothing publishes to nuget.org any more, and the stale Trusted Publishing policy is still to be
+deleted (`docs/releasing.md`). A `v*` tag builds and attaches two things to one GitHub Release
+(#128):
+
+- **the Plugin and Content Manager bundle** — the Python side, the icons and a `metadata.json` the
+  workflow generates. A few kilobytes, and that is the point;
+- **the importer itself**, as Velopack packages for linux-x64, win-x64, osx-x64 and osx-arm64, with
+  a delta against the previous release, a checksum for every asset, and `kicad-compatibility.json`.
+
+**`plugin/bin/` is deliberately not staged, and that is the design rather than a gap.** A
+self-contained build is 453 MB, 341 MB of it CEF, so the package carries the launcher and the
+launcher fetches the application from the release on its first run. Do not add it back.
+
+The release job **fails the release** when an asset the launcher expects is missing, rather than
+publishing a release that looks complete and cannot be installed from. Anything the launcher or the
+updater fetches by name belongs in that list.
+
+**Nothing is code-signed yet.** `vpk pack` builds an unsigned `Setup.exe` and stub, so the Windows
+installer trips SmartScreen and an un-notarized macOS `.app` is refused by Gatekeeper until the user
+allows it by hand. The plugin's own path — the portable artifact, run directly — is not affected.
+Windows signing through SignPath Foundation's free programme for open source is prepared in
+`docs/signing.md`; **that programme requires the project to be released already**, so the first tag
+is necessarily unsigned and the application follows it.
+
+Read `docs/releasing.md` and the header comment of `.github/workflows/release.yml` before touching
+packaging.
