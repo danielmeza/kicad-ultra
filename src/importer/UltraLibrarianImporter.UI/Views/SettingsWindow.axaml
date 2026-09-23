@@ -201,12 +201,17 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- The user's own JLCPCB API credentials (#51). Without them EasyEDA / LCSC search
-                             uses the unofficial JLCPCB website endpoint (#52). -->
+                        <!-- The user's own JLCPCB API credentials (#51). Without them, or while JLCPCB has not
+                             approved the application's Parts permission (#126), EasyEDA / LCSC search uses the
+                             unofficial JLCPCB website endpoint (#52). -->
                         <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
                             <StackPanel Spacing="8">
                                 <TextBlock Text="JLCPCB API access (EasyEDA / LCSC search)" FontWeight="Bold" FontSize="14"/>
                                 <TextBlock Text="Optional. Without credentials, EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint. It is not a published API and can change or stop working at any time without notice. With your own credentials from JLCPCB's API platform, LCSC part numbers (such as C2040) are looked up through JLCPCB's official Components API instead. That API has no keyword search, so other searches still use the unofficial endpoint."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <TextBlock Text="Credentials are not enough on their own: JLCPCB grants API access per service, and the Components API needs your application's Parts permission approved. Applications are reviewed, so an account can hold working credentials whose Parts permission is rejected. While JLCPCB refuses the call, the search says so and falls back to the unofficial endpoint, so it keeps working."
                                            TextWrapping="Wrap"
                                            FontSize="12"
                                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>

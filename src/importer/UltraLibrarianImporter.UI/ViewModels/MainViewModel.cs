@@ -43,6 +43,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IComponentProviderRegistry _providerRegistry;
     private readonly IPartAggregatorService _aggregatorService;
     private readonly EasyEda2KiCadLocator _easyEda2KiCadLocator;
+    private readonly JlcpcbOfficialApiAccess _jlcpcbOfficialApiAccess;
 
     [ObservableProperty]
     private string _statusMessage = "Ready";
@@ -204,7 +205,8 @@ public partial class MainViewModel : ObservableObject
         IKiCadImportEngine importEngine,
         IComponentProviderRegistry providerRegistry,
         IPartAggregatorService aggregatorService,
-        EasyEda2KiCadLocator easyEda2KiCadLocator)
+        EasyEda2KiCadLocator easyEda2KiCadLocator,
+        JlcpcbOfficialApiAccess jlcpcbOfficialApiAccess)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -214,6 +216,7 @@ public partial class MainViewModel : ObservableObject
         _providerRegistry = providerRegistry;
         _aggregatorService = aggregatorService;
         _easyEda2KiCadLocator = easyEda2KiCadLocator;
+        _jlcpcbOfficialApiAccess = jlcpcbOfficialApiAccess;
 
         _selectedProvider = _providerRegistry.SelectedProvider;
         _activeProvider = _selectedProvider;
@@ -382,9 +385,11 @@ public partial class MainViewModel : ObservableObject
                 {
                     // EasyEDA / LCSC was not turned down this time, so the notice about it no longer applies.
                     _jlcpcbRateLimit = null;
-                    UpdateJlcpcbNotice();
                 }
 
+                // The search itself is where JLCPCB refuses this application the official API (#126),
+                // so the notice is worked out again whatever the search found.
+                UpdateJlcpcbNotice();
                 EndSearch();
                 break;
 
@@ -799,9 +804,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _jlcpcbNoticeHideToolTip = string.Empty;
 
-    // The credential state the notice was hidden in. Hiding lasts until the app closes or the state
-    // changes, so a notice about new credentials is not swallowed by an old dismissal.
-    private JlcpcbApiCredentialState? _hiddenJlcpcbNoticeState;
+    // What the notice said when it was hidden: the credential state, and what JLCPCB has refused those
+    // credentials (#126). Hiding lasts until the app closes or one of those changes, so neither a
+    // notice about new credentials nor one about a refusal is swallowed by an old dismissal.
+    private (JlcpcbApiCredentialState State, JlcpcbApiRefusal? Refusal)? _hiddenJlcpcbNotice;
 
     // The last search's EasyEDA / LCSC refusal (#110), with that search's query, while it applies: until
     // a search completes without one, or the notice is hidden.
@@ -813,7 +819,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void HideJlcpcbNotice()
     {
-        _hiddenJlcpcbNoticeState = JlcpcbApiCredentials.GetState(_configService);
+        _hiddenJlcpcbNotice = (JlcpcbApiCredentials.GetState(_configService), _jlcpcbOfficialApiAccess.GetRefusal(_configService));
         _jlcpcbRateLimit = null;
         IsJlcpcbNoticeVisible = false;
     }
@@ -837,25 +843,50 @@ public partial class MainViewModel : ObservableObject
 
         JlcpcbNoticeHideToolTip = "Hide this notice until the app restarts or the JLCPCB API settings change";
         JlcpcbApiCredentialState state = JlcpcbApiCredentials.GetState(_configService);
-        (JlcpcbNoticeTitle, JlcpcbNoticeText) = state switch
-        {
-            JlcpcbApiCredentialState.None => (
-                "EasyEDA / LCSC search uses an unofficial source",
-                "Parts are looked up through an internal endpoint of JLCPCB's website. It is not a published API and can change or stop working at any time without notice. " +
-                "For a supported source, apply for access to JLCPCB's official API (guide below), then enter your App ID, Access Key and Secret Key in Settings > Component Providers."),
-            JlcpcbApiCredentialState.Incomplete => (
-                "JLCPCB API credentials are incomplete",
-                $"Missing: {string.Join(", ", JlcpcbApiCredentials.GetMissing(_configService))}. Until all three are entered in Settings > Component Providers, " +
-                "EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint, which can change or stop working at any time without notice."),
-            JlcpcbApiCredentialState.Complete => (
-                "EasyEDA / LCSC keyword searches use an unofficial source",
-                "LCSC part numbers such as C2040 are looked up through JLCPCB's official API with your credentials. That API has no keyword search, " +
-                "so other searches use an internal endpoint of JLCPCB's website, which can change or stop working at any time without notice."),
-            _ => throw new System.Diagnostics.UnreachableException($"Unknown JLCPCB credential state {state}"),
-        };
 
-        IsJlcpcbNoticeVisible = state != _hiddenJlcpcbNoticeState && easyEdaEnabled;
+        // JLCPCB refusing this application the official API is the thing to say while it stands (#126):
+        // the credentials are stored, and every EasyEDA / LCSC search uses the website endpoint anyway.
+        JlcpcbApiRefusal? refusal = _jlcpcbOfficialApiAccess.GetRefusal(_configService);
+        (JlcpcbNoticeTitle, JlcpcbNoticeText) = refusal is { } denied ? Describe(denied) : DescribeCredentials(state);
+
+        IsJlcpcbNoticeVisible = (state, refusal) != _hiddenJlcpcbNotice && easyEdaEnabled;
     }
+
+    // What JLCPCB refused, and what the app does about it. It names what the user can act on - the
+    // Parts permission, or the three values in Settings - and never a credential value itself.
+    private static (string Title, string Text) Describe(JlcpcbApiRefusal refusal) => refusal switch
+    {
+        JlcpcbApiRefusal.NotApproved => (
+            "JLCPCB has not approved this application for its Components API",
+            "Your JLCPCB API credentials are stored, but JLCPCB refused the call. Its API access is granted per service, and the Components API needs " +
+            "your application's Parts permission approved; an IP whitelist on the application can refuse it the same way. Until that is sorted out, LCSC " +
+            "part numbers are looked up through an internal endpoint of JLCPCB's website, which is not a published API and can change or stop working at " +
+            "any time without notice. The app stops calling the official API until the credentials change in Settings > Component Providers."),
+        JlcpcbApiRefusal.CredentialsRejected => (
+            "JLCPCB did not accept these API credentials",
+            "JLCPCB rejected the stored App ID, Access Key or Secret Key, so LCSC part numbers cannot be looked up through its official Components API. " +
+            "Check all three against your application in JLCPCB's API platform, in Settings > Component Providers. Until they change, part numbers are " +
+            "looked up through an internal endpoint of JLCPCB's website, which is not a published API and can change or stop working at any time without notice."),
+        _ => throw new System.Diagnostics.UnreachableException($"Unknown JLCPCB refusal {refusal}"),
+    };
+
+    private (string Title, string Text) DescribeCredentials(JlcpcbApiCredentialState state) => state switch
+    {
+        JlcpcbApiCredentialState.None => (
+            "EasyEDA / LCSC search uses an unofficial source",
+            "Parts are looked up through an internal endpoint of JLCPCB's website. It is not a published API and can change or stop working at any time without notice. " +
+            "For a supported source, apply for access to JLCPCB's official API (guide below), then enter your App ID, Access Key and Secret Key in Settings > Component Providers."),
+        JlcpcbApiCredentialState.Incomplete => (
+            "JLCPCB API credentials are incomplete",
+            $"Missing: {string.Join(", ", JlcpcbApiCredentials.GetMissing(_configService))}. Until all three are entered in Settings > Component Providers, " +
+            "EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint, which can change or stop working at any time without notice."),
+        JlcpcbApiCredentialState.Complete => (
+            "EasyEDA / LCSC keyword searches use an unofficial source",
+            "LCSC part numbers such as C2040 are looked up through JLCPCB's official API with your credentials, if JLCPCB has approved this application's " +
+            "Parts permission. That API has no keyword search, so other searches use an internal endpoint of JLCPCB's website, which can change or stop " +
+            "working at any time without notice."),
+        _ => throw new System.Diagnostics.UnreachableException($"Unknown JLCPCB credential state {state}"),
+    };
 
     // Search cannot tell whether an EasyEDA part has a symbol, footprint or 3D model, but an import
     // shows it (#48): an asset easyeda2kicad produced for the part exists, whichever search found its

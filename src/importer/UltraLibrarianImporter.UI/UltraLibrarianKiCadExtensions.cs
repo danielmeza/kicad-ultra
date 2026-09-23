@@ -26,6 +26,9 @@ internal static class UltraLibrarianKiCadExtensions
     public static IServiceCollection AddUltraLibrarianKiCadServices(this IServiceCollection services, JlcpcbSourcePolicy jlcpcbSources) =>
         services
             .AddSingleton(jlcpcbSources)
+            // What JLCPCB has refused this application's credentials, for as long as the process runs
+            // (#126): the provider records it, the Part Explorer's notice reads it.
+            .AddSingleton<JlcpcbOfficialApiAccess>()
             .AddKiCad(UltraLibrarianKiCadClientName)
             .AddSingleton(provider => provider.GetRequiredKeyedService<KiCad>(UltraLibrarianKiCadClientName))
             // Core import engine & provider registry

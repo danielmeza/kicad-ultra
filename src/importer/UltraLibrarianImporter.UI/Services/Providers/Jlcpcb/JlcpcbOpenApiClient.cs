@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -49,7 +50,8 @@ public static class JlcpcbOpenApiClient
     /// Looks <paramref name="lcscPartNumber"/> up. Returns the parts the API described, which is
     /// empty only when it answered with none; throws for anything short of an answer.
     /// </summary>
-    /// <exception cref="HttpRequestException">A non-success HTTP status, or no response.</exception>
+    /// <exception cref="JlcpcbApiAccessDeniedException">JLCPCB refuses this application the API (#126).</exception>
+    /// <exception cref="HttpRequestException">Any other non-success HTTP status, or no response.</exception>
     /// <exception cref="JlcpcbApiException">The API reported an error in the body.</exception>
     /// <exception cref="JsonException">The body is not the expected shape.</exception>
     public static async Task<IReadOnlyList<JlcpcbPart>> GetComponentDetailAsync(
@@ -64,7 +66,7 @@ public static class JlcpcbOpenApiClient
         var timestamp = timeProvider.GetUtcNow().ToUnixTimeSeconds();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, Host + ComponentDetailPath);
-        request.Headers.Authorization = CreateAuthorization(credentials, HttpMethod.Post.Method, ComponentDetailPath, body, timestamp, CreateNonce());
+        request.Headers.Authorization = CreateAuthorizationOrThrow(credentials, ComponentDetailPath, body, timestamp);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         // The documented "Content-Type: application/json", without the charset StringContent would add.
         request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body));
@@ -78,11 +80,16 @@ public static class JlcpcbOpenApiClient
         {
             // Documented: 400 invalid parameters, 401 signature rejected, 403 forbidden (for
             // example an IP whitelist), 500 platform error.
-            throw new HttpRequestException(
+            var reason =
                 $"JLCPCB Components API returned HTTP {(int)response.StatusCode} ({response.ReasonPhrase}): " +
-                $"{JlcpcbJson.TryGetMessage(json) ?? "no message"}. J-Trace-ID: {traceId}",
-                null,
-                response.StatusCode);
+                $"{JlcpcbJson.TryGetMessage(json) ?? "no message"}. J-Trace-ID: {traceId}";
+
+            // 401 and 403 are the two statuses JLCPCB documents as the platform refusing the caller
+            // rather than failing to answer, so they end the official API for these credentials
+            // instead of costing the user the search (#126). Every other status still throws.
+            throw GetRefusal(response.StatusCode) is { } refusal
+                ? new JlcpcbApiAccessDeniedException(refusal, reason)
+                : new HttpRequestException(reason, null, response.StatusCode);
         }
 
         using var doc = JsonDocument.Parse(json);
@@ -134,6 +141,50 @@ public static class JlcpcbOpenApiClient
 
     /// <summary>A fresh 32-character nonce from A-Z, a-z and 0-9, from a cryptographic RNG.</summary>
     public static string CreateNonce() => RandomNumberGenerator.GetString(NonceAlphabet, NonceLength);
+
+    /// <summary>
+    /// What a non-success status means for this application's access (#126), or null when it means
+    /// only that this call failed.
+    /// </summary>
+    /// <remarks>
+    /// JLCPCB's "Error Information" section (https://api.jlcpcb.com/docs/start) documents five
+    /// statuses. Two of them are the platform turning the caller away, and no retry of the same call
+    /// with the same credentials can change either:
+    /// <list type="bullet">
+    /// <item>401, "Unauthorized request. Usually due to signature verification failure": JLCPCB did
+    /// not accept the credentials.</item>
+    /// <item>403, "Forbidden. The request is not allowed": the application may not call this
+    /// interface. The Components API needs the Parts permission approved, and an IP whitelist can
+    /// refuse a call the same way.</item>
+    /// </list>
+    /// The other three stay strict, because they are this call's problem and not the account's: 400
+    /// ("Invalid request parameters"), 500 ("Internal server error on the open platform"), and 200,
+    /// whose body carries the business <c>code</c>.
+    /// </remarks>
+    public static JlcpcbApiRefusal? GetRefusal(HttpStatusCode status) =>
+        status is HttpStatusCode.Unauthorized ? JlcpcbApiRefusal.CredentialsRejected
+        : status is HttpStatusCode.Forbidden ? JlcpcbApiRefusal.NotApproved
+        : null;
+
+    // A credential holding a character that cannot go in an HTTP header cannot be sent at all, which
+    // is the same standing answer as JLCPCB rejecting it: it is reported as such rather than as an
+    // unhandled failure that would cost the user the search. The message never repeats the value.
+    private static AuthenticationHeaderValue CreateAuthorizationOrThrow(
+        JlcpcbApiCredentials credentials, string path, string body, long timestamp)
+    {
+        try
+        {
+            return CreateAuthorization(credentials, HttpMethod.Post.Method, path, body, timestamp, CreateNonce());
+        }
+        catch (FormatException ex)
+        {
+            throw new JlcpcbApiAccessDeniedException(
+                JlcpcbApiRefusal.CredentialsRejected,
+                "The stored JLCPCB App ID or Access Key holds a character that cannot be sent in an HTTP header, " +
+                "so the Components API cannot be called with these credentials.",
+                ex);
+        }
+    }
 
     // "data" is the list itself, or an object holding it.
     private static JsonElement? GetDetailList(JsonElement root) =>
