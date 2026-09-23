@@ -92,7 +92,7 @@ Linux, FUSE to run the AppImage — `APPIMAGE_EXTRACT_AND_RUN=1` if your system 
 
 | Page | What's in it |
 |---|---|
-| [Installing](docs/installing.md) | Every platform, the Flatpak, easyeda2kicad, and where settings, logs and credentials live |
+| [Installing](docs/installing.md) | Every platform, the Flatpak, easyeda2kicad, where settings, logs and credentials live, and how to remove it all |
 | [Where the parts come from](docs/data-sources.md) | Each source and what it needs, JLCPCB's two routes, CAD availability, attribution and trademark rules |
 | [Troubleshooting](docs/troubleshooting.md) | The full list, beyond the three below |
 | [Building and testing](docs/building.md) | Build gates, running it during development, building against local library checkouts |
@@ -154,6 +154,9 @@ What it does not do yet:
 Issues and pull requests are welcome. A good bug report carries the log lines around the failure and
 the KiCad version from the About window. [CLAUDE.md](CLAUDE.md) is worth reading first — it is the
 guide this repository is actually developed against, including the build gates.
+
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md), which is the
+[Contributor Covenant](https://www.contributor-covenant.org/) 2.1.
 
 Two rules that are not style preferences:
 

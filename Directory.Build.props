@@ -26,6 +26,41 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- The identity every binary carries in its Windows version resource, and the one place it is
+       written. Before this, nothing set it and every build shipped as `1.0.0.0` under the assembly
+       name - the SDK's defaults - whatever the release was tagged.
+
+       Three consumers have to agree on these strings, and they are checked against each other:
+         * `dotnet publish -p:Version=` in .github/workflows/release.yml, which passes the tag;
+         * the packTitle, packAuthors and packVersion arguments of `vpk pack` in the same file.
+           Velopack stamps its installer's own version resource from them, so packTitle must read
+           exactly like $(Product) and packAuthors like $(Company), or the installer and the
+           application it installs claim to be two different products;
+         * SignPath Foundation, which requires that signed binaries carry this metadata and that a
+           signing request be rejected when they do not: "Set all product name attributes to your
+           project's name. Set all product version attributes to the same value in each build."
+           (https://signpath.org/terms.html). docs/signpath-application.md holds the artifact
+           configuration that enforces it.
+
+       $(Version) is the only one that moves. The SDK derives AssemblyVersion, FileVersion and
+       InformationalVersion from it, so passing `-p:Version=0.1.0` is enough; the fallback below
+       marks a build that did not come from a tag, and is deliberately not a plausible release
+       number. -->
+  <PropertyGroup>
+    <Product>KiCad Ultra</Product>
+    <Company>Daniel Meza</Company>
+    <Version Condition="'$(Version)' == ''">0.0.0-dev</Version>
+    <!-- Off, and the reason is not cosmetic. The SDK has bundled SourceLink since .NET 8, so in a
+         git checkout it appends the commit to the informational version, and the informational
+         version is what a Windows PE file reports as ProductVersion: measured, a build of 0.1.0
+         came out as `0.1.0+2507afb0909dd1333fa4eb5774bb28a0d297a376`. Velopack's installer would
+         still say `0.1.0`, so the two halves of one release would disagree, and SignPath's
+         product-version restriction - which compares the string - would reject every signing
+         request. Nothing else is lost: the PDB still carries SourceLink's source mapping, and the
+         commit is recoverable from the tag. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
   <!-- Versions of the split-out libraries this repository consumes. Override either on the command
        line to build against a locally packed build; see README, "Developing against local library
        sources". -->

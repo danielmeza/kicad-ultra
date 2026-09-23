@@ -108,10 +108,18 @@ jobs:
       # Self-contained: the plugin installs one archive and runs it. Nothing about a KiCad install
       # implies a .NET runtime, and asking a user to install one to import a symbol is the kind of
       # step the Plugin and Content Manager exists to avoid.
+      #
+      # `-p:Version=` is what puts the release's number inside the binaries. Without it the SDK
+      # stamps 1.0.0.0 into every build, while `--packVersion` below stamps the tag into the
+      # package and the installer - so the application would report a different version from the
+      # thing that installed it, and a signed build would fail SignPath's product-version
+      # restriction. $(Product) and $(Company) come from Directory.Build.props and must keep
+      # matching --packTitle and --packAuthors; both files say so.
       - name: Publish ${{ matrix.rid }}
         run: >
           dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj
           -c Release -r ${{ matrix.rid }} --self-contained true -o publish
+          -p:Version=${{ steps.ver.outputs.version }}
 
       # Seeds the output directory with the previous release's full package so `vpk pack` can diff
       # against it and emit a delta. It is allowed to fail: on the first release of a channel there
