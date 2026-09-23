@@ -209,9 +209,10 @@ A self-contained build is 453 MB, 341 MB of it CEF; the PCM package carries the 
 launcher fetches the rest. Do not add it back.
 
 **`HarfBuzzPreload.Apply()` must stay the first thing on `Main`'s GUI path that touches Avalonia or
-CEF (#78)** — which since #128 means it comes after NLog's setup and after
-`VelopackApp.Build().Run()`, and before everything else. CEF loads GTK
-with `RTLD_GLOBAL`, which brings in the system `libharfbuzz.so.0`. `libHarfBuzzSharp.so` calls its own
+CEF (#78)** — which since #128 means after NLog's setup and after `VelopackApp.Build().Run()`, and
+before everything else.
+
+CEF loads GTK with `RTLD_GLOBAL`, which brings in the system `libharfbuzz.so.0`. `libHarfBuzzSharp.so` calls its own
 `hb_*` functions through lazily bound slots, so those calls land in the system copy and the app dies
 with SIGSEGV (exit 139) right after the main window opens. The preload `dlopen`s HarfBuzzSharp with
 `RTLD_NOW` before anything else touches it, binding every slot to itself. It deliberately stays
