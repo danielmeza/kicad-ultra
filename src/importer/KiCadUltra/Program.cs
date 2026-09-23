@@ -41,6 +41,18 @@ internal sealed class Program
             string.Equals(a, "-mcp", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(a, "mcp", StringComparison.OrdinalIgnoreCase));
 
+        // A report of the KiCad versions this build supports, and of what a background update check
+        // would do for each way a KiCad and a candidate release can disagree (#138). Nothing else
+        // runs: no application data is migrated, no logging configuration is assigned, no Velopack
+        // and no Avalonia, so it is safe to ask for at any time and on any machine.
+        //
+        // `--mcp` wins over it, because stdout there is the JSON-RPC channel and this writes to it.
+        if (!isMcp && Array.Exists(args, a => string.Equals(a, "--kicad-compatibility", StringComparison.OrdinalIgnoreCase)))
+        {
+            WriteKiCadCompatibilityReport(Console.Out);
+            return;
+        }
+
         // Before anything works out a path under the application-data folder, in either mode: an
         // installation from before #132 keeps its settings, logs and browser cache under the names
         // this application used to have, and they are moved here or they are lost. Nothing is logged
@@ -157,6 +169,58 @@ internal sealed class Program
         GlobalDiagnosticsContext.Set("logDirectory", logDirectory);
         InternalLogger.LogLevel = NLog.LogLevel.Error;
         InternalLogger.LogFile = Path.Combine(logDirectory, "nlog-internal.log");
+    }
+
+    /// <summary>
+    /// Prints what this build declares about KiCad, and the whole of the updater's decision table
+    /// (#138): every combination of a declaration and a running KiCad, and what a background update
+    /// check does with it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rows are run through <see cref="KiCadUpdateGate.Decide"/> itself, not described beside it.
+    /// A table written out by hand would be a second statement of the rules, and the one thing this
+    /// change is for is that there is only ever one.
+    /// </para>
+    /// <para>
+    /// The manifests here are literals rather than the shipped file, because the interesting cases
+    /// are ones no KiCad in existence can produce: nothing ships a KiCad 9 to run this under, and
+    /// nothing declares a maximum today.
+    /// </para>
+    /// </remarks>
+    private static void WriteKiCadCompatibilityReport(TextWriter output)
+    {
+        var shipped = KiCadCompatibilityManifest.TryLoadShipped(out var error);
+        output.WriteLine("This build supports: " + (shipped?.Describe() ?? $"not declared - {error}"));
+        output.WriteLine();
+        output.WriteLine("What a background update check does, for every way a KiCad and a release can disagree.");
+        output.WriteLine("A release is skipped only where the release itself says it will not work:");
+        output.WriteLine();
+
+        const string TestedTo1099 = """{"manifest_version":1,"kicad":{"minimum":"10.0","tested_up_to":"10.99","maximum":null}}""";
+        const string MaximumIs1099 = """{"manifest_version":1,"kicad":{"minimum":"10.0","tested_up_to":"10.99","maximum":"10.99"}}""";
+
+        (string Case, string? Json, string? KiCad)[] rows =
+        [
+            ("in range", TestedTo1099, "10.0.6"),
+            ("below the minimum", TestedTo1099, "9.0.8"),
+            ("newer than tested, no maximum", TestedTo1099, "11.0.0"),
+            ("above a declared maximum", MaximumIs1099, "11.0.0"),
+            ("the release declares nothing", null, "10.0.6"),
+            ("KiCad could not be reached", TestedTo1099, null),
+        ];
+
+        foreach ((string Case, string? Json, string? KiCad) row in rows)
+        {
+            UpdateGateDecision decision = KiCadUpdateGate.Decide(
+                "v9.9.9",
+                row.Json is null ? null : KiCadCompatibilityManifest.Parse(row.Json),
+                row.KiCad is null ? null : Version.Parse(row.KiCad));
+
+            output.WriteLine($"  {row.Case,-30}  KiCad {row.KiCad ?? "unknown",-8}  {(decision.Proceed ? "UPDATES" : "SKIPS  ")}  {decision.Outcome}");
+            output.WriteLine($"  {string.Empty,-30}  {decision.Reason}");
+            output.WriteLine();
+        }
     }
 
     // What AppDataFolder.Migrate did, reported once a logging configuration exists. NLog's own
@@ -317,6 +381,10 @@ internal sealed class Program
             .AddTransient<ViewModels.AboutViewModel>()
             .AddSingleton(CreateSecretStore)
             .AddSingleton<IConfigService, ConfigService>()
+            // What this build says about the KiCad versions it supports, and what a candidate release
+            // says about its own (#138). The GUI container only: it is read by the updater, which
+            // does not run under `--mcp`, and by the About window, which does not exist there.
+            .AddSingleton<IKiCadCompatibility, KiCadCompatibilityService>()
             // Downloads new releases in the background and stages them for the next start (#128). The
             // GUI container only: the `--mcp` container above must not update or prompt.
             .AddHostedService<AppUpdateService>()

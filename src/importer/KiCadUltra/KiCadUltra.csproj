@@ -23,6 +23,14 @@
     <Content Include="nlog.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- The one declaration of the KiCad versions a build supports (#138). It lives at the root of
+         the repository because .github/workflows/release.yml reads it as well - into the Plugin and
+         Content Manager metadata, and as a release asset the launcher and the updater fetch - and
+         because a human looking for it should find it before they find a csproj. Linked here rather
+         than copied, so there is exactly one of it. -->
+    <Content Include="$(MSBuildThisFileDirectory)../../../kicad-compatibility.json"
+             Link="kicad-compatibility.json"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

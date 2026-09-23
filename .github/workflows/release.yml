@@ -239,28 +239,56 @@ jobs:
       # in a partner's advertising and "JLC" in its website URLs, on pain of losing API access (#58):
       # keep JLCPCB (and LCSC) out of the name, description and icon, and "JLC" out of the
       # identifier, the homepage and the download URL.
+      #
+      # The KiCad versions come from kicad-compatibility.json (#138) and are not written here. There
+      # is one declaration in this repository and everything derives from it; the "9.0" that used to
+      # be typed on the line below was a minimum nobody had ever run.
       - name: Write metadata.json
         shell: bash
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
-          cat > staging/metadata.json <<JSON
-          {
-            "\$schema": "https://go.kicad.org/pcm/schemas/v1",
-            "name": "KiCad UltraLibrarian Importer",
-            "description": "Import schematic symbols, footprints and 3D models from UltraLibrarian into KiCad",
-            "description_full": "Browse UltraLibrarian and import the schematic symbol, footprint and 3D model for a part straight into the open KiCad project, without leaving KiCad. This package holds the launcher only; the first time the plugin is used it downloads the importer application for your platform from the project's GitHub releases, verifies it, and keeps it up to date after that.",
-            "identifier": "com.github.danielmeza.kicad-ultralibrarian-importer",
-            "type": "plugin",
-            "author": { "name": "Daniel Meza", "contact": { "web": "https://github.com/danielmeza" } },
-            "license": "MIT",
-            "resources": { "homepage": "https://github.com/danielmeza/kicad-ultra" },
-            "versions": [
-              { "version": "${VERSION}", "status": "stable", "kicad_version": "9.0" }
-            ]
+          python3 - <<'PY'
+          import json, os
+
+          # kicad_version is the manifest's minimum. kicad_version_max is emitted *only* when the
+          # manifest declares a hard maximum, and "tested up to" is not one: KiCad treats
+          # kicad_version_max as a hard limit - PLUGIN_CONTENT_MANAGER::PreparePackage marks a
+          # version incompatible once the running KiCad is past it - so publishing a tested-up-to
+          # number there would hide the package from the Plugin and Content Manager on the day the
+          # next KiCad ships, which is the opposite of what the number means.
+          declared = json.load(open("kicad-compatibility.json", encoding="utf-8"))["kicad"]
+          version = {
+              "version": os.environ["VERSION"],
+              "status": "stable",
+              "kicad_version": declared["minimum"],
           }
-          JSON
+          if declared.get("maximum"):
+              version["kicad_version_max"] = declared["maximum"]
+
+          metadata = {
+              "$schema": "https://go.kicad.org/pcm/schemas/v1",
+              "name": "KiCad UltraLibrarian Importer",
+              "description": "Import schematic symbols, footprints and 3D models from UltraLibrarian into KiCad",
+              "description_full": (
+                  "Browse UltraLibrarian and import the schematic symbol, footprint and 3D model for a part "
+                  "straight into the open KiCad project, without leaving KiCad. This package holds the launcher "
+                  "only; the first time the plugin is used it downloads the importer application for your "
+                  "platform from the project's GitHub releases, verifies it, and keeps it up to date after that."
+              ),
+              "identifier": "com.github.danielmeza.kicad-ultralibrarian-importer",
+              "type": "plugin",
+              "author": {"name": "Daniel Meza", "contact": {"web": "https://github.com/danielmeza"}},
+              "license": "MIT",
+              "resources": {"homepage": "https://github.com/danielmeza/kicad-ultra"},
+              "versions": [version],
+          }
+
+          with open("staging/metadata.json", "w", encoding="utf-8") as handle:
+              json.dump(metadata, handle, indent=2)
+          print(json.dumps(metadata["versions"], indent=2))
+          PY
           python3 -m json.tool staging/metadata.json > /dev/null
 
       - name: Create the archive
@@ -271,6 +299,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          # The declaration itself, as a release asset (#138). plugin/importer_launcher.py reads it
+          # from the release before it downloads 200 MB, and the application's updater reads the
+          # candidate release's copy before it downloads or stages anything. It is also the one file
+          # in a release a human can open to see what that build supports.
+          cp kicad-compatibility.json dist/
           ARCHIVE="dist/kicad-ultralibrarian-importer-${VERSION}.zip"
           (cd staging && zip -qr "../${ARCHIVE}" .)
           echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
@@ -364,6 +397,10 @@ jobs:
       # only "release X has no asset named ...", which is a broken release that looks complete.
       # Checking here turns that into a failed release instead, which is the difference between
       # finding out now and finding out from a user.
+      #
+      # kicad-compatibility.json is in the list for the same reason (#138): the launcher and the
+      # updater both fetch it from the release, and a release without it is one where neither check
+      # can run - silently, because both treat a missing declaration as "nothing to check".
       - name: Check the launcher's assets are all present
         shell: bash
         run: |
@@ -374,7 +411,8 @@ jobs:
             "$PACK_ID-win-Portable.zip" \
             "$PACK_ID-osx-x64-Portable.zip" \
             "$PACK_ID-osx-arm64-Portable.zip" \
-            releases.linux.json releases.win.json releases.osx-x64.json releases.osx-arm64.json
+            releases.linux.json releases.win.json releases.osx-x64.json releases.osx-arm64.json \
+            kicad-compatibility.json
           do
             if [ -f "dist/$asset" ]; then
               echo "ok      $asset"

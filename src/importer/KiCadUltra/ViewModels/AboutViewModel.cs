@@ -12,6 +12,8 @@ using Kiapi.Common;
 
 using KiCadSharp;
 
+using KiCadUltra.Services.Interfaces;
+
 using Microsoft.Extensions.Logging;
 
 namespace KiCadUltra.ViewModels;
@@ -30,6 +32,7 @@ public partial class AboutViewModel : ViewModelBase
 
     private readonly ILogger<AboutViewModel> _logger;
     private readonly KiCad? _kiCad;
+    private readonly IKiCadCompatibility? _compatibility;
 
     [ObservableProperty]
     private string _applicationName = "UltraLibrarian Importer for KiCad";
@@ -58,6 +61,21 @@ public partial class AboutViewModel : ViewModelBase
     [ObservableProperty]
     private string _kicadVersion = Loading;
 
+    /// <summary>The KiCad versions this build declares support for, always shown (#138).</summary>
+    [ObservableProperty]
+    private string _supportedKicadVersions = string.Empty;
+
+    /// <summary>
+    /// Why the running KiCad is outside that range, or empty when it is inside it, when nothing is
+    /// declared, or when KiCad did not answer.
+    /// </summary>
+    [ObservableProperty]
+    private string _kicadVersionWarning = string.Empty;
+
+    /// <summary>Whether <see cref="KicadVersionWarning"/> has something to say.</summary>
+    [ObservableProperty]
+    private bool _hasKicadVersionWarning;
+
     [ObservableProperty]
     private string _projectName = Loading;
 
@@ -74,10 +92,17 @@ public partial class AboutViewModel : ViewModelBase
     /// </summary>
     /// <param name="logger">The logger</param>
     /// <param name="kiCad">KiCad client (can be null)</param>
-    public AboutViewModel(ILogger<AboutViewModel> logger, KiCad? kiCad = null)
+    /// <param name="compatibility">
+    /// What this build supports (#138), or <see langword="null"/> for the XAML designer, which has no
+    /// container. The window then says nothing about compatibility rather than failing to open.
+    /// </param>
+    public AboutViewModel(ILogger<AboutViewModel> logger, KiCad? kiCad = null, IKiCadCompatibility? compatibility = null)
     {
         _logger = logger;
         _kiCad = kiCad;
+        _compatibility = compatibility;
+
+        SupportedKicadVersions = compatibility?.DescribeShipped() ?? string.Empty;
 
         // What the client dials and whether it has a token -- not KiCad's environment alone, which is
         // set only for a plugin KiCad launched itself. The words for both lines are the view's, so
@@ -138,6 +163,16 @@ public partial class AboutViewModel : ViewModelBase
 
         KicadVersion = version?.ToString() ?? Unknown;
         _logger.LogInformation("Connected to KiCad {Version}", KicadVersion);
+
+        // A line beside the version, never a dialog and never a refusal (#138). A KiCad newer than
+        // this build was tested against is worth saying and nothing more; one outside a declared
+        // minimum or maximum is worth saying more loudly, and still nothing more.
+        KicadVersionWarning = (version is null ? null : _compatibility?.WarnAbout(version)) ?? string.Empty;
+        HasKicadVersionWarning = KicadVersionWarning.Length > 0;
+        if (HasKicadVersionWarning)
+        {
+            _logger.LogWarning("{Warning}", KicadVersionWarning);
+        }
 
         // KiCad 10 names the project only through the board open in pcbnew, and answers with an error
         // when there is none. KiCad is still connected then, so that alone leaves the status line.
@@ -204,6 +239,8 @@ public partial class AboutViewModel : ViewModelBase
         IsConnected = false;
         ConnectionState = state;
         KicadVersion = Unknown;
+        KicadVersionWarning = string.Empty;
+        HasKicadVersionWarning = false;
         ProjectName = Unknown;
     }
 

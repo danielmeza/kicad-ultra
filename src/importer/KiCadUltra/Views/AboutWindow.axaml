@@ -58,7 +58,20 @@
                 <StackPanel>
                     <TextBlock Text="KiCad Version" Classes="label"/>
                     <TextBlock Text="{Binding KicadVersion}" Classes="value"/>
-                    
+
+                    <!-- What this build declares it supports, and - only when the KiCad that
+                         answered is outside it - a line saying so (#138). A line, never a dialog:
+                         a KiCad newer than the one this build was tested against is worth
+                         mentioning and nothing more. -->
+                    <TextBlock Text="{Binding SupportedKicadVersions}" Classes="value" Opacity="0.7"/>
+                    <TextBlock Text="{Binding KicadVersionWarning}"
+                               IsVisible="{Binding HasKicadVersionWarning}"
+                               Classes="value"
+                               Margin="10,4,0,0"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
+
+
                     <TextBlock Text="Current Project" Classes="label"/>
                     <TextBlock Text="{Binding ProjectName}" Classes="value"/>
                     

@@ -39,6 +39,10 @@ public partial class MainViewModel : ObservableObject
     private readonly EasyEda2KiCadLocator _easyEda2KiCadLocator;
     private readonly JlcpcbOfficialApiAccess _jlcpcbOfficialApiAccess;
 
+    // Held only to hand to the About window, which says there whether the running KiCad is one this
+    // build supports (#138).
+    private readonly IKiCadCompatibility _compatibility;
+
     [ObservableProperty]
     private string _statusMessage = "Ready";
 
@@ -200,7 +204,8 @@ public partial class MainViewModel : ObservableObject
         IComponentProviderRegistry providerRegistry,
         IPartAggregatorService aggregatorService,
         EasyEda2KiCadLocator easyEda2KiCadLocator,
-        JlcpcbOfficialApiAccess jlcpcbOfficialApiAccess)
+        JlcpcbOfficialApiAccess jlcpcbOfficialApiAccess,
+        IKiCadCompatibility compatibility)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
@@ -211,6 +216,7 @@ public partial class MainViewModel : ObservableObject
         _aggregatorService = aggregatorService;
         _easyEda2KiCadLocator = easyEda2KiCadLocator;
         _jlcpcbOfficialApiAccess = jlcpcbOfficialApiAccess;
+        _compatibility = compatibility;
 
         _selectedProvider = _providerRegistry.SelectedProvider;
         _activeProvider = _selectedProvider;
@@ -1083,7 +1089,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Showing about dialog");
-            var aboutWindow = new AboutWindow(_loggerFactory, _kiCad);
+            var aboutWindow = new AboutWindow(_loggerFactory, _kiCad, _compatibility);
 
             MainWindow aboutOwner = App.MainWindow
                 ?? throw new InvalidOperationException("Cannot open about dialog before main window exists.");
