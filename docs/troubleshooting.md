@@ -49,14 +49,14 @@ A part that imports but reports **partially succeeded** means one asset failed a
 
 ## Where are the logs?
 
-`<app data>/UltraLibrarianImporter/logs/`:
+`<app data>/KiCadUltra/logs/`:
 
 | Platform | Path |
 |---|---|
-| Linux | `~/.config/UltraLibrarianImporter/logs/` |
-| Linux, KiCad as a Flatpak | `~/.var/app/org.kicad.KiCad/config/UltraLibrarianImporter/logs/` |
-| Windows | `%APPDATA%\UltraLibrarianImporter\logs\` |
-| macOS | `~/Library/Application Support/UltraLibrarianImporter/logs/` |
+| Linux | `~/.config/KiCadUltra/logs/` |
+| Linux, KiCad as a Flatpak | `~/.var/app/org.kicad.KiCad/config/KiCadUltra/logs/` |
+| Windows | `%APPDATA%\KiCadUltra\logs\` |
+| macOS | `~/Library/Application Support/KiCadUltra/logs/` |
 
 API tokens and credentials are never written there, or to `config.json`: they live in the operating
 system's credential store.

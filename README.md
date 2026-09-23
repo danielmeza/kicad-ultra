@@ -67,7 +67,7 @@ on the next start so an import is never interrupted.
 > development workflow:
 >
 > ```sh
-> dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
+> dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj \
 >     -c Release -r linux-x64 --self-contained true -o plugin/bin      # or win-x64, osx-x64, osx-arm64
 > ln -s "$PWD/plugin" ~/.local/share/kicad/10.0/3rdparty/plugins/kicad-ultra
 > ```

@@ -108,8 +108,8 @@ environment KiCad runs in; the application then unpacks itself on each start ins
 actually finished the download.
 
 **An import fails.** The application's log says why. It is in
-`%APPDATA%\UltraLibrarianImporter\logs` on Windows, `~/Library/Application
-Support/UltraLibrarianImporter/logs` on macOS and `$XDG_CONFIG_HOME/UltraLibrarianImporter/logs`
+`%APPDATA%\KiCadUltra\logs` on Windows, `~/Library/Application
+Support/KiCadUltra/logs` on macOS and `$XDG_CONFIG_HOME/KiCadUltra/logs`
 (usually `~/.config/...`) on Linux.
 
 ### Reporting problems

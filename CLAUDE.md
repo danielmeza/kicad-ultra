@@ -5,10 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-dotnet restore UltraLibrarianImporter.sln
-dotnet build   UltraLibrarianImporter.sln -c Release   # also the code-style gate; see below
-dotnet build   UltraLibrarianImporter.sln -c Debug     # CI builds both (#89)
-dotnet run --project src/importer/UltraLibrarianImporter.UI   # the app starts without KiCad
+dotnet restore KiCadUltra.sln
+dotnet build   KiCadUltra.sln -c Release   # also the code-style gate; see below
+dotnet build   KiCadUltra.sln -c Debug     # CI builds both (#89)
+dotnet run --project src/importer/KiCadUltra   # the app starts without KiCad
 ```
 
 **There are no .NET tests.** The README's `dotnet test` line is stale: the solution contains only
@@ -36,7 +36,7 @@ dotnet run --project src/importer/SampleConsole -- --test-parser
 
 ```bash
 scripts/use-local-libs.sh ../sexpressions ../kicad-sharp   # prints the exact build command
-dotnet build UltraLibrarianImporter.sln -c Release \
+dotnet build KiCadUltra.sln -c Release \
     -p:SExpressionsVersion=0.1.0-local.<stamp> -p:KiCadSharpVersion=0.1.0-local.<stamp>
 ```
 
@@ -110,8 +110,8 @@ inside its own `#if DEBUG` block, as `Views/AboutWindow.axaml.cs` and `Views/Set
 do for `AttachDevTools()`.
 
 ```bash
-dotnet format UltraLibrarianImporter.sln --severity warn                      # fix
-dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes  # check (CI adds --no-restore)
+dotnet format KiCadUltra.sln --severity warn                      # fix
+dotnet format KiCadUltra.sln --severity warn --verify-no-changes  # check (CI adds --no-restore)
 ```
 
 Two classes of violation pass the build and are caught only by the format check:
@@ -154,7 +154,7 @@ Two processes, and the interesting one is the .NET side.
 1. **`plugin/`** — Python. KiCad loads it two ways at once: `plugin.json` registers an IPC API action
    whose entrypoint is `importer_launcher.py`, and `__init__.py` also registers a legacy
    `pcbnew.ActionPlugin`. Both only start the .NET app.
-2. **`src/importer/UltraLibrarianImporter.UI`** — Avalonia 11 desktop app on the generic host
+2. **`src/importer/KiCadUltra`** — Avalonia 11 desktop app on the generic host
    (`Host.CreateApplicationBuilder` + `Lemon.Hosting.AvaloniauiDesktop`), NLog, CommunityToolkit.Mvvm,
    and ReactiveUI for the search grid only. Started with `--mcp` it is instead an MCP server — see below.
 
@@ -163,12 +163,21 @@ s-expression read/write) and `KiCadSharp` (IPC client + library formats) live in
 `danielmeza/sexpressions` and `danielmeza/kicad-sharp` and arrive from nuget.org at the versions
 `Directory.Build.props` pins. Changes to parsing or the IPC surface belong there, not here.
 
+**The name, and the two identifiers that did not take it.** The solution, the project, the assembly,
+the apphost, the namespaces and the application-data folder are all `KiCadUltra` since #132, and the
+Velopack `packId` has been since #128. Two published identifiers are deliberately still spelled the
+old way, and changing either orphans every installation that keys on it: the Plugin and Content
+Manager package id `com.github.danielmeza.kicad-ultralibrarian-importer` and the action id
+`kicad-ultralibrarian-importer.import`. `scripts/rename-identity.py` protects both by default; use
+it for a rename of this kind rather than a `sed`, read its "review" list, and write the migrations
+it points at (see **Configuration and secrets**).
+
 ### The launcher hand-off
 
 `importer_launcher.py` starts the importer, and since #128 it also **fetches it on the first run**.
 It looks in exactly two places, in this order:
 
-1. `plugin/bin/UltraLibrarianImporter.UI` (`.exe` on Windows) — the developer's override, which is
+1. `plugin/bin/KiCadUltra` (`.exe` on Windows) — the developer's override, which is
    what `dotnet publish -o plugin/bin` is for. Unchanged.
 2. the per-user data directory: `%LOCALAPPDATA%\kicad-ultra`, `~/Library/Application Support/kicad-ultra`,
    or `$XDG_DATA_HOME/kicad-ultra`. Nothing is shipped there — the launcher downloads this
@@ -472,7 +481,12 @@ valid JSON-RPC.
 ### Configuration and secrets
 
 `ConfigService` persists non-secret settings through a single private `ConfigData` DTO to
-`<app data>/UltraLibrarianImporter/config.json`. Keep it the only persistence path.
+`<app data>/KiCadUltra/config.json`. Keep it the only persistence path.
+
+**`AppDataFolder` is the only place that names the application-data folder** (#132): `Current`
+(`<app data>/KiCadUltra`), `Logs` and `BrowserCache`. `ConfigService`, `Program.SetLogDirectory` and
+`App.OnFrameworkInitializationCompleted` take their paths from it rather than spelling the folder
+out, which is what makes the next rename one edit. Do not add a fourth spelling.
 
 **API tokens live in the OS credential store** (#54), and so do the three JLCPCB API credentials
 (#51): `ISecretStore`, with `PlatformSecretStore` choosing Windows Credential Manager, the macOS
@@ -480,6 +494,33 @@ Keychain, or libsecret on Linux (under Flatpak, libsecret goes through the Secre
 found in an old `config.json` is migrated into the store, and the file is rewritten without it — only
 after the store write succeeds. With no working store, tokens are session-only and never written to
 the file. **Never log a token value.**
+
+**Renaming a user-visible name means writing a migration** (#132). Three names on the user's disk
+changed with the assembly, and each needed code, because a rename on its own silently loses what is
+already there:
+- `<app data>/UltraLibrarianImporter/` (settings and logs) and `<app data>/UltralibrarianKicad/`
+  (CEF's cache) both fold into `<app data>/KiCadUltra/`. `AppDataFolder.Migrate()` moves them, and
+  it is **the first thing `Main` does, in both modes** — before `SetLogDirectory`, because that is
+  what decides where this run's own log lines go. It is therefore too early to log, so it returns
+  its notes and `Program.LogAppDataMigration` writes them once a configuration is assigned. It never
+  throws: a folder that could not be moved is reported and left alone. Each step is a rename that
+  only runs while the destination does not exist, so a second run finds nothing to do; where both
+  exist the new one wins and the old one is left untouched. The browser cache **moves** rather than
+  being abandoned — it carries the session cookies CEF is told to persist — and the old folder is
+  removed only if the move left it empty.
+- The credential-store service name, `UltraLibrarianImporter` → `KiCadUltra`. A store is asked for a
+  secret *by service name*, so the rename hides every token the user gave.
+  `SecretStoreMigration.Run` copies each key in `ConfigService.SecretKeys` from
+  `PlatformSecretStore.CreateLegacy()` to `Create()`, reads each copy back before it counts it, and
+  **never deletes the original, whether the copy worked or not**. It runs from
+  `Program.CreateSecretStore`, which both containers register for `ISecretStore`. A stamp file,
+  `credential-store-migrated.txt` in the app-data folder, ends it: without it a token the user
+  cleared in Settings would be copied back from the old service at the next start. A store failure
+  (a locked keyring) stops the pass, writes no stamp, and is tried again next start. No value is
+  logged or returned.
+- The default download directory, `~/Documents/UltraLibrarianDownloads`, deliberately did **not**
+  change: it holds the user's files, a configured one in `config.json` has to keep working, and
+  nothing in the code depends on its name.
 
 **Never call `Environment.GetFolderPath` directly; use `SpecialFolders.GetPath`** (#70, #93). On Unix,
 `GetFolderPath` returns `""` for a folder that does not exist yet, such as `~/.config` on a fresh account,

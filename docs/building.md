@@ -7,9 +7,9 @@ the short version.
 ## The gates
 
 ```sh
-dotnet build UltraLibrarianImporter.sln -c Release   # also the code-style gate
-dotnet build UltraLibrarianImporter.sln -c Debug     # CI builds both
-dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes
+dotnet build KiCadUltra.sln -c Release   # also the code-style gate
+dotnet build KiCadUltra.sln -c Debug     # CI builds both
+dotnet format KiCadUltra.sln --severity warn --verify-no-changes
 dotnet run --project src/importer/SampleConsole -- --test-parser
 ```
 
@@ -59,7 +59,7 @@ local checkouts of them:
 
 ```sh
 scripts/use-local-libs.sh ../sexpressions ../kicad-sharp
-dotnet build UltraLibrarianImporter.sln -c Release \
+dotnet build KiCadUltra.sln -c Release \
     -p:SExpressionsVersion=0.1.0-local.<stamp> -p:KiCadSharpVersion=0.1.0-local.<stamp>
 ```
 
