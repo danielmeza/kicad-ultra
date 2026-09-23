@@ -1,0 +1,341 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:KiCadUltra.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="600"
+        x:Class="KiCadUltra.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="KiCad Component Explorer Settings"
+        Width="660" Height="640"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="*,Auto" Margin="15">
+        <!-- Main Settings Tabs -->
+        <TabControl Grid.Row="0" SelectedIndex="{Binding SelectedTabIndex}">
+            <!-- TAB 1: General & KiCad Storage -->
+            <TabItem Header="💾 General">
+                <ScrollViewer Margin="0,10,0,0">
+                    <StackPanel Spacing="16" Margin="5,0,15,0">
+                        <!-- Download Settings -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Download Directory" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="Temporary location where CAD archive packages (.zip) are received:" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12"/>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding DownloadDirectory}"/>
+                                    <Button Grid.Column="1" Content="Browse..." Command="{Binding BrowseDownloadDirCommand}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <!-- Why Save refused the folder (#112) -->
+                                <TextBlock Text="{Binding DownloadDirectoryError}"
+                                           IsVisible="{Binding DownloadDirectoryError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Import Settings -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="KiCad Import Options" FontWeight="Bold" FontSize="14"/>
+
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Text="Custom Library Name:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding LibraryName}" Watermark="Default naming if empty"/>
+                                </Grid>
+
+                                <CheckBox Content="Clean up temporary files after successful import" IsChecked="{Binding CleanupAfterImport}"/>
+                                <CheckBox Content="Automatically trigger import when CAD package finishes downloading" IsChecked="{Binding AutoImportWhenDownloaded}"/>
+                                
+                                <Separator Margin="0,5"/>
+
+                                <CheckBox Content="Use active KiCad project directory for libraries (recommended)" 
+                                          IsChecked="{Binding UseProjectPath}" 
+                                          Name="UseProjectPathCheckbox"/>
+
+                                <Grid ColumnDefinitions="Auto,*,Auto" 
+                                      IsEnabled="{Binding !UseProjectPath}" 
+                                      Opacity="{Binding !UseProjectPath, Converter={StaticResource BoolToOpacityConverter}}">
+                                    <TextBlock Grid.Column="0" Text="Target path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding TargetPath}" Watermark="Custom library destination folder..."/>
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseTargetPathCommand}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <!-- Why Save refused the target path (#112). Outside the grid above, so it
+                                     stays readable while the project directory is in use. -->
+                                <TextBlock Text="{Binding TargetPathError}"
+                                           IsVisible="{Binding TargetPathError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlErrorTextForegroundBrush}"/>
+
+                                <Separator Margin="0,5"/>
+
+                                <!-- Which of KiCad's library tables imported libraries are registered in (#71) -->
+                                <TextBlock Text="Register imported libraries in" FontWeight="SemiBold"/>
+                                <StackPanel Spacing="8">
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsAutomaticRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Automatic (recommended)"/>
+                                            <TextBlock Text="The project's library tables when importing into a KiCad project, by a path relative to the project, so the library moves with it. KiCad's global library tables when there is no project."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsProjectRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="The project's library tables only"/>
+                                            <TextBlock Text="Always the project's tables. Without a KiCad project to import into, the import fails and nothing is written."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                    <RadioButton GroupName="LibraryRegistrationScope" IsChecked="{Binding IsGlobalRegistration}">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="KiCad's global library tables only"/>
+                                            <TextBlock Text="Always the global tables, by absolute path, even for a library imported into a project. Every project then lists it, and its entry breaks if the project is moved."
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                        </StackPanel>
+                                    </RadioButton>
+                                </StackPanel>
+                                <TextBlock Text="KiCad does not reload its library tables by itself: after an import, reopen the project, or restart KiCad for the global tables."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- TAB 2: Component Providers Configuration -->
+            <TabItem Header="🔌 Component Providers">
+                <ScrollViewer Margin="0,10,0,0">
+                    <StackPanel Spacing="14" Margin="5,0,15,0">
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Startup Default Provider:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <ComboBox Grid.Row="0" Grid.Column="1" 
+                                          ItemsSource="{Binding AvailableProviderIds}" 
+                                          SelectedItem="{Binding SelectedDefaultProviderId}" 
+                                          HorizontalAlignment="Stretch"/>
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" 
+                                           Text="Select the default source to activate when opening the Component Explorer." 
+                                           FontSize="12" 
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+                                           Margin="0,6,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="Available Providers &amp; APIs" FontWeight="Bold" FontSize="14" Margin="2,5,0,0"/>
+                        <TextBlock Text="Enable or disable providers to customize search aggregation and supply API credentials:" 
+                                   FontSize="12" 
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+                                   Margin="2,-6,0,5"/>
+
+                        <!-- Where API keys are kept (#54): a quiet note when the OS credential store
+                             works, a warning when keys will only last for this session. -->
+                        <TextBlock Text="{Binding SecretStorageMessage}"
+                                   IsVisible="{Binding !IsSecretStorageSessionOnly}"
+                                   TextWrapping="Wrap"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Margin="2,-10,0,5"/>
+                        <Border IsVisible="{Binding IsSecretStorageSessionOnly}"
+                                Background="#20F57C00"
+                                BorderBrush="#F57C00"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10">
+                            <TextBlock Text="{Binding SecretStorageMessage}" TextWrapping="Wrap" FontSize="12"/>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding ConfiguredProviders}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProviderConfigItemViewModel">
+                                    <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" 
+                                            BorderThickness="1" 
+                                            CornerRadius="6" 
+                                            Padding="12" 
+                                            Margin="0,0,0,10"
+                                            Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                                        <StackPanel Spacing="8">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <CheckBox Grid.Column="0" 
+                                                          IsChecked="{Binding IsEnabled}" 
+                                                          Content="{Binding DisplayName}" 
+                                                          FontWeight="SemiBold" 
+                                                          FontSize="14"/>
+                                                <Border Grid.Column="1" 
+                                                        IsVisible="{Binding SupportsDirectApi}" 
+                                                        Background="#20388E3C" 
+                                                        CornerRadius="4" 
+                                                        Padding="6,2">
+                                                    <TextBlock Text="API Active" FontSize="11" Foreground="#2E7D32" FontWeight="Bold"/>
+                                                </Border>
+                                            </Grid>
+
+                                            <TextBlock Text="{Binding CapabilitiesDescription}" 
+                                                       TextWrapping="Wrap"
+                                                       FontSize="11" 
+                                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" 
+                                                       Margin="26,0,0,2"/>
+
+                                            <!-- API Key row (if required by provider) -->
+                                            <Grid ColumnDefinitions="120,*" Margin="26,4,0,0" IsVisible="{Binding RequiresApiKey}">
+                                                <TextBlock Grid.Column="0" Text="API Key / Token:" VerticalAlignment="Center" FontSize="12"/>
+                                                <TextBox Grid.Column="1" 
+                                                         Text="{Binding ApiKey}" 
+                                                         PasswordChar="*" 
+                                                         Watermark="{Binding ApiKeyPlaceholder}"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The user's own JLCPCB API credentials (#51). Without them, or while JLCPCB has not
+                             approved the application's Parts permission (#126), EasyEDA / LCSC search uses the
+                             unofficial JLCPCB website endpoint (#52). -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="JLCPCB API access (EasyEDA / LCSC search)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="Optional. Without credentials, EasyEDA / LCSC search uses an unofficial JLCPCB website endpoint. It is not a published API and can change or stop working at any time without notice. With your own credentials from JLCPCB's API platform, LCSC part numbers (such as C2040) are looked up through JLCPCB's official Components API instead. That API has no keyword search, so other searches still use the unofficial endpoint."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <TextBlock Text="Credentials are not enough on their own: JLCPCB grants API access per service, and the Components API needs your application's Parts permission approved. Applications are reviewed, so an account can hold working credentials whose Parts permission is rejected. While JLCPCB refuses the call, the search says so and falls back to the unofficial endpoint, so it keeps working."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <HyperlinkButton NavigateUri="{Binding JlcpcbApiGuideUri}" Padding="0" FontSize="12">
+                                    <TextBlock Text="{Binding JlcpcbApiGuideUri, StringFormat='How to apply for API access: {0}'}" TextWrapping="Wrap"/>
+                                </HyperlinkButton>
+                                <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="App ID:" VerticalAlignment="Center" FontSize="12"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding JlcpcbAppId}" Watermark="The application's App ID"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Access Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding JlcpcbAccessKey}" PasswordChar="*" Watermark="The API key's access key" Margin="0,8,0,0"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center" FontSize="12" Margin="0,8,0,0"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding JlcpcbSecretKey}" PasswordChar="*" Watermark="The API key's secret key" Margin="0,8,0,0"/>
+                                </Grid>
+                                <TextBlock Text="Enter all three, or leave all three empty. They are kept with the API keys above, never in config.json."
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- easyeda2kicad (#76): the optional, user-installed converter behind EasyEDA / LCSC import -->
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="easyeda2kicad (EasyEDA / LCSC import)" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Text="EasyEDA / LCSC parts are imported by easyeda2kicad, an optional third-party tool under the AGPL-3.0 licence. It is not part of this application and is never bundled with it: you install it yourself, and it is run as a separate program. Leave the path empty to look for it on PATH, then in KiCad's Python."
+                                           TextWrapping="Wrap"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Text="Path:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EasyEda2KiCadPath}" Watermark="easyeda2kicad, or a Python that has it installed (optional)"/>
+                                    <Button Grid.Column="2" Content="Browse..." Command="{Binding BrowseEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                    <Button Grid.Column="3" Content="Check" Command="{Binding CheckEasyEda2KiCadCommand}" Margin="8,0,0,0"/>
+                                </Grid>
+                                <TextBlock Text="{Binding EasyEda2KiCadStatus}"
+                                           IsVisible="{Binding EasyEda2KiCadStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           TextWrapping="Wrap"
+                                           FontSize="12"/>
+                                <TextBlock Text="To install it:" FontSize="12" Margin="0,4,0,0"/>
+                                <SelectableTextBlock Text="{Binding EasyEda2KiCadInstallCommand}"
+                                                     FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                                     FontSize="12"/>
+                                <TextBlock Text="{Binding EasyEda2KiCadInstallNote}"
+                                           TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- TAB 3: AI & MCP Server -->
+            <TabItem Header="🤖 AI &amp; MCP Server">
+                <ScrollViewer Margin="0,10,0,0">
+                    <StackPanel Spacing="14" Margin="5,0,15,0">
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="Model Context Protocol (MCP) Server" FontWeight="Bold" FontSize="15"/>
+                                    <Border Grid.Column="1" Background="#201976D2" CornerRadius="4" Padding="6,2">
+                                        <TextBlock Text="Protocol 2024-11-05" FontSize="11" Foreground="#1565C0" FontWeight="Bold"/>
+                                    </Border>
+                                </Grid>
+                                
+                                <TextBlock Text="KiCad Ultra includes a native C# MCP server allowing AI assistants (Claude Desktop, Cursor, Antigravity, Copilot, Goose) to explore parts, query stocks, and import CAD footprints directly into your projects."
+                                           TextWrapping="Wrap"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                           FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="MCP Server Executable" FontWeight="Bold" FontSize="13"/>
+                                <TextBox Text="{Binding McpExecutablePath}" IsReadOnly="True" FontSize="11"/>
+
+                                <TextBlock Text="Quick MCP Configuration (mcp_config.json):" FontWeight="Bold" FontSize="13" Margin="0,6,0,0"/>
+                                <TextBlock Text="Add this configuration block to Claude Desktop or your AI editor's MCP server settings:" 
+                                           FontSize="12" 
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
+                                <TextBox Text="{Binding McpConfigSnippet}" 
+                                         IsReadOnly="True" 
+                                         AcceptsReturn="True" 
+                                         Height="130" 
+                                         FontFamily="Consolas, Cascadia Code, Courier New, monospace" 
+                                         FontSize="11"/>
+
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <Button Grid.Column="0" 
+                                            Content="📋 Copy MCP Config" 
+                                            Command="{Binding CopyMcpConfigCommand}" 
+                                            Padding="12,6"/>
+                                    <TextBlock Grid.Column="1" 
+                                               Text="{Binding McpCopyStatusMessage}" 
+                                               Foreground="#2E7D32" 
+                                               FontWeight="SemiBold" 
+                                               VerticalAlignment="Center" 
+                                               Margin="12,0,0,0"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Exposed MCP Tools:" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="• search_components (query, in_stock_only, has_cad_only, max_results)" FontSize="12"/>
+                                <TextBlock Text="• get_component_details (query, provider_id)" FontSize="12"/>
+                                <TextBlock Text="• list_providers ()" FontSize="12"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <!-- Dialog Action Buttons -->
+        <Border Grid.Row="1" BorderBrush="{DynamicResource SystemControlHighlightListLowBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                <Button Content="Save" Command="{Binding SaveCommand}" Width="90" HorizontalContentAlignment="Center"/>
+                <Button Content="Cancel" Command="{Binding CancelCommand}" Width="90" HorizontalContentAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

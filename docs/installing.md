@@ -48,7 +48,7 @@ system has none. Deleting that directory makes the next run fetch it again.
 ### 1. Build and stage the application
 
 ```sh
-dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
+dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj \
     -c Release -r linux-x64 --self-contained true -o plugin/bin
 ```
 
@@ -112,14 +112,23 @@ it found:
 
 | What | Where |
 |---|---|
-| Settings | `<app data>/UltraLibrarianImporter/config.json` |
-| Logs | `<app data>/UltraLibrarianImporter/logs/` |
-| Browser cache and downloads | `<app data>/UltralibrarianKicad/` |
+| Settings | `<app data>/KiCadUltra/config.json` |
+| Logs | `<app data>/KiCadUltra/logs/` |
+| Browser cache | `<app data>/KiCadUltra/browser/` |
+| Downloads | `~/Documents/UltraLibrarianDownloads`, or wherever **Settings → General** points |
 | API tokens and credentials | the operating system's credential store, never a file |
 
 `<app data>` is `~/.config` on Linux, `%APPDATA%` on Windows and `~/Library/Application Support` on
 macOS. Under the Flatpak everything sits inside KiCad's sandbox, under
 `~/.var/app/org.kicad.KiCad/config/`.
+
+> **Coming from a build older than the rename?** It kept the same things in
+> `<app data>/UltraLibrarianImporter/` and `<app data>/UltralibrarianKicad/`, and filed its API
+> tokens in the credential store under the service name `UltraLibrarianImporter`. The first start
+> moves both folders into `<app data>/KiCadUltra/` and copies the stored credentials to the service
+> name `KiCadUltra`; the log says what it did. The credential-store originals are left where they
+> are, so nothing is lost if you go back to an older build. A download directory you set yourself is
+> never touched.
 
 Imported libraries go into the project folder when a project is open, next to KiCad's global tables
 otherwise, and every import shares one library per provider: `<project>_EasyEDA.kicad_sym` and its

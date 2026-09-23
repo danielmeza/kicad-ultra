@@ -51,7 +51,7 @@ Packed into $FEED
 
 Build against them with:
 
-    dotnet build UltraLibrarianImporter.sln -c Release \\
+    dotnet build KiCadUltra.sln -c Release \\
         -p:SExpressionsVersion=$LOCAL_VERSION \\
         -p:KiCadSharpVersion=$LOCAL_VERSION
 

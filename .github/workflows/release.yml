@@ -125,7 +125,7 @@ jobs:
       # step the Plugin and Content Manager exists to avoid.
       - name: Publish ${{ matrix.rid }}
         run: >
-          dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj
+          dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj
           -c Release -r ${{ matrix.rid }} --self-contained true -o publish
 
       # ---------------------------------------------------------------------------------------
@@ -283,7 +283,7 @@ jobs:
           --packDir publish
           --packTitle "KiCad Ultra"
           --packAuthors "Daniel Meza"
-          --mainExe ${{ matrix.rid == 'win-x64' && 'UltraLibrarianImporter.UI.exe' || 'UltraLibrarianImporter.UI' }}
+          --mainExe ${{ matrix.rid == 'win-x64' && 'KiCadUltra.exe' || 'KiCadUltra' }}
           --channel ${{ matrix.channel }}
           --runtime ${{ matrix.rid }}
           --outputDir Releases
