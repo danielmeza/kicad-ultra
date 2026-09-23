@@ -155,6 +155,9 @@ Issues and pull requests are welcome. A good bug report carries the log lines ar
 the KiCad version from the About window. [CLAUDE.md](CLAUDE.md) is worth reading first — it is the
 guide this repository is actually developed against, including the build gates.
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md), which is the
+[Contributor Covenant](https://www.contributor-covenant.org/) 2.1.
+
 Two rules that are not style preferences:
 
 - **Never fabricate data.** A result, a price or a CAD-availability flag appears only because a source
