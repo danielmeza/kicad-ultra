@@ -1,25 +1,36 @@
 name: Release
 
-# Builds the KiCad plugin bundle and attaches it to a GitHub Release.
+# Builds everything a `v*` tag releases, and attaches it to one GitHub Release:
 #
-# This replaces the NuGet publishing that used to live here. SExpressions, KiCadSharp,
-# KiCadSharp.Protos and KiCadSharp.Cli have moved to danielmeza/sexpressions and
-# danielmeza/kicad-sharp, each of which now publishes itself; there is nothing left in this
-# repository that is a NuGet package.
+#   * the Plugin and Content Manager bundle - the Python side, the icons and metadata.json, and
+#     nothing else. It is a few kilobytes, and that is the point;
+#   * the importer itself, as Velopack packages for linux-x64, win-x64, osx-x64 and osx-arm64.
 #
-# Of the three candidates written at the top of the previous version of this file, this implements
-# (2), the KiCad plugin bundle:
+# Why the two are separate (#128). A self-contained build of the importer is 453 MB, 341 MB of it
+# the CEF browser the Web Browser tab runs inside - larger than KiCad's own Flatpak, and far past
+# what belongs in a PCM package. So the PCM package carries the launcher, and the launcher fetches
+# the application from this release on its first run, checks it against the SHA-256 published here,
+# and unpacks it into a per-user data directory. From then on the application updates itself
+# through Velopack, from these same releases.
 #
-#   (1) The Avalonia importer as a per-RID downloadable app was NOT taken. The importer only
-#       started compiling in the change that ported it to KiCadSharp, it has no smoke test, and
-#       shipping self-contained binaries to end users would need code signing on Windows to avoid
-#       SmartScreen. That is a release to make once the app has been exercised, not before.
-#   (3) Deleting this file and letting people build from source was NOT taken, because the plugin
-#       is the thing users actually install, and asking them to build a KiCad plugin by hand is
-#       what the Plugin and Content Manager exists to avoid.
+# That replaces the decision recorded at the top of the previous version of this file, which said
+# shipping the importer to end users was "a release to make once the app has been exercised, not
+# before": it has been, the update path is now the app's own, and the alternative was a plugin that
+# installs nothing that runs.
 #
-# The two are not exclusive: when the importer is ready to hand to non-developers, add a publish
-# job here and one release can carry both.
+# **Its other reason has not gone away: nothing here is code-signed.** The same note said shipping
+# self-contained binaries "would need code signing on Windows to avoid SmartScreen", and that is
+# still true - `vpk pack` says "No signing parameters provided" and builds an unsigned Setup.exe and
+# stub, so a user who runs the Windows installer gets a SmartScreen warning, and an unsigned,
+# un-notarized macOS .app is refused by Gatekeeper until the user allows it by hand. It does not
+# block the plugin's own path, which downloads the portable artifact and runs it directly, and it is
+# not something CI can fix without certificates. vpk takes them through --signParams / --azureTrusted
+# on Windows and --signAppIdentity / --notaryProfile on macOS when there are any.
+#
+# GitHub *Releases*, not GitHub *Packages*: `https://nuget.pkg.github.com/danielmeza/index.json`
+# answers 401 to an anonymous request, so a plugin user would need a personal access token to
+# install; `https://api.github.com/repos/danielmeza/kicad-ultra/releases` answers 200. Velopack's
+# GithubSource reads Releases.
 
 on:
   push:
@@ -29,7 +40,160 @@ on:
 permissions:
   contents: read
 
+env:
+  # What `vpk pack --packId` stamps into every package and every asset name. plugin/importer_launcher.py
+  # builds the asset names it looks for from the same string, so the two have to agree.
+  PACK_ID: KiCadUltra
+
 jobs:
+  app:
+    name: Pack ${{ matrix.channel }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Every channel or none: a release missing one platform's asset is a plugin that fails to
+      # install on it, with no way to tell from the outside that the release is incomplete.
+      fail-fast: true
+      matrix:
+        include:
+          # Velopack can cross-compile Windows and Linux packages from any host, but a macOS package
+          # needs a macOS host (codesign, productbuild). Windows is therefore packed on the Linux
+          # runner - `vpk [win] pack` is the documented directive for it, and vpk refuses a foreign
+          # RID without one - and the two macOS packages on macOS runners.
+          #
+          # The channel is baked into each package's manifest, so UpdateManager asks for the matching
+          # releases.{channel}.json with no configuration in the app. `win` and `linux` are Velopack's
+          # defaults for their platforms; the two macOS builds must differ from each other, or their
+          # assets would collide in one release and an Intel Mac could be offered an arm64 build.
+          - runner: ubuntu-latest
+            rid: linux-x64
+            channel: linux
+            directive: ''
+            icon: plugin/resources/icon-pcm-64.png
+          - runner: ubuntu-latest
+            rid: win-x64
+            channel: win
+            directive: '[win]'
+            icon: ''
+          - runner: macos-latest
+            rid: osx-arm64
+            channel: osx-arm64
+            directive: ''
+            icon: ''
+          - runner: macos-latest
+            rid: osx-x64
+            channel: osx-x64
+            directive: ''
+            icon: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # vpk comes from .config/dotnet-tools.json, pinned to the same version as the Velopack package
+      # in Directory.Packages.props. The two halves write and read one package format; letting the
+      # CLI float would eventually pack something the linked library cannot open.
+      - name: Restore the Velopack CLI
+        run: dotnet tool restore
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          VER=0.0.0
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      # Self-contained: the plugin installs one archive and runs it. Nothing about a KiCad install
+      # implies a .NET runtime, and asking a user to install one to import a symbol is the kind of
+      # step the Plugin and Content Manager exists to avoid.
+      - name: Publish ${{ matrix.rid }}
+        run: >
+          dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj
+          -c Release -r ${{ matrix.rid }} --self-contained true -o publish
+
+      # Seeds the output directory with the previous release's full package so `vpk pack` can diff
+      # against it and emit a delta. It is allowed to fail: on the first release of a channel there
+      # is nothing to download, and a release without a delta is complete, just larger.
+      #
+      # The token goes through the environment, which is the VPK_TOKEN vpk documents for --token,
+      # rather than onto the command line where every other process on the runner could read it out
+      # of /proc.
+      - name: Fetch the previous release for the delta
+        continue-on-error: true
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          dotnet vpk ${{ matrix.directive }} download github
+          --repoUrl https://github.com/${{ github.repository }}
+          --channel ${{ matrix.channel }}
+          --outputDir Releases
+
+      # An icon is required to build an AppImage and is optional elsewhere, where vpk supplies its
+      # own default rather than refusing. #58: the icon is part of this plugin's advertising, so it
+      # stays the plugin's own artwork.
+      - name: Pack ${{ matrix.channel }}
+        run: >
+          dotnet vpk ${{ matrix.directive }} pack
+          --packId "$PACK_ID"
+          --packVersion ${{ steps.ver.outputs.version }}
+          --packDir publish
+          --packTitle "KiCad Ultra"
+          --packAuthors "Daniel Meza"
+          --mainExe ${{ matrix.rid == 'win-x64' && 'UltraLibrarianImporter.UI.exe' || 'UltraLibrarianImporter.UI' }}
+          --channel ${{ matrix.channel }}
+          --runtime ${{ matrix.rid }}
+          --outputDir Releases
+          ${{ matrix.icon && format('--icon {0}', matrix.icon) || '' }}
+        shell: bash
+
+      # `vpk pack` writes releases.{channel}.json from everything in the output directory, which now
+      # also holds the previous release's package - downloaded above only so a delta could be built
+      # against it. Staging exactly what this build produced, and cutting the index down to match, is
+      # what `vpk upload github` does before it uploads; this release attaches the files itself (one
+      # atomic release for four platforms plus the PCM bundle), so it has to do the same trimming.
+      #
+      # The legacy `RELEASES` file is deliberately not staged: it exists for clients migrating from
+      # Squirrel, and this application has never shipped under Squirrel.
+      #
+      # Everything vpk built is staged, which includes the installers - Setup.exe on Windows and a
+      # .pkg on each macOS channel. The plugin never uses them (it takes the portable artifact), but
+      # they are how somebody installs the application without KiCad, and vpk 1.2.158 has no flag to
+      # skip the .pkg anyway. It does mean a release carries roughly 2 GB across the four platforms;
+      # the step below prints the total, and dropping the Installer entries here is a one-line change
+      # if that is not wanted.
+      - name: Stage this build's assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "Releases" "${{ matrix.channel }}" "staging" <<'PY'
+          import json, os, shutil, sys
+
+          releases, channel, staging = sys.argv[1], sys.argv[2], sys.argv[3]
+          index_name = "releases.%s.json" % channel
+
+          with open(os.path.join(releases, "assets.%s.json" % channel), encoding="utf-8") as handle:
+              built = [entry["RelativeFileName"] for entry in json.load(handle)]
+
+          with open(os.path.join(releases, index_name), encoding="utf-8") as handle:
+              index = json.load(handle)
+          index["Assets"] = [a for a in index["Assets"] if a["FileName"] in built]
+
+          os.makedirs(staging, exist_ok=True)
+          for name in built:
+              shutil.copy2(os.path.join(releases, name), os.path.join(staging, name))
+          with open(os.path.join(staging, index_name), "w", encoding="utf-8") as handle:
+              json.dump(index, handle, separators=(",", ":"))
+          print("\n".join(sorted(os.listdir(staging))))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: velopack-${{ matrix.channel }}
+          path: staging/*
+          if-no-files-found: error
+
   bundle:
     name: Build plugin bundle
     runs-on: ubuntu-latest
@@ -48,6 +212,9 @@ jobs:
       # An API plugin's plugin.json and entrypoint live under plugins/; the PCM icon is
       # resources/icon.png, which must be exactly 64x64 - hence icon-pcm-64.png rather than the 48x48
       # icon-light.png the plugin itself uses in the KiCad toolbar.
+      #
+      # There is still no plugins/bin here, and now there deliberately never will be: the launcher
+      # fetches the application on first use (#128).
       - name: Stage the PCM layout
         shell: bash
         run: |
@@ -73,7 +240,7 @@ jobs:
             "\$schema": "https://go.kicad.org/pcm/schemas/v1",
             "name": "KiCad UltraLibrarian Importer",
             "description": "Import schematic symbols, footprints and 3D models from UltraLibrarian into KiCad",
-            "description_full": "Browse UltraLibrarian and import the schematic symbol, footprint and 3D model for a part straight into the open KiCad project, without leaving KiCad.",
+            "description_full": "Browse UltraLibrarian and import the schematic symbol, footprint and 3D model for a part straight into the open KiCad project, without leaving KiCad. This package holds the launcher only; the first time the plugin is used it downloads the importer application for your platform from the project's GitHub releases, verifies it, and keeps it up to date after that.",
             "identifier": "com.github.danielmeza.kicad-ultralibrarian-importer",
             "type": "plugin",
             "author": { "name": "Daniel Meza", "contact": { "web": "https://github.com/danielmeza" } },
@@ -101,6 +268,18 @@ jobs:
           echo "size=$(stat -c%s "${ARCHIVE}")" >> "$GITHUB_OUTPUT"
           echo "install_size=$(du -sb staging | cut -f1)" >> "$GITHUB_OUTPUT"
 
+      # The package is the Python side, the icons and the metadata, and it is meant to stay that
+      # size. If something ever starts staging the application into it again, this fails the release
+      # rather than publishing a 450 MB PCM package.
+      - name: Check the bundle stayed small
+        shell: bash
+        env:
+          SIZE: ${{ steps.pack.outputs.size }}
+        run: |
+          set -euo pipefail
+          echo "bundle is ${SIZE} bytes"
+          test "${SIZE}" -lt 1048576
+
       # The entry a PCM repository's packages.json needs. Emitted as a release asset so adding this
       # plugin to a repository later is copy-and-paste rather than hand-computing hashes.
       - name: Write the PCM repository entry
@@ -112,7 +291,6 @@ jobs:
           INSTALL_SIZE: ${{ steps.pack.outputs.install_size }}
         run: |
           set -euo pipefail
-          ARCHIVE_NAME="kicad-ultralibrarian-importer-${VERSION}.zip"
           python3 - <<'PY' > dist/pcm-entry.json
           import json, os
           version = os.environ["VERSION"]
@@ -134,10 +312,11 @@ jobs:
         with:
           name: kicad-plugin-bundle
           path: dist/*
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
-    needs: bundle
+    needs: [app, bundle]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
@@ -145,11 +324,38 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: kicad-plugin-bundle
-          path: dist
+          path: artifacts
 
-      - name: List artifacts
-        run: find dist -type f
+      # One flat directory, because that is what a release is. Two artifacts sharing a file name
+      # would silently overwrite each other here and leave the checksum file describing whichever
+      # arrived last, so it is checked rather than assumed: Velopack's names carry the channel, and
+      # a change that makes two channels agree has to be noticed at release time.
+      - name: Collect the release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          DUPLICATES="$(find artifacts -type f -printf '%f\n' | sort | uniq -d)"
+          if [ -n "$DUPLICATES" ]; then
+            echo "Two artifacts carry the same file name:" >&2
+            echo "$DUPLICATES" >&2
+            exit 1
+          fi
+          find artifacts -type f -exec cp {} dist/ \;
+          ls -l dist
+          du -ch dist | tail -1
+
+      # The launcher on a machine with no importer yet reads this file, finds the line for the asset
+      # it is about to download, and refuses anything whose SHA-256 does not match. It covers every
+      # file this release carries, not only the four the launcher fetches, so the Velopack packages
+      # and the PCM bundle can be checked by hand the same way.
+      - name: Publish a checksum for every asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum * > ../SHA256SUMS.txt)
+          mv SHA256SUMS.txt dist/
+          cat dist/SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:

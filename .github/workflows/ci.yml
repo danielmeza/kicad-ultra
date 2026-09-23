@@ -55,6 +55,20 @@ jobs:
       - name: Format
         run: dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes --no-restore
 
-      # No `dotnet test` step: UltraLibrarianImporter.sln contains only the Avalonia app and the
-      # SampleConsole harness, and neither is a test project. Add one here with the first test
+      # The plugin's bootstrapper (#128) drives a local HTTP server that answers like GitHub's
+      # releases API, and checks the four things it has to get right: a first run that downloads and
+      # verifies, a second that starts offline, an asset that fails its checksum and is refused, and
+      # a download cut off part-way that the next run continues. The last of those found a real
+      # defect - `http.client` reports a truncated body as end-of-file, so a cut-off download looked
+      # complete - which is why they run here rather than being something someone reproduces by hand.
+      #
+      # Standard library only, like the launcher, so there is nothing to install: `python3` on the
+      # runner is enough, and no network is used. The bootstrap tests are Linux-only, because the
+      # asset for Linux is a single AppImage that a shell script can stand in for; the archive and
+      # asset-name tests run everywhere.
+      - name: Plugin bootstrap tests
+        run: python3 -m unittest discover -s tests -v
+
+      # Still no `dotnet test` step: UltraLibrarianImporter.sln contains only the Avalonia app and
+      # the SampleConsole harness, and neither is a test project. Add one here with the first test
       # project rather than running `dotnet test` over a solution that has nothing to run.

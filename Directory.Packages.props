@@ -36,6 +36,10 @@
          takes it as a package. No dependencies on net8.0+; keep it on the same 10.0.x patch as the
          Microsoft.Extensions packages above. -->
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.12" />
+    <!-- The installer/updater framework the app ships through (#128). Keep this version and the vpk
+         version in .config/dotnet-tools.json in step: vpk writes the package format the library
+         reads, and Velopack ships both from one version number. No dependencies on net10.0. -->
+    <PackageVersion Include="Velopack" Version="1.2.158" />
     <PackageVersion Include="WebViewControl-Avalonia" Version="3.120.11" />
   </ItemGroup>
 

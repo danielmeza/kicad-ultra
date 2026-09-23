@@ -11,10 +11,19 @@ dotnet build   UltraLibrarianImporter.sln -c Debug     # CI builds both (#89)
 dotnet run --project src/importer/UltraLibrarianImporter.UI   # the app starts without KiCad
 ```
 
-**There are no tests.** The README's `dotnet test` line is stale: the solution contains only the
-Avalonia app and the `SampleConsole` harness, and `.github/workflows/ci.yml` deliberately has no
-test step (see the comment at the end of that file). Add the CI step together with the first test
-project rather than running `dotnet test` over a solution with nothing to run.
+**There are no .NET tests.** The README's `dotnet test` line is stale: the solution contains only
+the Avalonia app and the `SampleConsole` harness, and `.github/workflows/ci.yml` deliberately has no
+`dotnet test` step (see the comment at the end of that file). Add the CI step together with the
+first test project rather than running `dotnet test` over a solution with nothing to run.
+
+**The one test suite is `tests/`, and it is Python** (#128): integration tests for the plugin's
+bootstrapper, driving `plugin/importer_launcher.py` against a local HTTP server that answers like
+GitHub's releases API. Standard library only, no network, and each run gets its own temporary tree
+through `KICAD_ULTRA_HOME`, so they touch nothing on the machine. CI runs them, and so should you:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 `SampleConsole` is a scratch harness against a running KiCad, not a test — its IPC token and socket
 path are hardcoded in `Program.cs` and will not match another machine. Its one self-contained mode:
