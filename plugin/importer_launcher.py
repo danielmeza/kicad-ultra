@@ -187,9 +187,13 @@ def target_asset(os_name=None, platform_id=None, machine=None):
         # nothing. There is no win-arm64 channel to offer it instead.
         return (PACK_ID + "-win-Portable.zip", "zip") if is_x64 or is_arm64 else None
     if platform_id == "darwin":
-        if is_arm64:
-            return (PACK_ID + "-osx-arm64-Portable.zip", "zip")
-        return (PACK_ID + "-osx-x64-Portable.zip", "zip") if is_x64 else None
+        # Apple Silicon gets the Intel build, under Rosetta 2, for the same reason Windows on ARM
+        # gets the x64 one: there is no arm64 channel to offer it. CefGlue.Common - the CEF browser
+        # the Web Browser tab runs inside - publishes binaries for linux-x64, osx-x64 and win-x64
+        # and no other architecture, so an osx-arm64 build does not compile at all: CSC answers
+        # CS8012, "targets a different processor", for all five CEF assemblies. If that package ever
+        # ships arm64, the channel goes back into release.yml and here together.
+        return (PACK_ID + "-osx-x64-Portable.zip", "zip") if is_x64 or is_arm64 else None
     if platform_id.startswith("linux"):
         return (PACK_ID + ".AppImage", "appimage") if is_x64 else None
     return None

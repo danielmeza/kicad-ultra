@@ -52,7 +52,9 @@ dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj \
     -c Release -r linux-x64 --self-contained true -o plugin/bin
 ```
 
-Use `win-x64`, `osx-x64` or `osx-arm64` for the other platforms. It needs the
+Use `win-x64` or `osx-x64` for the other platforms - there is no `osx-arm64` build, because
+the CEF browser it embeds publishes no arm64 binaries, and Apple Silicon runs the `osx-x64` one
+under Rosetta 2. It needs the
 [.NET 10 SDK](https://dotnet.microsoft.com/); nothing else has to be installed first.
 
 ### 2. Put `plugin/` where KiCad looks

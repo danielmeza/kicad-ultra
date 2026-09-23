@@ -68,7 +68,7 @@ on the next start so an import is never interrupted.
 >
 > ```sh
 > dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj \
->     -c Release -r linux-x64 --self-contained true -o plugin/bin      # or win-x64, osx-x64, osx-arm64
+>     -c Release -r linux-x64 --self-contained true -o plugin/bin      # or win-x64, osx-x64
 > ln -s "$PWD/plugin" ~/.local/share/kicad/10.0/3rdparty/plugins/kicad-ultra
 > ```
 
@@ -143,6 +143,8 @@ What it does not do yet:
 - **The KiCad GUI has not been driven end to end.** The import path is verified with `kicad-cli` and
   over IPC against a running KiCad, not by clicking through the editors.
 - **Windows and macOS build but are unverified.** Every runtime check so far is Linux.
+- **There is no Apple Silicon build.** The CEF browser the importer embeds publishes no arm64
+  binaries, so Macs on Apple Silicon run the Intel build under Rosetta 2.
 - **Symbols, footprints and 3D models only** — no simulation models, and datasheets are not attached
   to imported parts ([#73](https://github.com/danielmeza/kicad-ultra/issues/73)).
 - **Registration edits the table files.** KiCad 11 declares IPC commands for it but does not answer
