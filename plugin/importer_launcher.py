@@ -402,28 +402,39 @@ def _acquire_lock(path):
     while True:
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            os.write(handle, str(os.getpid()).encode("ascii"))
-            os.close(handle)
-            return
         except FileExistsError:
+            pass
+        else:
             try:
-                age = time.time() - os.path.getmtime(path)
+                os.write(handle, str(os.getpid()).encode("ascii"))
+            finally:
+                os.close(handle)
+            return
+
+        # Checked here, before any of the paths below that loop round again, so that every way
+        # through this loop is bounded by the deadline rather than only the one that sleeps.
+        if time.time() > deadline:
+            raise BootstrapError("another copy of this plugin has been downloading the importer "
+                                 "for too long. Start KiCad again to retry.")
+
+        try:
+            age = time.time() - os.path.getmtime(path)
+        except OSError:
+            # The lock was released between the two calls. Go round and take it.
+            continue
+
+        if age > LOCK_STALE_SECONDS:
+            _say("an abandoned download lock is being removed")
+            try:
+                os.remove(path)
             except OSError:
-                continue
-            if age > LOCK_STALE_SECONDS:
-                _say("an abandoned download lock is being removed")
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-                continue
-            if not announced:
-                _say("another KiCad window is already downloading the importer; waiting for it")
-                announced = True
-            if time.time() > deadline:
-                raise BootstrapError("another copy of this plugin has been downloading the importer "
-                                     "for too long. Start KiCad again to retry.")
-            time.sleep(2)
+                pass
+            continue
+
+        if not announced:
+            _say("another KiCad window is already downloading the importer; waiting for it")
+            announced = True
+        time.sleep(2)
 
 
 def bootstrap():
@@ -489,8 +500,16 @@ def bootstrap():
         with open(_marker_path(), "w", encoding="utf-8") as marker:
             json.dump({"version": version, "asset": asset_name, "sha256": expected}, marker, indent=2)
 
+        # Looked up again rather than derived from the staging path, because the swap is what makes
+        # the installation real. Never None in practice - it was found in the staging directory a
+        # few lines up - but the caller starts whatever comes back, so it says so rather than
+        # handing back nothing and failing later with a traceback.
+        installed = _find_executable(_app_dir(), kind)
+        if installed is None:
+            raise BootstrapError("{0} was unpacked but {1} is not in {2}.".format(asset_name, EXE_NAME, _app_dir()))
+
         _say("installed {0}; it updates itself from now on".format(version))
-        return _find_executable(_app_dir(), kind)
+        return installed
     finally:
         try:
             os.remove(lock)

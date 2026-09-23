@@ -30,6 +30,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import zipfile
 
@@ -241,6 +242,40 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(
             any(ranged for path, ranged in resumed.requests if path.endswith(asset)),
             "the second attempt has to ask for the rest, not the whole file")
+
+    # -- the lock two KiCad windows compete for -----------------------------------------------
+
+    def test_a_lock_left_behind_by_a_killed_run_does_not_block_the_install(self):
+        self._publish()
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+
+        lock = os.path.join(launcher.data_dir(), "bootstrap.lock")
+        os.makedirs(launcher.data_dir(), exist_ok=True)
+        with open(lock, "w", encoding="utf-8") as handle:
+            handle.write("99999")
+        stale = time.time() - launcher.LOCK_STALE_SECONDS - 60
+        os.utime(lock, (stale, stale))
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertIsNotNone(launcher.find_importer())
+        self.assertFalse(os.path.exists(lock), "the lock is released again afterwards")
+
+    def test_a_lock_another_run_still_holds_is_waited_for_and_then_given_up_on(self):
+        self._publish()
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        # A second or two, rather than the quarter of an hour a real run would wait.
+        launcher.LOCK_WAIT_SECONDS = 1
+
+        lock = os.path.join(launcher.data_dir(), "bootstrap.lock")
+        os.makedirs(launcher.data_dir(), exist_ok=True)
+        with open(lock, "w", encoding="utf-8") as handle:
+            handle.write("99999")
+
+        self.assertEqual(1, launcher.launch_importer(), "it gives up rather than hanging")
+        self.assertIsNone(launcher.find_importer(), "and installs nothing behind the other run")
+        self.assertTrue(os.path.exists(lock), "the other run's lock is left alone")
 
     # -- refusals -----------------------------------------------------------------------------
 

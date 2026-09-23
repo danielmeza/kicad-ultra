@@ -107,12 +107,17 @@ jobs:
       # Seeds the output directory with the previous release's full package so `vpk pack` can diff
       # against it and emit a delta. It is allowed to fail: on the first release of a channel there
       # is nothing to download, and a release without a delta is complete, just larger.
+      #
+      # The token goes through the environment, which is the VPK_TOKEN vpk documents for --token,
+      # rather than onto the command line where every other process on the runner could read it out
+      # of /proc.
       - name: Fetch the previous release for the delta
         continue-on-error: true
+        env:
+          VPK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           dotnet vpk ${{ matrix.directive }} download github
           --repoUrl https://github.com/${{ github.repository }}
-          --token ${{ secrets.GITHUB_TOKEN }}
           --channel ${{ matrix.channel }}
           --outputDir Releases
 
@@ -142,6 +147,13 @@ jobs:
       #
       # The legacy `RELEASES` file is deliberately not staged: it exists for clients migrating from
       # Squirrel, and this application has never shipped under Squirrel.
+      #
+      # Everything vpk built is staged, which includes the installers - Setup.exe on Windows and a
+      # .pkg on each macOS channel. The plugin never uses them (it takes the portable artifact), but
+      # they are how somebody installs the application without KiCad, and vpk 1.2.158 has no flag to
+      # skip the .pkg anyway. It does mean a release carries roughly 2 GB across the four platforms;
+      # the step below prints the total, and dropping the Installer entries here is a one-line change
+      # if that is not wanted.
       - name: Stage this build's assets
         shell: bash
         run: |
@@ -321,7 +333,8 @@ jobs:
             exit 1
           fi
           find artifacts -type f -exec cp {} dist/ \;
-          find dist -type f | sort
+          ls -l dist
+          du -ch dist | tail -1
 
       # The launcher on a machine with no importer yet reads this file, finds the line for the asset
       # it is about to download, and refuses anything whose SHA-256 does not match. It covers every
