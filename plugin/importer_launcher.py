@@ -38,22 +38,19 @@ import zipfile
 # The published apphost. Windows is the only platform that gets an extension; the name follows the
 # assembly's, which is what `dotnet publish` writes.
 #
-# It changes with the rename in #132, together with `--mainExe` in .github/workflows/release.yml -
-# the two have to name the same file, and the rename tool rewrites both because both are plain
-# strings. The one visible consequence is on Windows and macOS, where this name is what is looked
-# for inside an already-unpacked application: an installed copy from before the rename stops being
-# found and is downloaded once more. Linux is unaffected, because there the AppImage is named after
-# PACK_ID rather than the assembly.
-EXE_NAME = "UltraLibrarianImporter.UI.exe" if os.name == "nt" else "UltraLibrarianImporter.UI"
+# It has to name the same file as `--mainExe` in .github/workflows/release.yml, which is what stamps
+# it into the package. Both were `UltraLibrarianImporter.UI` until the rename in #132, and both
+# changed in it. Nothing was released under the old name, so no installed copy is looking for it.
+EXE_NAME = "KiCadUltra.exe" if os.name == "nt" else "KiCadUltra"
 
 # The Velopack package id, which is what every asset name is built from. Keep it in step with
 # .github/workflows/release.yml, which passes it to `vpk pack --packId`.
 #
-# KiCadUltra rather than UltraLibrarianImporter because this id is permanent in a way the rest of
-# the naming is not: Velopack matches an installed copy to a feed by it, so changing it later would
-# cut every installed copy off from updates. The project is no longer only an UltraLibrarian
-# importer - EasyEDA / LCSC and Octopart are providers of their own - and the id says so from the
-# first release rather than after one.
+# This id is permanent in a way the rest of the naming is not: Velopack matches an installed copy to
+# a feed by it, so changing it later would cut every installed copy off from updates. It was chosen
+# in #128, before the assembly and the namespaces caught up with it in #132, for exactly that
+# reason - the project is no longer only an UltraLibrarian importer, EasyEDA / LCSC and Octopart are
+# providers of their own, and the id had to say so from the first release rather than after one.
 PACK_ID = "KiCadUltra"
 
 # Where the releases live. GitHub *Packages* answers 401 to an anonymous request, so it cannot serve

@@ -22,7 +22,7 @@ jobs:
       # KiCadSharp.Protos resolve from nuget.org at the versions Directory.Build.props pins, which
       # is the whole point of consuming them as packages instead of project references.
       - name: Restore
-        run: dotnet restore UltraLibrarianImporter.sln
+        run: dotnet restore KiCadUltra.sln
 
       # The importer now compiles: the five files that still imported the pre-rename
       # `UltraLibrarianImporter.KiCadBindings` namespace were repointed at KiCadSharp, and the
@@ -35,7 +35,7 @@ jobs:
       # (unnecessary usings): it needs the documentation file the build produces, which
       # `dotnet format` does not.
       - name: Build
-        run: dotnet build UltraLibrarianImporter.sln -c Release --no-restore
+        run: dotnet build KiCadUltra.sln -c Release --no-restore
 
       # The other half. Some .editorconfig violations pass the build and only `dotnet format`
       # reports them (#59): CHARSET (`.cs` files must be utf-8-bom, and a file saved without the
@@ -50,10 +50,10 @@ jobs:
       # a `using` that IDE0005 saw as unused in Release but that `AttachDevTools()` needs in Debug, and every
       # Debug build - including the documented `dotnet run` - broke unnoticed.
       - name: Build (Debug)
-        run: dotnet build UltraLibrarianImporter.sln -c Debug --no-restore
+        run: dotnet build KiCadUltra.sln -c Debug --no-restore
 
       - name: Format
-        run: dotnet format UltraLibrarianImporter.sln --severity warn --verify-no-changes --no-restore
+        run: dotnet format KiCadUltra.sln --severity warn --verify-no-changes --no-restore
 
       # The plugin's bootstrapper (#128) drives a local HTTP server that answers like GitHub's
       # releases API, and checks the four things it has to get right: a first run that downloads and
@@ -69,6 +69,6 @@ jobs:
       - name: Plugin bootstrap tests
         run: python3 -m unittest discover -s tests -v
 
-      # Still no `dotnet test` step: UltraLibrarianImporter.sln contains only the Avalonia app and
+      # Still no `dotnet test` step: KiCadUltra.sln contains only the Avalonia app and
       # the SampleConsole harness, and neither is a test project. Add one here with the first test
       # project rather than running `dotnet test` over a solution that has nothing to run.

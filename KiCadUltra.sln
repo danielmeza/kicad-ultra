@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KiCadUltra", "src\importer\KiCadUltra\KiCadUltra.csproj", "{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleConsole", "src\importer\SampleConsole\SampleConsole.csproj", "{538FBF22-642B-49E6-B1AC-85E901B8916D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "importer", "importer", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|x64.Build.0 = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Debug|x86.Build.0 = Debug|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x64.ActiveCfg = Release|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x64.Build.0 = Release|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x86.ActiveCfg = Release|Any CPU
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01}.Release|x86.Build.0 = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|x64.Build.0 = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Debug|x86.Build.0 = Debug|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|x64.ActiveCfg = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|x64.Build.0 = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|x86.ActiveCfg = Release|Any CPU
+		{538FBF22-642B-49E6-B1AC-85E901B8916D}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{508D1EC5-5777-46FF-B4C0-ECB2023A8B01} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{538FBF22-642B-49E6-B1AC-85E901B8916D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4A522EBE-2E12-4056-B039-9782CB594289}
+	EndGlobalSection
+EndGlobal
