@@ -1,179 +1,180 @@
-# kicad-ultra
+<h1 align="center">
+  <img src="docs/images/logo.png" alt="" width="96"><br>
+  kicad-ultra
+</h1>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<h4 align="center">Search for a part and get its symbol, footprint and 3D model into your KiCad project, without leaving KiCad.</h4>
 
-A KiCad plugin that pulls symbols, footprints and 3D models from
-[UltraLibrarian](https://www.ultralibrarian.com/) straight into your project — no download folder,
-no manual library juggling.
+<p align="center">
+  <a href="https://github.com/danielmeza/kicad-ultra/actions/workflows/ci.yml"><img src="https://github.com/danielmeza/kicad-ultra/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/danielmeza/kicad-ultra" alt="MIT license"></a>
+  <a href="https://github.com/danielmeza/kicad-ultra/issues"><img src="https://img.shields.io/github/issues/danielmeza/kicad-ultra" alt="Open issues"></a>
+  <img src="https://img.shields.io/badge/KiCad-10.0%20%C2%B7%2011%20nightly-314cb0" alt="Verified against KiCad 10.0.6 and 10.99">
+</p>
 
-Browse UltraLibrarian from inside KiCad, pick a part, and it lands in your symbol and footprint
-libraries with the 3D model attached.
+<p align="center">
+  <a href="#what-it-does">What it does</a> •
+  <a href="#install">Install</a> •
+  <a href="#quick-start">Quick start</a> •
+  <a href="docs/README.md">Docs</a> •
+  <a href="#troubleshooting">Troubleshooting</a> •
+  <a href="#status">Status</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/part-explorer.png" alt="The Part Explorer listing NE555 parts with stock, price and CAD availability, each row offering Import and Find on Ultra Librarian" width="100%">
+</p>
+
+Adding a part to a KiCad project usually means leaving it: search a vendor site, download a zip,
+unpack it somewhere, add two library-table rows by hand, and hope the 3D model still points at a path
+that exists. kicad-ultra does that from inside KiCad.
+
+## What it does
+
+- **Searches several sources at once.** EasyEDA / LCSC parts from JLCPCB's library, and Octopart
+  through Nexar with your own token. Results stream in as each source answers, with stock, price
+  breaks and the datasheet. See [where the parts come from](docs/data-sources.md).
+- **Imports two ways.** A result with an LCSC code converts through
+  [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py). Any result with a manufacturer part
+  number gets **Find on Ultra Librarian**, which opens that search in the built-in browser tab, where
+  the download you make is intercepted and imported.
+- **Registers the library for you.** Symbol, footprint and 3D model go into one library, added to the
+  project's `sym-lib-table` and `fp-lib-table` with `${KIPRJMOD}`-relative paths, or to KiCad's global
+  tables when no project is open. Rows already there are left byte for byte as they were.
+- **Says what it actually knows.** CAD availability is yes, no or **unknown** — never a guess. Each
+  row names its source. A provider that fails is reported as failed, never as "no results".
+- **Re-imports cleanly.** Importing a part again replaces its symbol, footprint and model instead of
+  leaving duplicates, and a failed or cancelled import rolls back and registers nothing.
+- **Serves an MCP server.** Started with `--mcp` it exposes three read-only tools over stdio so an AI
+  client can look parts up. It never imports, and never uses JLCPCB's official API.
 
 ## Install
 
-Copy `plugin/` into your KiCad plugin directory:
+Install the plugin from KiCad's **Plugin and Content Manager**, then turn the API on in
+**Preferences → Plugins → Enable IPC API** and restart KiCad.
 
-| | |
+The plugin package is a few kilobytes: the Python launcher, the icons and the metadata. **The first
+time you run it, it downloads the application** — about 200 MB, most of it the embedded browser —
+from this repository's releases, checks it against a SHA-256 published in the same release, and
+unpacks it into a per-user data directory (`%LOCALAPPDATA%\kicad-ultra`,
+`~/Library/Application Support/kicad-ultra`, or `$XDG_DATA_HOME/kicad-ultra`). Only that first run
+needs the network; the application keeps itself up to date in the background afterwards, installing
+on the next start so an import is never interrupted.
+
+> [!NOTE]
+> **No release is published yet**, so the download has nothing to fetch. Until the first tag, build
+> the application yourself — the launcher prefers `plugin/bin` when it exists, so this is also the
+> development workflow:
+>
+> ```sh
+> dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
+>     -c Release -r linux-x64 --self-contained true -o plugin/bin      # or win-x64, osx-x64, osx-arm64
+> ln -s "$PWD/plugin" ~/.local/share/kicad/10.0/3rdparty/plugins/kicad-ultra
+> ```
+
+Every platform's directory, the Flatpak, and the optional easyeda2kicad are in
+[Installing](docs/installing.md). Needs KiCad 10 (9.0 has the IPC API but is untested here), and on
+Linux, FUSE to run the AppImage — `APPIMAGE_EXTRACT_AND_RUN=1` if your system has none.
+
+## Quick start
+
+1. Open **Import from UltraLibrarian** in KiCad, with your project open.
+2. Type a part number or a keyword in the **Part Explorer** and press **Search All Providers**.
+3. On a row with an LCSC code press **Import**. On any other row press **Find on Ultra Librarian**,
+   sign in there and download the KiCad model — the download is intercepted and imported.
+4. Reopen the project, or restart KiCad, so it re-reads the library tables. Place the part.
+
+**Settings → General → Register imported libraries in** chooses which table gets the library:
+**Automatic** (the project's when one is open, KiCad's global one when not), **Project** or
+**Global**.
+
+## Documentation
+
+| Page | What's in it |
 |---|---|
-| Linux | `~/.local/share/kicad/9.0/plugins/` |
-| macOS | `~/Library/Application Support/kicad/9.0/plugins/` |
-| Windows | `%APPDATA%\kicad\9.0\plugins\` |
+| [Installing](docs/installing.md) | Every platform, the Flatpak, easyeda2kicad, and where settings, logs and credentials live |
+| [Where the parts come from](docs/data-sources.md) | Each source and what it needs, JLCPCB's two routes, CAD availability, attribution and trademark rules |
+| [Troubleshooting](docs/troubleshooting.md) | The full list, beyond the three below |
+| [Building and testing](docs/building.md) | Build gates, running it during development, building against local library checkouts |
+| [CLAUDE.md](CLAUDE.md) | The deeper guide: architecture, every build constraint, and the traps already paid for |
 
-```bash
-pip install -r plugin/requirements.txt
-```
+## Troubleshooting
 
-Then enable the IPC API — **Preferences → Plugins → Enable IPC API** — and restart KiCad. The
-importer appears as **Import from UltraLibrarian** in the schematic editor, the PCB editor and the
-project manager.
+<details>
+<summary>The Import button is disabled</summary>
 
-Needs KiCad 9.0 or newer, Python 3.8+ and wxPython.
+Hover it: the tip says why. Usually easyeda2kicad is not installed, or the row carries no LCSC code —
+use **Find on Ultra Librarian** on that row instead. **Settings → Component Providers →
+easyeda2kicad** shows what was found and where it looked.
 
-## Using it
+</details>
 
-1. Open **Import from UltraLibrarian**. It opens UltraLibrarian in a browser window.
-2. Find your part and download it. The plugin picks the download up on its own.
-3. Choose what you want — symbol, footprint, 3D model.
-4. **Import.** It goes into your project's libraries.
+<details>
+<summary>The imported part does not show up in KiCad</summary>
 
-The **Part Explorer** tab searches EasyEDA / LCSC and, with your Nexar token, Octopart at once. Each
-result has the ways it can be imported:
+KiCad reads the library tables when a project opens and does not re-read them on its own. Reopen the
+project, or restart KiCad. The import log names the table it wrote to.
 
-- **Import**, for a result with an LCSC part number: see
-  [EasyEDA / LCSC parts](#easyeda--lcsc-parts-optional-easyeda2kicad).
-- **Find on Ultra Librarian**, for a result with a manufacturer part number: it opens Ultra Librarian's
-  search for that part number in the Web Browser tab. Sign in, download the part's KiCad model, and it is
-  imported as above.
+</details>
 
-A button that cannot be used says why when you hover over it.
+<details>
+<summary>The About window does not say "Connected"</summary>
 
-## EasyEDA / LCSC parts (optional: easyeda2kicad)
+"Not connected" means nothing is listening: check **Preferences → Plugins → Enable IPC API**. "KiCad
+is busy" means a modal dialog owns KiCad's main loop — the stale lock-file prompt is the usual one.
+Started by hand rather than by KiCad, the app looks for KiCad's socket under its own `TMPDIR`.
 
-Search results that carry an LCSC part number (`C2040`, …) have an **Import** button: those from
-**EasyEDA / LCSC**, and those from **Octopart** when LCSC sells the part (its LCSC SKU). It converts the
-part with [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) and adds the symbol, footprint and
-3D model to your KiCad libraries.
+</details>
 
-**easyeda2kicad is an optional third-party tool, licensed under AGPL-3.0. It is not part of this project**,
-and this project does not bundle, vendor, install or modify it. You install it yourself; kicad-ultra only
-runs it as a separate program, through its documented command-line flags, and reads back the KiCad library
-files it writes. Without it, everything else works and the Import button stays disabled.
+The rest, including rate limiting and where the logs are, is in
+[Troubleshooting](docs/troubleshooting.md).
 
-Install it (it needs Python 3.9 or newer):
+## Status
 
-| KiCad installed as | Command, in a terminal |
-|---|---|
-| a native package (Windows, macOS, Linux) | `pipx install easyeda2kicad` |
-| the **Flatpak** (Linux) | `flatpak run --command=pip3 org.kicad.KiCad install --user easyeda2kicad` |
+**Early, and developed in the open.** The import path works end to end and is verified; the polish
+around it is still moving, and the open issues say what each one waits on.
 
-Under the Flatpak, KiCad — and this importer, which KiCad starts — run inside KiCad's sandbox, so a copy
-installed with `pip` or `pipx` on the host is invisible to them. The command above installs it inside the
-sandbox, where KiCad's own `pip3` puts user packages.
+Verified on 2026-09-22 against running KiCad instances, **10.0.6** and **10.99** (the KiCad 11 line):
+connect, search, import an LCSC part, register it in the project's tables, and `kicad-cli` loads the
+resulting symbol and footprint on both.
 
-The importer looks for it in this order, and **Settings → Component Providers → easyeda2kicad** shows what
-it found:
+What it does not do yet:
 
-1. the path set there — `easyeda2kicad` itself, or a Python interpreter that has it installed;
-2. `easyeda2kicad` on `PATH`;
-3. `python -m easyeda2kicad` with KiCad's Python interpreter (`api.interpreter_path` in `kicad_common.json`).
-
-The part is converted straight into the same library the other imports use (`<project>_EasyEDA` in the
-project folder, or `EasyEDA` next to KiCad's global tables), then registered in a library table. By
-default that is the project's table when there is a project and KiCad's global table when there is not;
-**Settings → General → Register imported libraries in** can pin it to either one.
-Re-importing a part replaces it rather than adding a second copy. When an import fails, times out or is
-cancelled, nothing is registered, the symbol library is restored and the files the run created are removed;
-the log names anything it could not undo.
-
-easyeda2kicad downloads the part's data from EasyEDA itself; that traffic comes from the tool you
-installed, not from kicad-ultra.
-
-## How it works
-
-Two pieces:
-
-- **`plugin/`** — a small Python launcher. KiCad loads this; it starts the UI and talks to KiCad over
-  the IPC API.
-- **`src/importer/`** — an [Avalonia](https://avaloniaui.net/) application that does the browsing,
-  downloading and importing.
-
-The KiCad file handling underneath comes from two libraries that live in their own repositories:
-[SExpressions](https://github.com/danielmeza/sexpressions) for lossless reads and writes, and
-[KiCadSharp](https://github.com/danielmeza/kicad-sharp) for the IPC client and the library formats.
-They're consumed from nuget.org like any other dependency.
-
-## Building
-
-```bash
-dotnet build UltraLibrarianImporter.sln -c Release
-dotnet test  UltraLibrarianImporter.sln -c Release
-```
-
-No submodules, nothing to pack first.
-
-### Against local library checkouts
-
-If you're changing SExpressions or KiCadSharp at the same time:
-
-```bash
-scripts/use-local-libs.sh ../sexpressions ../kicad-sharp
-dotnet build UltraLibrarianImporter.sln -c Release \
-    -p:SExpressionsVersion=0.1.0-local.<stamp> \
-    -p:KiCadSharpVersion=0.1.0-local.<stamp>
-```
-
-The script packs each library at its own `-local.<timestamp>` version into `local-packages/`, which
-is registered as a package source. The distinct version means restore can't quietly fall back to the
-published package. Drop the properties to go back to the released ones.
-
-There's deliberately no switch to `ProjectReference`: consuming the real `.nupkg` is what proves the
-packages work, and the packages are what break.
-
-## Releasing
-
-This repository doesn't publish packages any more — the four it used to push moved to their own
-repositories. What it should release instead is still open: see [docs/releasing.md](docs/releasing.md).
-
-## Data sources and trademarks
-
-UltraLibrarian, EasyEDA, LCSC, JLCPCB, Octopart, SnapEDA and SamacSys are trademarks of their
-owners. They're named only to identify the services and data this plugin works with; this project
-isn't affiliated with or endorsed by any of them.
-
-Part search results labelled **EasyEDA / LCSC** come from JLCPCB's parts library, by one of two
-routes. The app names the route beside each of those results.
-
-- **JLCPCB's official Components API**, if you enter your own API credentials in Settings →
-  Component Providers. JLCPCB reviews applications for API access; see
-  [its guide](https://jlcpcb.com/help/article/jlcpcb-online-api-available-now). The API looks parts
-  up by LCSC number (such as `C2040`) and has no keyword search, so keyword searches take the
-  second route even with credentials. Access is granted per service, and this one needs your
-  application's **Parts** permission approved: while JLCPCB refuses the call, or rejects the
-  credentials, the app says so once, takes the second route for the rest of the session and stops
-  asking — so the search keeps working either way. Editing any of the three values starts over.
-  The MCP server (`--mcp`) never uses it, even with credentials:
-  JLCPCB's API terms forbid passing API data to third parties, and the MCP server hands every result
-  to the connected AI client.
-- **An internal endpoint of JLCPCB's website**, otherwise. It is not a published API, so it can change
-  or stop working at any time without notice, and the Part Explorer says so while it is in use. Each
-  search asks for one page of 25 results, through the same cache as every other provider but a slower
-  rate limit of its own, with an honest `kicad-ultra/1.0` User-Agent. When JLCPCB turns searches down
-  as too frequent, the app says "JLCPCB is rate-limiting; try again shortly" and leaves it alone for a
-  while, at most two minutes.
-
-easyeda2kicad is © its authors and licensed under AGPL-3.0; it is a separate program that you install, not
-a part or a dependency of this MIT-licensed project.
+- **The KiCad GUI has not been driven end to end.** The import path is verified with `kicad-cli` and
+  over IPC against a running KiCad, not by clicking through the editors.
+- **Windows and macOS build but are unverified.** Every runtime check so far is Linux.
+- **Symbols, footprints and 3D models only** — no simulation models, and datasheets are not attached
+  to imported parts ([#73](https://github.com/danielmeza/kicad-ultra/issues/73)).
+- **Registration edits the table files.** KiCad 11 declares IPC commands for it but does not answer
+  them yet — [measured, not assumed](https://github.com/danielmeza/kicad-ultra/issues/72#issuecomment-5788030778).
+- **SnapEDA and SamacSys are browser-only**; neither publishes an API a desktop app may use.
 
 ## Contributing
 
-Issues and pull requests welcome.
+Issues and pull requests are welcome. A good bug report carries the log lines around the failure and
+the KiCad version from the About window. [CLAUDE.md](CLAUDE.md) is worth reading first — it is the
+guide this repository is actually developed against, including the build gates.
 
-Name a supplier only to identify where data comes from, and credit the actual source wherever its
-data is shown. JLCPCB's API terms forbid its trademark or logo in a partner's advertising and "JLC"
-in its website URLs, and breaking them ends API access. So: no JLCPCB or LCSC logos in this
-repository, no JLCPCB in the plugin's name, icon or Plugin and Content Manager listing, and no "JLC"
-in any URL this project controls ([#58](https://github.com/danielmeza/kicad-ultra/issues/58)).
+Two rules that are not style preferences:
 
-## License
+- **Never fabricate data.** A result, a price or a CAD-availability flag appears only because a source
+  said so. A provider that cannot answer is left out, and a failure is reported as a failure.
+- **Name a supplier only to identify where data comes from.** JLCPCB's API terms forbid its trademark
+  or logo in a partner's advertising and "JLC" in a partner's URLs, and breaking them ends API access
+  ([#58](https://github.com/danielmeza/kicad-ultra/issues/58)). The details are in
+  [Where the parts come from](docs/data-sources.md#trademarks-and-attribution).
 
-MIT — see [LICENSE](LICENSE).
+## Credits and license
+
+- Built with [.NET 10](https://dotnet.microsoft.com/), [Avalonia](https://avaloniaui.net/),
+  [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet),
+  [ReactiveUI](https://www.reactiveui.net/), [CefGlue](https://github.com/OutSystems/CefGlue) and
+  [WebViewControl-Avalonia](https://github.com/OutSystems/WebView), [NLog](https://nlog-project.org/),
+  and this project's own [SExpressions](https://github.com/danielmeza/sexpressions) and
+  [KiCadSharp](https://github.com/danielmeza/kicad-sharp).
+- [easyeda2kicad](https://github.com/uPesy/easyeda2kicad.py) is © its authors under AGPL-3.0: a
+  separate program you install, not a part or a dependency of this project.
+- UltraLibrarian, EasyEDA, LCSC, JLCPCB, Octopart, Nexar, SnapEDA and SamacSys are trademarks of their
+  owners, named only to identify the services this plugin works with. This project is not affiliated
+  with or endorsed by any of them.
+- Released under the [MIT License](LICENSE).
