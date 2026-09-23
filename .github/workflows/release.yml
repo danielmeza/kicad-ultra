@@ -203,7 +203,7 @@ jobs:
         env:
           # The same executable `--mainExe` names below; keep the two in step. Its managed twin is
           # <name>.dll, where the application's code actually is - the .exe is only the apphost.
-          MAIN_EXE: UltraLibrarianImporter.UI.exe
+          MAIN_EXE: KiCadUltra.exe
         run: |
           set -euo pipefail
           mkdir -p sign/app-in
@@ -235,6 +235,13 @@ jobs:
           # `core.getInput` sees when the secret does not exist.
           artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
           github-artifact-id: ${{ steps.upload-unsigned-app.outputs.artifact-id }}
+          # SignPath Foundation requires that signed binaries carry product metadata and that the
+          # artifact configuration enforce it ("Set all product version attributes to the same value
+          # in each build"). The configuration in docs/signpath-application.md declares a `version`
+          # parameter and rejects any binary whose ProductVersion is not this string, so the two go
+          # together: a configuration without the parameter, or a request without it, fails.
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: '1800'
           output-artifact-directory: sign/app-out
@@ -319,6 +326,10 @@ jobs:
           signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
           artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
           github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
+          # As above. Velopack stamps the installer's ProductVersion from --packVersion, which is
+          # this same string, so one configuration and one parameter cover both rounds.
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: '1800'
           output-artifact-directory: sign/setup-out

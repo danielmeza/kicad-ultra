@@ -5,9 +5,10 @@ replaces its own binaries through Velopack. Unsigned, Windows tells that user th
 unrecognized and its publisher unknown, and no release ever earns a reputation that the next one
 can inherit.
 
-This page is the whole story: what the release workflow signs today, what it deliberately does not,
-which programme was chosen and why, and — the part only the maintainer can do — what to apply for,
-in what order, and what to paste into repository secrets.
+This page is the technical half: what an unsigned build means for a user, what the release workflow
+signs and what it deliberately does not, which programme was chosen and why, and how to verify a
+signed build. The maintainer's half — the application itself, field by field, in the order it has to
+happen — is [Applying to SignPath Foundation](signpath-application.md).
 
 **Nothing here is done yet, and that is the plan for now.** No certificate exists, no application
 has been made, and no secret is set. The workflow is wired and every signing step skips when the
@@ -74,11 +75,11 @@ secrets exist:
 
 | File | Signed | When |
 |---|---|---|
-| `UltraLibrarianImporter.UI.exe` (the apphost a user runs) | yes | before `vpk pack` |
-| `UltraLibrarianImporter.UI.dll` (the application itself) | yes | before `vpk pack` |
+| `KiCadUltra.exe` (the apphost a user runs) | yes | before `vpk pack` |
+| `KiCadUltra.dll` (the application itself) | yes | before `vpk pack` |
 | `KiCadUltra-win-Setup.exe` (the installer) | yes | after `vpk pack` |
 | `Squirrel.exe` / `Update.exe` (Velopack's updater) | **no** | — |
-| `KiCadUltra_ExecutionStub.exe` (the portable launcher) | **no** | — |
+| `KiCad Ultra.exe` in the portable archive, `KiCad Ultra_ExecutionStub.exe` in the package (the same stub) | **no** | — |
 | the .NET runtime, CEF, Avalonia and everything else in the package | **no** | — |
 | the Linux AppImage and both macOS packages | **no** | — |
 
@@ -102,9 +103,11 @@ carries Microsoft's signature. Re-signing any of them with a SignPath Foundation
 breach the programme.
 
 That leaves one real gap: someone who downloads `KiCadUltra-win-Portable.zip` by hand and
-double-clicks `KiCadUltra.exe` runs Velopack's unsigned stub. The plugin's own path does not — the
-launcher runs `current/UltraLibrarianImporter.UI.exe` inside the extracted archive directly, and
-that file is signed. Closing the gap needs a signing route that `vpk` can call per file; see
+double-clicks the `KiCad Ultra.exe` at its root runs Velopack's unsigned stub. (That file is named
+from `--packTitle`, not from `--packId`, which is why it has a space in it; checked by packing a
+throwaway application with vpk 1.2.158.) The plugin's own path does not go near it — the launcher
+runs `current/KiCadUltra.exe` inside the extracted archive directly, and that file is signed.
+Closing the gap needs a signing route that `vpk` can call per file; see
 [If the project ever pays for signing](#if-the-project-ever-pays-for-signing).
 
 It also leaves the two unsigned Velopack binaries exposed to **Smart App Control**, which does not
@@ -169,82 +172,38 @@ breached, and every release must be approved by a named approver.
 Nobody but the maintainer can do any of this: applying, accepting the terms and holding an API token
 are all acts of the project's owner.
 
-### 1. Make the repository meet the conditions
+### 1. Everything up to a certificate
 
-All of these are [SignPath Foundation conditions](https://signpath.org/terms.html), and the
-application is judged against them.
+Meeting the conditions, cutting the release the programme insists comes first, publishing the code
+signing policy, filling in the form, and creating the SignPath project, artifact configuration,
+signing policy and CI user: all of it is written out step by step, with every answer already
+drafted, in [Applying to SignPath Foundation](signpath-application.md). Work through that page, then
+come back here for the secrets.
 
-- [ ] **Two-factor authentication** on the GitHub account, and on every account with commit access
-      ("All team members must use multi-factor authentication for both SignPath and source code
-      repository access").
-- [ ] **A released version in the form to be signed.** "The project must already be released in the
-      form that should be signed." The first release therefore has to go out *unsigned* — cut it,
-      then apply. This is not a workflow limitation, it is the programme's precondition.
-- [ ] **An OSI-approved licence with no commercial dual-licensing.** `LICENSE` is MIT, which
-      qualifies.
-- [ ] **A code of conduct.** There is none in the repository today; the Foundation's own Code of
-      Conduct governs the programme, and applicants are normally expected to have one. The
-      Contributor Covenant is the usual choice.
-- [ ] **Documented functionality on the download page.** `README.md` and the GitHub Releases page
-      cover this.
-- [ ] **A "Code signing policy" section** on the project home page and on the download/release
-      pages. Draft text is at the end of this page — publish it only once the application is
-      accepted, because it claims a certificate that does not exist yet.
+Four things from it belong here too, because they are what this workflow depends on:
 
-### 2. Apply
+- **An unsigned release comes first.** "The project must already be released in the form that should
+  be signed", so v0.1.0 ships unsigned and the application follows it. That is the programme's
+  precondition, not a limitation of the workflow.
+- **One artifact configuration serves both rounds**, because each round uploads a ZIP holding only
+  the files it means to sign. It matches by wildcard rather than by file name, and restricts
+  `product-name`, `product-version` and `company-name` — the metadata restrictions the terms
+  require ("All signed binaries must have metadata attributes set and enforced using file metadata
+  restrictions"). The XML is in the packet.
+- **The workflow passes the version with each signing request**, as the `version` parameter that
+  configuration declares. The two go together: a request carrying a parameter the configuration does
+  not declare fails, and so does a configuration whose restriction nothing satisfies. What makes the
+  restriction satisfiable is that the application's binaries and Velopack's installer now agree on
+  their product name and version — see the measured table in the packet.
+- **A named approver, or nothing is ever signed.** "Every release needs manual approval for
+  signing."
 
-Apply at [signpath.org](https://signpath.org/) (the **Apply** link). The form asks for the
-repository URL, the OSI licence, the download/release URL and a short description of the project;
-a first-hand account of the process is
-[here](https://zenn.dev/shm_7ec/articles/signpath-oss-code-signing?locale=en).
+Expect a review rather than an automatic approval: "we cannot sign binaries based on source code
+that nobody knows. For executable programs that may be downloaded and executed based on our
+signature, we require a certain verifiable reputation." There is no published turnaround time, so
+**do not plan a release around a date**.
 
-SignPath publishes no turnaround time, and neither does anyone who has written the process up, so
-**do not plan a release around a date**. Expect a review, not an automatic approval: "we cannot sign
-binaries based on source code that nobody knows. For executable programs that may be downloaded and
-executed based on our signature, we require a certain verifiable reputation." A brand-new project
-with one release can be turned down.
-
-### 3. Set the project up in SignPath, once accepted
-
-In the SignPath organization you are given:
-
-1. **A project** for this repository. Note its **project slug** and the **organization ID**.
-2. **An artifact configuration** describing what CI uploads. The workflow uploads a ZIP holding
-   only the files it wants signed, so one configuration serves both rounds:
-
-   ```xml
-   <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
-     <!-- release.yml uploads a directory holding only the files it means to sign: the
-          application's .exe and .dll in the first round, the installer in the second. -->
-     <zip-file>
-       <pe-file-set>
-         <include path="*.exe" max-matches="unbounded" />
-         <include path="*.dll" min-matches="0" max-matches="unbounded" />
-         <for-each>
-           <authenticode-sign />
-         </for-each>
-       </pe-file-set>
-     </zip-file>
-   </artifact-configuration>
-   ```
-
-   The syntax is SignPath's
-   ([examples](https://docs.signpath.io/artifact-configuration/examples)). Wildcards rather than
-   file names on purpose: the executable is being renamed (#132) and a configuration naming it would
-   have to be edited in the SignPath UI on the same day.
-
-   The terms also ask for metadata restrictions — "Set all product name attributes to your project's
-   name. Set all product version attributes to the same value in each build." Adding
-   `product-name="…"` to `<pe-file-set>` enforces it, but **check first**: the csproj sets no
-   `<Product>` or `<Version>`, so the binaries currently carry the assembly name and `1.0.0.0`, not
-   the release version. Either set those properties (and pass `-p:Version=` in the publish step) or
-   leave the restriction off until you do — a mismatch makes SignPath refuse every request.
-3. **A signing policy**, normally `release-signing`. Note its slug. Release signing requires a named
-   approver; that is the "Every release needs manual approval for signing" constraint, and the
-   workflow waits up to 30 minutes for it.
-4. **A CI user** added as a *submitter* on that signing policy, and an **API token** for it.
-
-### 4. Put the secrets in the repository
+### 2. Put the secrets in the repository
 
 Settings → Secrets and variables → Actions → *New repository secret*.
 
@@ -263,7 +222,7 @@ organization it cannot reach.
 
 Nothing prints a secret. The gate step names the ones that are *missing* and never reads a value.
 
-### 5. Release, and approve
+### 3. Release, and approve
 
 Push a `v*` tag as usual. The `Pack win` job stops twice, waiting for a signing request, and each
 one appears in SignPath for an approver to accept. **Approve both within 30 minutes** or the step
@@ -339,27 +298,24 @@ too. If it is not, the question does not arise.
 
 ## Code signing policy
 
-*Publish this — as a section of the README or a page it links to, using exactly the words "Code
-signing policy" — only once SignPath Foundation has accepted the application. Until then it would
-claim a certificate that does not exist. The Foundation requires it on the project home page and on
-the download/release pages.*
+The terms require a section headed exactly **"Code signing policy"** on the project's home page and
+on its download/release pages. The text to publish — in two variants, one for the application and
+one for after the certificate is issued — is in
+[Applying to SignPath Foundation](signpath-application.md#step-3--publish-the-code-signing-policy),
+with the roles, what is and is not signed, and a privacy paragraph.
 
-> ### Code signing policy
->
-> Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-> [SignPath Foundation](https://signpath.org).
->
-> **Roles.** Committers and reviewers: the repository's maintainers. Approvers: the repository
-> owner.
->
-> **What is signed.** The Windows build of the importer application and its installer, both produced
-> by `.github/workflows/release.yml` from the source in this repository. Binaries belonging to
-> upstream Open Source projects that are redistributed inside the package — Velopack's updater, the
-> .NET runtime, the Chromium Embedded Framework — are not signed by this project.
->
-> **Privacy policy.** This program will not transfer any information to other networked systems
-> unless specifically requested by the user or the person installing or operating it. It contacts
-> component search providers and GitHub's release API only when the user searches for a part or when
-> it checks for its own updates; see [Where the parts come from](data-sources.md).
+Two things about it were wrong in the first draft of this page and are worth stating plainly, since
+it is easy to repeat them:
 
-Check that last paragraph against what the application actually does before publishing it.
+- **It is published *with* the application, not after acceptance.** The draft said to wait, on the
+  reasoning that publishing earlier would claim a certificate that does not exist. But the
+  application form asks for a Download URL and says that page "must provide signing information
+  according to SignPath Foundation Terms of Use" — the policy is part of what gets reviewed. The
+  variant written for that moment says on its face that the certificate is applied for and not yet
+  granted, and one clause is deleted when it is.
+- **The Foundation's suggested privacy sentence would be untrue here.** "This program will not
+  transfer any information to other networked systems unless specifically requested by the user"
+  does not describe this application: `AppUpdateService` asks GitHub for a newer release 20 seconds
+  after startup and every six hours after that, without anyone requesting it. The terms accept a
+  statement *or* a link to a privacy policy, so the packet's variant says what the program actually
+  does.
