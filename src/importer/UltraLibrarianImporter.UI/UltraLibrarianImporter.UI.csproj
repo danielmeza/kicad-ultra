@@ -43,6 +43,7 @@
     <PackageReference Include="NLog.Extensions.Logging" />
     <PackageReference Include="ReactiveUI.Avalonia" />
     <PackageReference Include="System.Threading.RateLimiting" />
+    <PackageReference Include="Velopack" />
     <PackageReference Include="WebViewControl-Avalonia" />
     <!-- Removed Microsoft.Web.WebView2 package -->
   </ItemGroup>

@@ -1,12 +1,16 @@
 # Intentionally empty.
 #
 # Nothing in this plugin needs a package installed from PyPI:
-#   - importer_launcher.py (the IPC API entrypoint) imports only the standard library
-#     (os, subprocess, sys).
+#   - importer_launcher.py (the IPC API entrypoint) imports only the standard library. It both
+#     starts the .NET importer and, on the first run, downloads it from this repository's GitHub
+#     Releases and checks it against a published SHA-256 (#128) - with urllib, hashlib and zipfile,
+#     because KiCad installs this file's contents into the interpreter that loads the plugin and
+#     nothing may be added to it.
 #   - __init__.py imports pcbnew and wx, but only for the legacy pcbnew ActionPlugin. KiCad
 #     provides both from its own embedded interpreter when it loads that plugin; neither is
 #     installable from here, and the import is guarded so the file still loads without them.
-# Everything else runs in the .NET importer in bin/.
+# Everything else runs in the .NET importer, which is published as a Velopack release rather than
+# shipped inside this package: a self-contained build is 453 MB, 341 MB of it the CEF browser.
 #
 # This file previously listed requests, wxPython and watchdog, left over from an earlier wxPython
 # implementation. Nothing imported them, and KiCad installs this file's contents into the plugin's
