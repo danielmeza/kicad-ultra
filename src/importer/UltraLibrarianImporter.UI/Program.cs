@@ -60,11 +60,22 @@ internal sealed class Program
             return;
         }
 
-        // Velopack's contract is that VelopackApp.Build().Run() is the first code on the path, and
-        // the reason is that it may not return: it runs the --veloapp-* install and uninstall hooks
-        // and exits, and when a package this app downloaded earlier is waiting it hands the process
-        // to the updater and exits, so the update is applied before the application starts (#128).
-        // Anything done above it is work a restart throws away, and anything left half-done is worse.
+        // Initialize NLog. If SetLogDirectory throws, there is no ApplicationData folder, which
+        // ConfigService and the browser cache need as well, so its exception is left to end the GUI.
+        //
+        // Above Velopack, and only just: both of these are in-memory and touch no file until
+        // something is logged, so a restart three lines down wastes nothing and leaves nothing
+        // half-done - which is the whole reason Velopack asks to come first. What it buys is that
+        // Velopack's own account of this start, "Auto apply is true, so restarting to apply
+        // update..." included, lands in the application's log rather than only in a file of its own
+        // in the temporary directory, and that a failure in Run() is reported rather than silent.
+        SetLogDirectory();
+        _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
+
+        // Velopack's contract is that VelopackApp.Build().Run() comes first, and the reason is that
+        // it may not return: it runs the --veloapp-* install and uninstall hooks and exits, and when
+        // a package this app downloaded earlier is waiting it hands the process to the updater and
+        // exits, so the update is applied before the application starts (#128).
         //
         // Which is why it sits above HarfBuzzPreload.Apply() rather than below, and that only looks
         // like a contradiction of #78. #78's rule is about the dynamic loader: the preload has to
@@ -76,12 +87,22 @@ internal sealed class Program
         //
         // Never in --mcp mode: stdout there is the JSON-RPC channel, and a staged update would
         // restart the process in the middle of a session. That path returned above.
-        VelopackApp.Build().Run();
-
-        // Initialize NLog. If SetLogDirectory throws, there is no ApplicationData folder, which
-        // ConfigService and the browser cache need as well, so its exception is left to end the GUI.
-        SetLogDirectory();
-        _ = LogManager.Setup(b => b.LoadConfigurationFromFile("nlog.config"));
+        //
+        // The logger given here is the locator's, so it also covers the background update checks;
+        // AppUpdateService does not install one of its own.
+        try
+        {
+            VelopackApp.Build()
+                .SetLogger(new VelopackNLogBridge())
+                .Run();
+        }
+        catch (Exception ex)
+        {
+            // Nothing below can run if the update machinery is broken, but dying without a word is
+            // what a user reports as "the plugin does nothing".
+            LogManager.GetCurrentClassLogger().Error(ex, "Velopack startup failed");
+            throw;
+        }
 
         // Before anything can start Avalonia or CEF: CEF's GTK brings in the system HarfBuzz, and
         // HarfBuzzSharp's own calls would bind to it and crash (#78). MCP mode loads neither, and must

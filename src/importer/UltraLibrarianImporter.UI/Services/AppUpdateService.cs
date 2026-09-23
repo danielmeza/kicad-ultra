@@ -6,8 +6,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Velopack;
-using Velopack.Locators;
-using Velopack.Logging;
 using Velopack.Sources;
 
 namespace UltraLibrarianImporter.UI.Services;
@@ -19,9 +17,14 @@ namespace UltraLibrarianImporter.UI.Services;
 /// <para>
 /// It only ever <em>downloads</em>. The package is staged next to the installed application and
 /// <c>VelopackApp.Build().Run()</c> installs it at the start of the next run, so an import in
-/// progress is never interrupted and the user is never prompted. Nothing here touches the UI
-/// thread: the host starts this after Avalonia's <c>Startup</c> has fired (Lemon's
-/// <c>IHostLifetime</c> waits for it), and every step runs on the thread pool.
+/// progress is never interrupted and the user is never prompted.
+/// </para>
+/// <para>
+/// <b>The first statement has to be the delay.</b> Lemon's <c>IHostLifetime</c> completes on
+/// Avalonia's <c>Startup</c> event, so the host finishes starting on the UI thread, and
+/// <see cref="BackgroundService.StartAsync"/> runs <see cref="ExecuteAsync"/> synchronously up to
+/// its first <c>await</c>. Everything after that await is on the thread pool; anything moved in
+/// front of it runs while the main window is being built.
 /// </para>
 /// <para>
 /// Registered in the GUI container only. <c>--mcp</c> must not update, and must not write to
@@ -54,15 +57,21 @@ internal sealed class AppUpdateService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        UpdateManager? updates = CreateUpdateManager();
-        if (updates == null)
-        {
-            return;
-        }
-
         try
         {
+            // Before anything else, so that everything below this line is off the caller's thread.
+            // BackgroundService.StartAsync runs ExecuteAsync up to its first await, and Lemon's
+            // IHostLifetime completes on Avalonia's Startup event, so that stretch runs on the UI
+            // thread while the main window is being built. Constructing the locator reads the
+            // package manifest from disk; it belongs after the delay, not in front of the window.
             await Task.Delay(FirstCheckDelay, _time, stoppingToken).ConfigureAwait(false);
+
+            UpdateManager? updates = CreateUpdateManager();
+            if (updates == null)
+            {
+                return;
+            }
+
             using var timer = new PeriodicTimer(CheckInterval, _time);
             do
             {
@@ -70,9 +79,12 @@ internal sealed class AppUpdateService : BackgroundService
             }
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // The application is closing. Whatever was downloaded stays staged for the next run.
+            // The filter matters: HttpClient reports its own request timeout as a
+            // TaskCanceledException with nobody's token cancelled, and catching that here would end
+            // the loop for the rest of the session over one slow answer from GitHub.
         }
     }
 
@@ -90,11 +102,8 @@ internal sealed class AppUpdateService : BackgroundService
     {
         try
         {
-            // Velopack's own diagnostics go to a file of its own beside the application. This bridge
-            // puts them in the app's NLog files as well, which is where #121 and #123 say every line
-            // belongs. The locator exists because Program called VelopackApp.Build().Run().
-            VelopackLocator.Current.AddLogger(new VelopackLoggerBridge(_logger));
-
+            // No logger is attached here: Program gave the locator a VelopackNLogBridge before
+            // Run(), and UpdateManager takes its logger from that same locator.
             var updates = new UpdateManager(new GithubSource(ReleasesRepositoryUrl, accessToken: null, prerelease: false));
             if (!updates.IsInstalled)
             {
@@ -105,11 +114,14 @@ internal sealed class AppUpdateService : BackgroundService
             _logger.LogInformation("Update checks are on; this is version {Version}.", updates.CurrentVersion);
             return updates;
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
-            // VelopackLocator.Current throws when VelopackApp.Build().Run() has not run - the XAML
-            // designer, or a future entry point that forgets it.
-            _logger.LogWarning(ex, "Velopack is not initialised, so this importer will not update itself.");
+            // Everything, not just the InvalidOperationException VelopackLocator.Current raises when
+            // VelopackApp.Build().Run() has not run: the platform locator also reads a manifest from
+            // disk and creates directories, and on an unknown OS it throws
+            // PlatformNotSupportedException. A throw escaping here would fault this BackgroundService,
+            // and Lemon starts the host with an un-awaited RunAsync, so nobody would ever observe it.
+            _logger.LogWarning(ex, "Velopack could not be started, so this importer will not update itself.");
             return null;
         }
     }
@@ -131,37 +143,18 @@ internal sealed class AppUpdateService : BackgroundService
                 "Release {Version} is staged, and is installed the next time the importer starts.",
                 available.TargetFullRelease.Version);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // Broader than the narrow catches the providers use, on purpose: this runs behind the
             // user's back, so nothing it does may reach them or end the host. Velopack raises plain
             // exceptions for a torn download, a feed it cannot parse and an update lock another copy
             // holds, and none of those is worth more than a line in the log.
+            //
+            // The token test is what separates the two kinds of cancellation. HttpClient reports its
+            // own request timeout as a TaskCanceledException with nothing cancelled, and that is an
+            // ordinary failure to log and try again for later; only a cancellation that really is the
+            // application closing is left to the caller, which ends the loop.
             _logger.LogWarning(ex, "Checking for updates failed; the importer keeps running on {Version}.", updates.CurrentVersion);
         }
-    }
-
-    /// <summary>Sends Velopack's own log lines to <see cref="ILogger"/>, and so to NLog.</summary>
-    private sealed class VelopackLoggerBridge : IVelopackLogger
-    {
-        private readonly ILogger _logger;
-
-        public VelopackLoggerBridge(ILogger logger) => _logger = logger;
-
-        public void Log(VelopackLogLevel logLevel, string? message, Exception? exception) =>
-            _logger.Log(Map(logLevel), exception, "Velopack: {Message}", message);
-
-        // Written out rather than cast: the two enumerations happen to agree today, and a cast would
-        // turn a future member of Velopack's into a silently wrong severity.
-        private static LogLevel Map(VelopackLogLevel level) => level switch
-        {
-            VelopackLogLevel.Trace => LogLevel.Trace,
-            VelopackLogLevel.Debug => LogLevel.Debug,
-            VelopackLogLevel.Information => LogLevel.Information,
-            VelopackLogLevel.Warning => LogLevel.Warning,
-            VelopackLogLevel.Error => LogLevel.Error,
-            VelopackLogLevel.Critical => LogLevel.Critical,
-            _ => LogLevel.Information,
-        };
     }
 }
