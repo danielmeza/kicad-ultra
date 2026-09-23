@@ -47,6 +47,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     root = None
     truncate_at = 0
+    delay = 0.0
     origin = ""
     requests = None
 
@@ -55,6 +56,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         type(self).requests.append((self.path, self.headers.get("Range")))
+        if type(self).delay:
+            time.sleep(type(self).delay)
         if self.path.endswith("/releases/latest"):
             self._release()
         elif self.path.startswith("/assets/"):
@@ -120,12 +123,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
 
 class _ReleaseServer:
-    def __init__(self, root, truncate_at=0):
+    def __init__(self, root, truncate_at=0, delay=0.0):
         self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
         self.origin = "http://127.0.0.1:%d" % self._server.server_port
         self.requests = []
         _Handler.root = root
         _Handler.truncate_at = truncate_at
+        _Handler.delay = delay
         _Handler.origin = self.origin
         _Handler.requests = self.requests
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -184,10 +188,16 @@ class BootstrapTests(unittest.TestCase):
         specification.loader.exec_module(module)
         return module
 
-    def _serve(self, truncate_at=0):
-        server = _ReleaseServer(self.release, truncate_at)
+    def _serve(self, truncate_at=0, delay=0.0):
+        server = _ReleaseServer(self.release, truncate_at, delay)
         self.addCleanup(server.stop)
         return server
+
+    @staticmethod
+    def _join_bootstrap_thread(timeout=30):
+        for thread in threading.enumerate():
+            if thread.name == "kicad-ultra-bootstrap":
+                thread.join(timeout)
 
     # -- the four scenarios -------------------------------------------------------------------
 
@@ -236,7 +246,9 @@ class BootstrapTests(unittest.TestCase):
         launcher = self._launcher(server.origin)
 
         self.assertEqual(1, launcher.launch_importer(), "an incomplete download is not a launch")
-        partial = os.path.join(launcher.data_dir(), "downloads", asset)
+        # The part-finished file is named after the checksum it is expected to have, not after the
+        # asset, so a release published between the two attempts cannot be appended onto this one.
+        partial = os.path.join(launcher.data_dir(), "downloads", hashlib.sha256(FAKE_APPLICATION).hexdigest())
         self.assertTrue(os.path.exists(partial), "what arrived has to be kept")
         self.assertEqual(cut, os.path.getsize(partial))
 
@@ -250,6 +262,62 @@ class BootstrapTests(unittest.TestCase):
         self.assertTrue(
             any(ranged for path, ranged in resumed.requests if path.endswith(asset)),
             "the second attempt has to ask for the rest, not the whole file")
+
+    def test_wait_false_returns_at_once_even_when_the_importer_has_to_be_downloaded(self):
+        """`__init__.py`'s ActionPlugin calls this from KiCad's UI thread.
+
+        Before the bootstrap existed, `wait=False` meant "start the child and do not wait for it"
+        and returned in milliseconds. Now the first run has 200 MB to fetch first, and doing that
+        inline would freeze the editor for minutes with no repaint - so the fetch goes to a thread
+        and this has to come straight back. The server is slowed down deliberately: if the bootstrap
+        were inline again, this would take at least as long as the delay.
+        """
+        self._publish()
+        server = self._serve(delay=2.0)
+        launcher = self._launcher(server.origin)
+
+        started = time.monotonic()
+        self.assertEqual(0, launcher.launch_importer(wait=False))
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.0, "launch_importer(wait=False) blocked for %.1fs" % elapsed)
+
+        self._join_bootstrap_thread()
+        self.assertIsNotNone(launcher.find_importer(), "the background thread still installs it")
+
+    def test_a_part_finished_download_of_a_different_release_is_discarded(self):
+        """Asset names carry no version, so the file name has to be what tells them apart.
+
+        Without this, a run interrupted before a release and resumed after it would send a Range
+        request for the new asset, append its bytes onto the old one's, and fail the checksum.
+        """
+        self._publish()
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+
+        downloads = os.path.join(launcher.data_dir(), "downloads")
+        os.makedirs(downloads)
+        leftover = os.path.join(downloads, "0" * 64)
+        with open(leftover, "wb") as handle:
+            handle.write(b"bytes of some older release")
+
+        self.assertEqual(0, launcher.launch_importer())
+        self.assertFalse(os.path.exists(leftover), "the older release's partial is cleared out")
+        self.assertIsNotNone(launcher.find_importer())
+
+    def test_an_insecure_api_override_is_refused(self):
+        """The checksum only means something while the release is the project's.
+
+        KICAD_ULTRA_API exists for the tests and for a self-hosted mirror, and loopback is how the
+        tests use it - but a plain-http host anywhere else could serve both the asset and a matching
+        SHA256SUMS.txt, and what is downloaded then runs with KiCad's API token in its environment.
+        """
+        self._publish()
+        server = self._serve()
+        launcher = self._launcher(server.origin)
+        os.environ["KICAD_ULTRA_API"] = "http://example.invalid"
+
+        self.assertEqual(1, launcher.launch_importer())
+        self.assertIsNone(launcher.find_importer())
 
     # -- the lock two KiCad windows compete for -----------------------------------------------
 
@@ -384,16 +452,43 @@ class AssetNameTests(unittest.TestCase):
         self.assertTrue(name.startswith(self.launcher.PACK_ID))
         self.assertIn(kind, ("appimage", "zip"))
 
-    def test_the_names_follow_velopack_s_own_scheme(self):
-        # Velopack's DefaultName: "{packId}.AppImage" for the default linux channel, and
-        # "{packId}-{channel}-Portable.zip" everywhere else. release.yml packs these four channels.
-        expected = {
+    def test_every_platform_gets_the_asset_release_yml_actually_publishes(self):
+        """The launcher's names and the workflow's expectations, checked against each other.
+
+        Nothing here can prove Velopack names a macOS archive what we think it does - only a real
+        `vpk pack` on a Mac does that, and release.yml's "Check the launcher's assets are all
+        present" step is what refuses a release where it does not. What this does catch is the two
+        drifting apart: the workflow asserts a hard-coded list, and if this file's rules stop
+        producing exactly that list on some platform, the plugin would ask for something the release
+        does not carry.
+        """
+        published = {
             "KiCadUltra.AppImage",
             "KiCadUltra-win-Portable.zip",
             "KiCadUltra-osx-x64-Portable.zip",
             "KiCadUltra-osx-arm64-Portable.zip",
         }
-        self.assertIn(self.launcher.target_asset()[0], expected)
+        cases = [
+            ("nt", "win32", "AMD64", "KiCadUltra-win-Portable.zip"),
+            ("nt", "win32", "ARM64", "KiCadUltra-win-Portable.zip"),
+            ("posix", "darwin", "arm64", "KiCadUltra-osx-arm64-Portable.zip"),
+            ("posix", "darwin", "x86_64", "KiCadUltra-osx-x64-Portable.zip"),
+            ("posix", "linux", "x86_64", "KiCadUltra.AppImage"),
+        ]
+        for name, platform_id, machine, expected in cases:
+            with self.subTest(os=platform_id, machine=machine):
+                self.assertEqual(expected, self.launcher.target_asset(name, platform_id, machine)[0])
+                self.assertIn(expected, published)
+
+    def test_a_machine_with_no_build_is_told_so_instead_of_given_the_wrong_one(self):
+        """An x86-64 AppImage handed to an armv7l box is a 200 MB download and an exec format error.
+
+        The refusal has to come from `target_asset` returning None, not from the kernel after the
+        user has waited for the download and its checksum.
+        """
+        for machine in ("armv7l", "i686", "riscv64", "s390x", "ppc64le", "aarch64"):
+            with self.subTest(machine=machine):
+                self.assertIsNone(self.launcher.target_asset("posix", "linux", machine))
 
 
 if __name__ == "__main__":

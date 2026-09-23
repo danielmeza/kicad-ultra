@@ -29,6 +29,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -56,10 +57,14 @@ EXE_NAME = "UltraLibrarianImporter.UI.exe" if os.name == "nt" else "UltraLibrari
 PACK_ID = "KiCadUltra"
 
 # Where the releases live. GitHub *Packages* answers 401 to an anonymous request, so it cannot serve
-# plugin users; GitHub *Releases* answers 200. Both are overridable so the bootstrap can be
-# exercised against a local server without touching the network or this repository.
+# plugin users; GitHub *Releases* answers 200.
+#
+# Both are overridable so the bootstrap can be exercised against a local server without touching the
+# network or this repository, but the override has to be https unless it is loopback. The checksum
+# in the release is only worth something while the release is the project's: an override that could
+# name any plain-http host would let whatever set it serve both the asset and a matching
+# SHA256SUMS.txt, and what is downloaded is then executed with KiCad's API token in its environment.
 REPOSITORY = os.environ.get("KICAD_ULTRA_REPOSITORY", "danielmeza/kicad-ultra")
-API_BASE_URL = os.environ.get("KICAD_ULTRA_API", "https://api.github.com").rstrip("/")
 
 # The release asset that carries a SHA-256 for every other asset, in `sha256sum` format. A release
 # without it is refused rather than trusted: an unverified 450 MB download is not something to run.
@@ -86,6 +91,17 @@ def _say(message):
 
 class BootstrapError(Exception):
     """Something that stops the importer being installed, already phrased for the user."""
+
+
+def _api_base_url():
+    """The releases API to ask, honouring KICAD_ULTRA_API only where it is safe to."""
+    configured = os.environ.get("KICAD_ULTRA_API", "https://api.github.com").rstrip("/")
+    host = configured.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    if configured.startswith("https://") or host in ("127.0.0.1", "::1", "localhost"):
+        return configured
+    raise BootstrapError(
+        "KICAD_ULTRA_API is set to {0}, which is neither https nor loopback. Refusing to fetch the "
+        "importer over it.".format(configured))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -128,22 +144,36 @@ def _marker_path():
     return os.path.join(data_dir(), "install.json")
 
 
-def target_asset():
+def target_asset(os_name=None, platform_id=None, machine=None):
     """``(asset name, kind)`` for this platform, or ``None`` if no release is built for it.
 
     The names are Velopack's own, from ``DefaultName`` in its packaging code: on Linux the portable
     artifact is ``{packId}.AppImage`` for the default ``linux`` channel, and everywhere else it is
     ``{packId}-{channel}-Portable.zip``. release.yml packs exactly these four channels.
-    """
-    machine = platform.machine().lower()
-    is_arm = machine in ("arm64", "aarch64")
 
-    if os.name == "nt":
-        return (PACK_ID + "-win-Portable.zip", "zip") if not is_arm else None
-    if sys.platform == "darwin":
-        return (PACK_ID + ("-osx-arm64" if is_arm else "-osx-x64") + "-Portable.zip", "zip")
-    if sys.platform.startswith("linux"):
-        return (PACK_ID + ".AppImage", "appimage") if not is_arm else None
+    The three arguments describe the machine, and default to this one. They exist so the tests can
+    ask what a Windows or a macOS run would fetch without patching ``os.name`` process-wide, which
+    is the only way a Linux runner can check those branches at all.
+    """
+    os_name = os.name if os_name is None else os_name
+    platform_id = sys.platform if platform_id is None else platform_id
+    machine = (platform.machine() if machine is None else machine).lower()
+    # An allow-list, not a deny-list. Asking "is it ARM?" and treating everything else as x86-64
+    # hands an i686, armv7l, riscv64 or s390x Linux user a 200 MB download and an exec format error
+    # after it, which is a worse answer than saying there is no build for them.
+    is_x64 = machine in ("x86_64", "amd64", "x64")
+    is_arm64 = machine in ("arm64", "aarch64")
+
+    if os_name == "nt":
+        # Windows on ARM runs x64 binaries under emulation, so it gets the x64 build rather than
+        # nothing. There is no win-arm64 channel to offer it instead.
+        return (PACK_ID + "-win-Portable.zip", "zip") if is_x64 or is_arm64 else None
+    if platform_id == "darwin":
+        if is_arm64:
+            return (PACK_ID + "-osx-arm64-Portable.zip", "zip")
+        return (PACK_ID + "-osx-x64-Portable.zip", "zip") if is_x64 else None
+    if platform_id.startswith("linux"):
+        return (PACK_ID + ".AppImage", "appimage") if is_x64 else None
     return None
 
 
@@ -204,7 +234,7 @@ def _open(url, extra_headers=None):
 
 
 def _latest_release():
-    url = "{0}/repos/{1}/releases/latest".format(API_BASE_URL, REPOSITORY)
+    url = "{0}/repos/{1}/releases/latest".format(_api_base_url(), REPOSITORY)
     _say("asking {0} for the latest release".format(url))
     try:
         with _open(url, {"Accept": "application/vnd.github+json"}) as response:
@@ -250,11 +280,16 @@ def _expected_checksum(release, asset_name):
             CHECKSUM_ASSET, release.get("tag_name", "?"), asset_name))
 
 
-def _download(url, destination):
+def _download(url, destination, heartbeat=None):
     """Fetch *url* into *destination*, continuing a part-finished file if one is there.
 
     A partial download is left in place on failure precisely so the next run can continue it; the
     caller deletes it when what arrived does not match the published checksum.
+
+    *heartbeat* is the lock file this download holds, if any. Its modification time is pushed
+    forward as bytes arrive: the lock is judged abandoned by its age, and a 200 MB asset on a poor
+    connection can easily take longer than LOCK_STALE_SECONDS, at which point another KiCad window
+    would take the lock and both would write the same file.
     """
     have = os.path.getsize(destination) if os.path.exists(destination) else 0
     headers = {"Range": "bytes={0}-".format(have)} if have else {}
@@ -295,6 +330,11 @@ def _download(url, destination):
                         break
                     sink.write(chunk)
                     written += len(chunk)
+                    if heartbeat:
+                        try:
+                            os.utime(heartbeat, None)
+                        except OSError:
+                            pass
                     if total:
                         percent = (written * 100) // total
                         if percent >= announced + 10:
@@ -428,20 +468,43 @@ def _acquire_lock(path):
             age = time.time() - os.path.getmtime(path)
         except OSError:
             # The lock was released between the two calls. Go round and take it.
-            continue
+            age = 0
 
         if age > LOCK_STALE_SECONDS:
-            _say("an abandoned download lock is being removed")
+            if not announced:
+                _say("an abandoned download lock is being removed")
             try:
                 os.remove(path)
             except OSError:
+                # Read-only directory, or Windows with the file still open elsewhere. Falling
+                # through to the sleep is the point: without it this spins at full speed for the
+                # whole deadline, printing on every pass.
                 pass
-            continue
-
-        if not announced:
+        elif not announced:
             _say("another KiCad window is already downloading the importer; waiting for it")
-            announced = True
+
+        announced = True
+        # Every path through the loop sleeps, including the two that used to `continue` past it.
         time.sleep(2)
+
+
+def _release_lock(path):
+    """Remove the lock, but only while it is still ours.
+
+    A download slow enough to pass LOCK_STALE_SECONDS lets another process treat this lock as
+    abandoned and replace it with its own. Removing it blindly at the end would then let a third
+    process in while the second is still downloading.
+    """
+    try:
+        with open(path, encoding="ascii") as handle:
+            owner = handle.read().strip()
+    except OSError:
+        return
+    if owner == str(os.getpid()):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
 
 
 def bootstrap():
@@ -478,9 +541,23 @@ def bootstrap():
 
         expected = _expected_checksum(release, asset_name)
 
-        archive = os.path.join(downloads, asset_name)
+        # The part-finished download is named after the checksum it is expected to have, not after
+        # the asset. Asset names carry no version - KiCadUltra.AppImage is the same string in every
+        # release - so a run interrupted before a new release, resuming after it, would otherwise
+        # append the new asset's bytes onto the old one's, fail the checksum and throw the whole
+        # 200 MB away. A different release simply has a different name here, and anything left from
+        # one is cleared out rather than kept for ever.
+        archive = os.path.join(downloads, expected)
+        for stale in os.listdir(downloads):
+            if stale != expected:
+                _say("discarding a part-finished download of a different release")
+                try:
+                    os.remove(os.path.join(downloads, stale))
+                except OSError:
+                    pass
+
         _say("installing {0} {1} into {2}".format(asset_name, version, root))
-        _download(url, archive)
+        _download(url, archive, heartbeat=lock)
 
         _say("checking SHA-256")
         actual = _sha256(archive)
@@ -518,10 +595,7 @@ def bootstrap():
         _say("installed {0}; it updates itself from now on".format(version))
         return installed
     finally:
-        try:
-            os.remove(lock)
-        except OSError:
-            pass
+        _release_lock(lock)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -529,22 +603,8 @@ def bootstrap():
 # ---------------------------------------------------------------------------------------------
 
 
-def launch_importer(wait=True):
-    """Start the importer, fetching it first if this machine does not have it yet.
-
-    Returns the child's exit code when *wait* is true, and 0 once it has been started otherwise.
-    KiCad's IPC API runs this file as its own process and expects it to live as long as the action,
-    so waiting is the right default. A caller running inside KiCad's own interpreter - a pcbnew
-    ActionPlugin, say - should pass wait=False so it does not block the editor's UI thread.
-    """
-    exe_path = find_importer()
-    if exe_path is None:
-        try:
-            exe_path = bootstrap()
-        except BootstrapError as error:
-            _say(str(error))
-            return 1
-
+def _start(exe_path, wait):
+    """Start the importer at *exe_path*, and wait for it if asked to."""
     if not os.access(exe_path, os.X_OK):
         # Copying the published output around (or unzipping it) commonly drops the execute bit.
         try:
@@ -560,6 +620,49 @@ def launch_importer(wait=True):
     # it is running out of, which it locates from AppContext.BaseDirectory.
     process = subprocess.Popen([exe_path], env=os.environ, cwd=os.path.dirname(exe_path))
     return process.wait() if wait else 0
+
+
+def _bootstrap_then_start(wait):
+    """Fetch the importer and start it, turning every failure into a line the user can read."""
+    try:
+        return _start(bootstrap(), wait)
+    except BootstrapError as error:
+        _say(str(error))
+        return 1
+    except OSError as error:
+        # The filesystem half of the bootstrap - makedirs, move, chmod, replace, the writes in
+        # _extract_zip - raises plain OSError for a full disk, a read-only data directory or a
+        # rename across filesystems. Every other failure in this file is phrased for the user, and a
+        # traceback on KiCad's stderr is not; these get the same treatment.
+        _say("the importer could not be installed in {0}: {1}".format(data_dir(), error))
+        return 1
+
+
+def launch_importer(wait=True):
+    """Start the importer, fetching it first if this machine does not have it yet.
+
+    Returns the child's exit code when *wait* is true, and 0 once it has been started otherwise.
+    KiCad's IPC API runs this file as its own process and expects it to live as long as the action,
+    so waiting is the right default. A caller running inside KiCad's own interpreter - a pcbnew
+    ActionPlugin, say - should pass wait=False so it does not block the editor's UI thread.
+
+    **wait=False never blocks, even on the first run.** `__init__.py`'s ActionPlugin calls this from
+    KiCad's UI thread, and the first run now downloads about 200 MB: doing that inline would freeze
+    the editor for minutes with no repaint, and for up to LOCK_WAIT_SECONDS if another window were
+    already downloading. So when the importer still has to be fetched and the caller cannot wait,
+    the fetch goes to a thread of its own and this returns at once. The thread is not a daemon: an
+    interpreter that is shutting down should not abandon a half-written installation directory.
+    """
+    exe_path = find_importer()
+    if exe_path is not None:
+        return _start(exe_path, wait)
+
+    if wait:
+        return _bootstrap_then_start(wait=True)
+
+    _say("the importer has to be downloaded first; this runs in the background and KiCad stays usable")
+    threading.Thread(target=_bootstrap_then_start, args=(False,), name="kicad-ultra-bootstrap").start()
+    return 0
 
 
 if __name__ == "__main__":
