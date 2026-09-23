@@ -135,3 +135,29 @@ otherwise, and every import shares one library per provider: `<project>_EasyEDA.
 `.pretty` and `.3dshapes` folders beside it, or `EasyEDA` when there is no project.
 **Settings → General → Register imported libraries in** decides which table gets the new library:
 **Automatic**, **Project** or **Global**.
+
+## Removing it
+
+Two things are installed — the plugin, and the application the plugin fetches — and they come off
+separately.
+
+1. **The plugin.** KiCad's **Plugin and Content Manager → Manage**, select it, **Uninstall**. A
+   `plugin/` you symlinked in by hand goes away with the symlink.
+2. **The application.** If you installed it yourself from `KiCadUltra-win-Setup.exe`, it is in
+   Windows' **Apps & features** like any other program; the macOS `.app` and the Linux `.AppImage`
+   are deleted. The copy the plugin downloads for itself is not installed in that sense — delete the
+   per-user data directory it unpacked into:
+
+   | | |
+   |---|---|
+   | Windows | `%LOCALAPPDATA%\kicad-ultra` |
+   | macOS | `~/Library/Application Support/kicad-ultra` |
+   | Linux | `$XDG_DATA_HOME/kicad-ultra`, usually `~/.local/share/kicad-ultra` |
+
+3. **Settings, logs and credentials**, if you want those gone too: delete `<app data>/KiCadUltra/`
+   and remove the `KiCadUltra` entries from the operating system's credential store — Credential
+   Manager on Windows, Keychain Access on macOS, a keyring manager such as Seahorse on Linux.
+
+Imported libraries are ordinary KiCad libraries and are left alone by all of this. Remove them the
+way you would any other: drop the row in **Preferences → Manage Symbol Libraries** and **Manage
+Footprint Libraries**, then delete the `.kicad_sym`, `.pretty` and `.3dshapes` files it pointed at.

@@ -76,7 +76,7 @@ The ones marked **done** are done in this repository as of this page; the rest a
 | Product name and version metadata on signed binaries | done — see [the metadata](#why-the-metadata-restriction-works) |
 | Multi-factor authentication on every account with commit access | **yours to check** |
 | Code signing roles assigned (authors, reviewers, approvers) | done in the policy text, step 3 |
-| No hacking tools; uninstall provided; no silent system changes | done — Velopack registers an uninstaller |
+| No hacking tools; uninstall provided; no silent system changes | done — [Removing it](installing.md#removing-it) covers both halves; Velopack's Windows installer registers an *Apps & features* entry |
 
 Two of them need a word.
 
