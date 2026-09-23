@@ -78,7 +78,8 @@ The ones marked **done** are done in this repository as of this page; the rest a
 | Code signing roles assigned (authors, reviewers, approvers) | done in the policy text, step 3 |
 | No hacking tools; uninstall provided; no silent system changes | done — [Removing it](installing.md#removing-it) covers both halves; Velopack's Windows installer registers an *Apps & features* entry |
 
-Two of them need a word.
+Two of them need a word, plus one thing that is not a condition at all and is worth doing while you
+are in there.
 
 **Multi-factor authentication.** "All team members must use multi-factor authentication for both
 SignPath and source code repository access (e.g. GitHub)." One account has commit access here, so
@@ -278,7 +279,8 @@ process. Do not plan a release around a date.
 
 ## Step 5 — set the project up in SignPath
 
-Four objects, in this order. Note each slug as you go; four of them become repository secrets.
+Four objects, in this order. Note each identifier as you go — they are the repository secrets in
+step 6.
 
 **1. The project.** Create it for this repository. Its **slug** is what
 `SIGNPATH_PROJECT_SLUG` holds (`kicad-ultra`). The **organization ID** — a GUID, on the organization
