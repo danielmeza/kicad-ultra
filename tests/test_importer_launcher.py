@@ -283,6 +283,9 @@ class BootstrapTests(unittest.TestCase):
 
         self._join_bootstrap_thread()
         self.assertIsNotNone(launcher.find_importer(), "the background thread still installs it")
+        # This test prints a ResourceWarning about the child still running, and that is the point of
+        # wait=False: nobody reaps it, here or in KiCad. Not a leak, and not worth suppressing -
+        # silencing it here would silence a real one later.
 
     def test_a_part_finished_download_of_a_different_release_is_discarded(self):
         """Asset names carry no version, so the file name has to be what tells them apart.
