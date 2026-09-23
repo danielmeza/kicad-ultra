@@ -165,11 +165,28 @@ s-expression read/write) and `KiCadSharp` (IPC client + library formats) live in
 
 ### The launcher hand-off
 
-`importer_launcher.py` starts exactly one thing: `plugin/bin/UltraLibrarianImporter.UI` (`.exe` on
-Windows). **Never add candidates outside the plugin directory** — an earlier version searched a
-development machine's absolute path, which an installed bundle would actually have reached. It waits
-on the child by default (the IPC API runs it as its own process); `__init__.py`'s
+`importer_launcher.py` starts the importer, and since #128 it also **fetches it on the first run**.
+It looks in exactly two places, in this order:
+
+1. `plugin/bin/UltraLibrarianImporter.UI` (`.exe` on Windows) — the developer's override, which is
+   what `dotnet publish -o plugin/bin` is for. Unchanged.
+2. the per-user data directory: `%LOCALAPPDATA%\kicad-ultra`, `~/Library/Application Support/kicad-ultra`,
+   or `$XDG_DATA_HOME/kicad-ultra`. Nothing is shipped there — the launcher downloads this
+   platform's asset from the project's GitHub release, checks it against the SHA-256 the release
+   publishes as `SHA256SUMS.txt`, and unpacks it.
+
+**Never add a candidate that is neither of those two.** The rule this replaces said "never outside
+the plugin directory", after an earlier version searched a development machine's absolute path that
+an installed bundle would actually have reached. The data directory is deliberate and computed from
+the OS, not from anyone's machine, and it is outside the plugin directory for a reason: PCM replaces
+the plugin's own directory whenever the plugin is updated, which would discard the download and
+every self-update since, and under a system-wide KiCad it is not writable by the user at all.
+
+It waits on the child by default (the IPC API runs it as its own process); `__init__.py`'s
 `ActionPlugin.Run()` runs on KiCad's UI thread and so calls `launch_importer(wait=False)`.
+**`wait=False` must never block**, which now means more than not waiting on the child: when the
+importer still has to be downloaded, `launch_importer` puts the whole bootstrap on a thread of its
+own and returns at once, because doing ~200 MB inline on KiCad's UI thread freezes the editor.
 
 It passes the environment through: KiCad exports the IPC socket path, the API token and the project
 directory, and `KiCadSharp` reads them from there (`KiCadEnvironment.GetApiToken()` /
@@ -187,16 +204,30 @@ misses the socket. An importer started by hand reaches a running KiCad whose API
 otherwise falls back to reading the disk.
 `plugin/requirements.txt` is deliberately empty; its comment explains why.
 
-Still missing: **`release.yml` never stages `plugin/bin/`**, so an installed bundle has nothing to start.
+**`release.yml` does not stage `plugin/bin/`, and that is now the design rather than a gap** (#128).
+A self-contained build is 453 MB, 341 MB of it CEF; the PCM package carries the Python side and the
+launcher fetches the rest. Do not add it back.
 
-**`HarfBuzzPreload.Apply()` must stay the first thing on `Main`'s GUI path (#78).** CEF loads GTK
-with `RTLD_GLOBAL`, which brings in the system `libharfbuzz.so.0`. `libHarfBuzzSharp.so` calls its own
+**`HarfBuzzPreload.Apply()` must stay the first thing on `Main`'s GUI path that touches Avalonia or
+CEF (#78)** — which since #128 means after NLog's setup and after `VelopackApp.Build().Run()`, and
+before everything else.
+
+CEF loads GTK with `RTLD_GLOBAL`, which brings in the system `libharfbuzz.so.0`. `libHarfBuzzSharp.so` calls its own
 `hb_*` functions through lazily bound slots, so those calls land in the system copy and the app dies
 with SIGSEGV (exit 139) right after the main window opens. The preload `dlopen`s HarfBuzzSharp with
 `RTLD_NOW` before anything else touches it, binding every slot to itself. It deliberately stays
 `RTLD_LOCAL`; the file's remarks explain why `RTLD_GLOBAL` or the old `LD_PRELOAD` workaround is wrong.
 It only looks in the app's own native directories, never the working directory. No `LD_PRELOAD` is
 needed any more.
+
+**Velopack sits above it, and that is not a violation of #78** (#128). `VelopackApp.Build().Run()`
+may not return — it runs the `--veloapp-*` hooks and exits, and hands the process to the updater
+when a package is staged — so anything above it is work a restart throws away. It loads no graphics
+stack at all (verified by decompiling it: it reads the package manifest, may spawn the updater, and
+returns), so the preload still happens before the first line of Avalonia or CEF code, which is what
+#78 actually requires. Only NLog's setup is above Velopack, because both of those are in-memory and
+put Velopack's own account of the start — including "restarting to apply update" — into the
+application's log instead of a file in the temporary directory.
 
 ### Providers, search and the import engine
 

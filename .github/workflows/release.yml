@@ -180,6 +180,16 @@ jobs:
               index = json.load(handle)
           index["Assets"] = [a for a in index["Assets"] if a["FileName"] in built]
 
+          # The one way this step could fail silently. `built` and the index are two different vpk
+          # files keyed by two different field names; if either ever changes, every match fails,
+          # `Assets` becomes empty, the packages still upload and the release looks complete - and
+          # every installed copy reads an empty feed and never updates again. An empty index is not
+          # a release worth publishing, so it fails here instead.
+          if not index["Assets"]:
+              raise SystemExit(
+                  "%s came out empty after trimming it to %s. vpk's asset names and the release "
+                  "index no longer agree." % (index_name, built))
+
           os.makedirs(staging, exist_ok=True)
           for name in built:
               shutil.copy2(os.path.join(releases, name), os.path.join(staging, name))
@@ -344,6 +354,36 @@ jobs:
           find artifacts -type f -exec cp {} dist/ \;
           ls -l dist
           du -ch dist | tail -1
+
+      # The names the plugin's launcher will ask for, asserted before anything is published.
+      #
+      # plugin/importer_launcher.py builds these from PACK_ID and Velopack's own naming scheme, and
+      # the only two that this repository can exercise before a tag are the Linux ones - the Windows
+      # and macOS names come from reading Velopack's `DefaultName`, not from a package anyone has
+      # built here. If any of them is wrong, the plugin installs nothing on that platform and says
+      # only "release X has no asset named ...", which is a broken release that looks complete.
+      # Checking here turns that into a failed release instead, which is the difference between
+      # finding out now and finding out from a user.
+      - name: Check the launcher's assets are all present
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for asset in \
+            "$PACK_ID.AppImage" \
+            "$PACK_ID-win-Portable.zip" \
+            "$PACK_ID-osx-x64-Portable.zip" \
+            "$PACK_ID-osx-arm64-Portable.zip" \
+            releases.linux.json releases.win.json releases.osx-x64.json releases.osx-arm64.json
+          do
+            if [ -f "dist/$asset" ]; then
+              echo "ok      $asset"
+            else
+              echo "MISSING $asset" >&2
+              missing=1
+            fi
+          done
+          exit $missing
 
       # The launcher on a machine with no importer yet reads this file, finds the line for the asset
       # it is about to download, and refuses anything whose SHA-256 does not match. It covers every
