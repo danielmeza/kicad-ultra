@@ -74,8 +74,16 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _asset(self, name):
-        path = os.path.join(type(self).root, name)
+    def _asset(self, asset_name):
+        # The name comes out of the request, so it is never joined onto a path directly. It selects
+        # an entry from the directory listing instead, and the listing's own string is what builds
+        # the path - so nothing a request says can reach outside the release directory. CodeQL flags
+        # the direct form as py/path-injection, and it is right to: a test double is still a server.
+        published = {entry: entry for entry in os.listdir(type(self).root)}
+        if asset_name not in published:
+            self.send_error(404)
+            return
+        path = os.path.join(type(self).root, published[asset_name])
         if not os.path.isfile(path):
             self.send_error(404)
             return

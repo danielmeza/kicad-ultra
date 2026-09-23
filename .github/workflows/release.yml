@@ -18,6 +18,15 @@ name: Release
 # before": it has been, the update path is now the app's own, and the alternative was a plugin that
 # installs nothing that runs.
 #
+# **Its other reason has not gone away: nothing here is code-signed.** The same note said shipping
+# self-contained binaries "would need code signing on Windows to avoid SmartScreen", and that is
+# still true - `vpk pack` says "No signing parameters provided" and builds an unsigned Setup.exe and
+# stub, so a user who runs the Windows installer gets a SmartScreen warning, and an unsigned,
+# un-notarized macOS .app is refused by Gatekeeper until the user allows it by hand. It does not
+# block the plugin's own path, which downloads the portable artifact and runs it directly, and it is
+# not something CI can fix without certificates. vpk takes them through --signParams / --azureTrusted
+# on Windows and --signAppIdentity / --notaryProfile on macOS when there are any.
+#
 # GitHub *Releases*, not GitHub *Packages*: `https://nuget.pkg.github.com/danielmeza/index.json`
 # answers 401 to an anonymous request, so a plugin user would need a personal access token to
 # install; `https://api.github.com/repos/danielmeza/kicad-ultra/releases` answers 200. Velopack's
