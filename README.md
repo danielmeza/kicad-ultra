@@ -62,9 +62,13 @@ needs the network; the application keeps itself up to date in the background aft
 on the next start so an import is never interrupted.
 
 > [!NOTE]
-> **No release is published yet**, so the download has nothing to fetch. Until the first tag, build
-> the application yourself — the launcher prefers `plugin/bin` when it exists, so this is also the
-> development workflow:
+> **The Plugin and Content Manager does not list this package yet** — that needs a pull request to
+> KiCad's own repository, which has not been made. Until then, install
+> [the bundle from the release](https://github.com/danielmeza/kicad-ultra/releases/latest)
+> with the Plugin and Content Manager's **Install from file**.
+>
+> To run it from a checkout instead, build the application yourself — the launcher prefers
+> `plugin/bin` when it exists, so this is also the development workflow:
 >
 > ```sh
 > dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj \
@@ -142,7 +146,8 @@ What it does not do yet:
 
 - **The KiCad GUI has not been driven end to end.** The import path is verified with `kicad-cli` and
   over IPC against a running KiCad, not by clicking through the editors.
-- **Windows and macOS build but are unverified.** Every runtime check so far is Linux.
+- **Windows and macOS build but are unverified.** Every runtime check so far is Linux: v0.1.0's
+  Windows and macOS packages were built by CI and never started by anyone.
 - **There is no Apple Silicon build.** The CEF browser the importer embeds publishes no arm64
   binaries, so Macs on Apple Silicon run the Intel build under Rosetta 2.
 - **Symbols, footprints and 3D models only** — no simulation models, and datasheets are not attached

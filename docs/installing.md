@@ -19,6 +19,8 @@ The KiCad file formats and the IPC client are not in this repository. They come 
 ## From the Plugin and Content Manager
 
 Install **KiCad UltraLibrarian Importer** there, then enable the API (below) and restart KiCad.
+Today that means **Install from file** with the bundle from the release, for the reason in the note
+below; everything after the install is the same either way.
 
 The first run downloads the application for this platform from the project's
 [releases](https://github.com/danielmeza/kicad-ultra/releases), checks it against a SHA-256 published
@@ -39,9 +41,12 @@ releases: an update downloads while you work and installs the next time the impo
 system has none. Deleting that directory makes the next run fetch it again.
 
 > [!NOTE]
-> **No release is published yet**, so there is nothing for the first run to download. Until the first
-> tag, build the application yourself as below. The launcher prefers `plugin/bin` when it exists, so
-> this is also how development works.
+> **The Plugin and Content Manager's own repository does not list this package yet**, which needs a
+> pull request to KiCad that has not been made. Until then, download the bundle
+> (`kicad-ultralibrarian-importer-<version>.zip`) from
+> [the latest release](https://github.com/danielmeza/kicad-ultra/releases/latest) and install it with
+> the Plugin and Content Manager's **Install from file**. Everything after that — the download, the
+> checksum, the self-updating — works the same way.
 
 ## Building it yourself
 
