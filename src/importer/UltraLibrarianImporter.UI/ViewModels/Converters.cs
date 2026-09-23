@@ -83,6 +83,7 @@ public static class KiCadApiConverters
             KiCadQueryState.NotConnected => "Not connected to KiCad",
             KiCadQueryState.TimedOut => $"KiCad did not answer within {AboutViewModel.KiCadQueryTimeout.TotalSeconds:0} s",
             KiCadQueryState.AnsweredWithError => "KiCad answered with an error",
+            KiCadQueryState.Busy => "KiCad is busy; a dialog may be waiting for an answer",
             KiCadQueryState.Asking => Loading,
             _ => Loading,
         });

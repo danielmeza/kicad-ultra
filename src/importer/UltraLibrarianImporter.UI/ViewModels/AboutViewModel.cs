@@ -8,6 +8,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Kiapi.Common;
+
 using KiCadSharp;
 
 using Microsoft.Extensions.Logging;
@@ -36,7 +38,7 @@ public partial class AboutViewModel : ViewModelBase
     private string _version;
 
     [ObservableProperty]
-    private string _gitHubUrl = "https://github.com/danielmeza/kicad-ultralibrarian-importer";
+    private string _gitHubUrl = "https://github.com/danielmeza/kicad-ultra";
 
     /// <summary>The socket address the KiCad client dials.</summary>
     [ObservableProperty]
@@ -178,7 +180,16 @@ public partial class AboutViewModel : ViewModelBase
             // there is no socket to dial, nothing answers at it, or its native nng library cannot be
             // loaded, and ApiException, with KiCad's status, when KiCad answers with an error.
             _logger.LogWarning(ex, "Could not ask KiCad: {Request} failed", request);
-            return ex is ApiException ? KiCadQueryState.AnsweredWithError : KiCadQueryState.NotConnected;
+            return ex switch
+            {
+                // KiCad's own status, not its message (#129): AS_NOT_READY is what it answers while
+                // something else owns its main loop -- a modal dialog, or the second before a fresh
+                // start can serve the API -- and AS_BUSY while it is in the middle of an operation.
+                // Both mean "there, but ask again", which is a different answer from a real failure.
+                ApiException { StatusCode: ApiStatusCode.AsNotReady or ApiStatusCode.AsBusy } => KiCadQueryState.Busy,
+                ApiException => KiCadQueryState.AnsweredWithError,
+                _ => KiCadQueryState.NotConnected,
+            };
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
@@ -282,6 +293,13 @@ public enum KiCadQueryState
 
     /// <summary>KiCad answered with an error, so it is there but did not say what was asked.</summary>
     AnsweredWithError,
+
+    /// <summary>
+    /// KiCad is there and answered, but cannot take the question now: <c>AS_NOT_READY</c>, which is
+    /// what it says while a modal dialog owns its main loop, or <c>AS_BUSY</c>. Asking again later
+    /// is the whole remedy, so this is not an error.
+    /// </summary>
+    Busy,
 }
 
 /// <summary>
