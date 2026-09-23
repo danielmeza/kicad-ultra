@@ -18,14 +18,23 @@ name: Release
 # before": it has been, the update path is now the app's own, and the alternative was a plugin that
 # installs nothing that runs.
 #
-# **Its other reason has not gone away: nothing here is code-signed.** The same note said shipping
-# self-contained binaries "would need code signing on Windows to avoid SmartScreen", and that is
-# still true - `vpk pack` says "No signing parameters provided" and builds an unsigned Setup.exe and
-# stub, so a user who runs the Windows installer gets a SmartScreen warning, and an unsigned,
-# un-notarized macOS .app is refused by Gatekeeper until the user allows it by hand. It does not
-# block the plugin's own path, which downloads the portable artifact and runs it directly, and it is
-# not something CI can fix without certificates. vpk takes them through --signParams / --azureTrusted
-# on Windows and --signAppIdentity / --notaryProfile on macOS when there are any.
+# **Code signing, wired but not switched on.** The same note said shipping self-contained binaries
+# "would need code signing on Windows to avoid SmartScreen". Windows can now be signed through
+# SignPath Foundation's free Open Source programme - see the long note in the `app` job and
+# docs/signing.md, including what stays unsigned on purpose and why.
+#
+# **The unsigned path is the normal one**, not a fallback: there is no certificate yet, the
+# programme requires a release to exist before it will sign one, and the next few releases will go
+# out unsigned on purpose. With the SIGNPATH_* secrets absent every signing step skips, nothing
+# errors, and the release is built, published and installed exactly as it was before this was
+# added. That is also what a fork gets. What an unsigned build means for a user - the SmartScreen
+# dialog, Smart App Control, and the fact that updating is unaffected either way - is the first
+# section of docs/signing.md.
+#
+# macOS is still unsigned and un-notarized, so a .app is refused by Gatekeeper until the user allows
+# it by hand; vpk takes --signAppIdentity / --notaryProfile when there is an Apple Developer account
+# to take them from, and there is none. Neither gap blocks the plugin's own path, which downloads
+# the portable artifact and runs the application inside it directly.
 #
 # GitHub *Releases*, not GitHub *Packages*: `https://nuget.pkg.github.com/danielmeza/index.json`
 # answers 401 to an anonymous request, so a plugin user would need a personal access token to
@@ -49,6 +58,12 @@ jobs:
   app:
     name: Pack ${{ matrix.channel }}
     runs-on: ${{ matrix.runner }}
+    # `actions: read` is for SignPath's action, which reads this run's job details and downloads the
+    # artifact it is asked to sign through the GitHub API. `contents: read` is the workflow default,
+    # repeated because naming any permission drops the rest.
+    permissions:
+      actions: read
+      contents: read
     strategy:
       # Every channel or none: a release missing one platform's asset is a plugin that fails to
       # install on it, with no way to tell from the outside that the release is incomplete.
@@ -113,6 +128,140 @@ jobs:
           dotnet publish src/importer/KiCadUltra/KiCadUltra.csproj
           -c Release -r ${{ matrix.rid }} --self-contained true -o publish
 
+      # ---------------------------------------------------------------------------------------
+      # Windows code signing. The whole story, including what the maintainer has to apply for, is
+      # in docs/signing.md; what follows is why this shape and not another.
+      #
+      # It is SignPath Foundation because it is free for Open Source and nothing else is. There is
+      # no .pfx in this repository and there never will be: SignPath holds the key in an HSM, CI
+      # uploads the files it wants signed and gets signed ones back, and a human approves every
+      # release in SignPath's UI ("Every release needs manual approval for signing",
+      # https://signpath.org/terms.html). The four SIGNPATH_* secrets are the whole configuration,
+      # and with any of them missing every step below is skipped and the release is built unsigned
+      # - which is what a fork gets, and what this repository gets until the application is
+      # approved.
+      #
+      # **Two rounds, and the order is not arbitrary.**
+      #
+      # The application's own binaries are signed *before* `vpk pack`, so their signatures are
+      # inside the .nupkg and the portable .zip, and the SHA-256 that `releases.win.json` publishes
+      # for the .nupkg is computed over the signed bytes. `KiCadUltra-win-Setup.exe` is signed
+      # *after*, because vpk builds the installer last.
+      #
+      # Nothing may be re-signed inside the .nupkg afterwards. Velopack checks that SHA-256 on
+      # every update and rebuilds the package from deltas that were diffed against it, so changing
+      # a byte of it after packing breaks updating for everyone who already installed. The
+      # installer is safe to touch for the opposite reason: checked against vpk 1.2.158 by packing
+      # a throwaway app, `releases.win.json` lists the .nupkg and nothing else - not the installer,
+      # not the portable .zip.
+      #
+      # **What is deliberately left unsigned**: Velopack's `Squirrel.exe` (the updater that ships
+      # inside the package), its portable execution stub, the .NET runtime and CEF. SignPath
+      # Foundation's terms forbid signing them - "The team must only sign software artifacts built
+      # from their own source code" - and in the same breath allow shipping them as they are: "You
+      # may include unsigned binaries of upstream OSS projects, e.g. DLL files, in your signed
+      # packages".
+      #
+      # **Why not vpk's own `--signParams`/`--signTemplate`**, which Velopack documents and which
+      # does cover every one of those files (checked locally: with a recording template, vpk 1.2.158
+      # signs the stub, `Squirrel.exe`, the application's files, and then `Setup.exe`): the template
+      # is run per file from inside vpk, and a SignPath signing request has to be submitted by a
+      # GitHub Actions step for an artifact that GitHub Actions uploaded - that is how SignPath
+      # verifies the build's origin. A route that can sign one file on demand (Azure Artifact
+      # Signing is the cheap one) should use `--signTemplate` and delete all of this.
+      # ---------------------------------------------------------------------------------------
+      - name: Can the Windows artifacts be signed?
+        id: signing
+        if: matrix.channel == 'win'
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: |
+          set -euo pipefail
+          missing=
+          for name in SIGNPATH_API_TOKEN SIGNPATH_ORGANIZATION_ID SIGNPATH_PROJECT_SLUG \
+                      SIGNPATH_SIGNING_POLICY_SLUG; do
+            # Only the *name* of a secret is ever printed. No value is echoed, logged or written to
+            # a file anywhere in this job.
+            if [ -z "${!name:-}" ]; then missing="${missing:+$missing }$name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Building unsigned Windows artifacts: $missing not set (docs/signing.md)."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Signing the Windows artifacts through SignPath."
+          fi
+
+      - name: Stage the application's binaries for signing
+        id: stage-app
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          # The same executable `--mainExe` names below; keep the two in step. Its managed twin is
+          # <name>.dll, where the application's code actually is - the .exe is only the apphost.
+          MAIN_EXE: KiCadUltra.exe
+        run: |
+          set -euo pipefail
+          mkdir -p sign/app-in
+          cp "publish/$MAIN_EXE" "publish/${MAIN_EXE%.exe}.dll" sign/app-in/
+          echo "main_exe=$MAIN_EXE" >> "$GITHUB_OUTPUT"
+          echo "main_dll=${MAIN_EXE%.exe}.dll" >> "$GITHUB_OUTPUT"
+          ls -l sign/app-in
+
+      - name: Upload the unsigned application binaries
+        id: upload-unsigned-app
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app-${{ matrix.channel }}
+          path: sign/app-in
+          if-no-files-found: error
+
+      # Blocks until a project approver accepts the request in SignPath. Half an hour rather than
+      # the action's default ten minutes, because the approval is a person, not a service.
+      - name: Sign the application binaries
+        if: steps.signing.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          # Optional: empty selects the project's default artifact configuration, which is what
+          # `core.getInput` sees when the secret does not exist.
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-app.outputs.artifact-id }}
+          # SignPath Foundation requires that signed binaries carry product metadata and that the
+          # artifact configuration enforce it ("Set all product version attributes to the same value
+          # in each build"). The configuration in docs/signpath-application.md declares a `version`
+          # parameter and rejects any binary whose ProductVersion is not this string, so the two go
+          # together: a configuration without the parameter, or a request without it, fails.
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: '1800'
+          output-artifact-directory: sign/app-out
+
+      - name: Put the signed application binaries back
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MAIN_EXE: ${{ steps.stage-app.outputs.main_exe }}
+          MAIN_DLL: ${{ steps.stage-app.outputs.main_dll }}
+        run: |
+          set -euo pipefail
+          for name in "$MAIN_EXE" "$MAIN_DLL"; do
+            # SignPath returns the artifact it was given. A missing file here means the artifact
+            # configuration does not describe what this workflow uploads, and packing an unsigned
+            # binary while the logs say "signed" is the one outcome worth failing for.
+            test -f "sign/app-out/$name"
+            cp "sign/app-out/$name" "publish/$name"
+          done
+
       # Seeds the output directory with the previous release's full package so `vpk pack` can diff
       # against it and emit a delta. It is allowed to fail: on the first release of a channel there
       # is nothing to download, and a release without a delta is complete, just larger.
@@ -147,6 +296,126 @@ jobs:
           --outputDir Releases
           ${{ matrix.icon && format('--icon {0}', matrix.icon) || '' }}
         shell: bash
+
+      # The second signing round: the installer vpk has just built. See the long note above for why
+      # this one is signed here and the package's contents are not.
+      - name: Stage the installer for signing
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sign/setup-in
+          cp "Releases/$PACK_ID-win-Setup.exe" sign/setup-in/
+
+      - name: Upload the unsigned installer
+        id: upload-unsigned-setup
+        if: steps.signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer-${{ matrix.channel }}
+          path: sign/setup-in
+          if-no-files-found: error
+
+      - name: Sign the installer
+        if: steps.signing.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
+          # As above. Velopack stamps the installer's ProductVersion from --packVersion, which is
+          # this same string, so one configuration and one parameter cover both rounds.
+          parameters: |
+            version: "${{ steps.ver.outputs.version }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: '1800'
+          output-artifact-directory: sign/setup-out
+
+      - name: Put the signed installer back
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "sign/setup-out/$PACK_ID-win-Setup.exe"
+          cp "sign/setup-out/$PACK_ID-win-Setup.exe" "Releases/$PACK_ID-win-Setup.exe"
+
+      # The one check that a release cannot make later. A signing request can succeed, return the
+      # files it was given, and sign nothing at all if the artifact configuration does not cover
+      # them - and an unsigned release that says "signed" in its logs is worse than an honest
+      # unsigned one. This reads the shipped bytes, not the inputs: the application's two binaries
+      # are read back out of the package `releases.win.json` points at, which is what a user
+      # installs and what Velopack downloads to update.
+      #
+      # Which package that is comes from vpk's own assets.{channel}.json, the same file the staging
+      # step below trusts, and not from a glob over the output directory - which also holds the
+      # *previous* release's package, downloaded above for the delta. Globbing would check an
+      # unsigned package from before signing existed and fail the first signed release.
+      - name: Check the signed files really carry a signature
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MAIN_EXE: ${{ steps.stage-app.outputs.main_exe }}
+        run: |
+          set -euo pipefail
+          python3 - "Releases" "${{ matrix.channel }}" "$MAIN_EXE" <<'PY'
+          import json, os, struct, sys, zipfile
+
+          def certificate_table(blob):
+              """(file offset, size) of the PE certificate table, or None if this is not a PE file."""
+              if len(blob) < 0x40 or blob[:2] != b"MZ":
+                  return None
+              pe = struct.unpack_from("<I", blob, 0x3C)[0]
+              if blob[pe:pe + 4] != b"PE\0\0":
+                  return None
+              optional = pe + 24
+              magic = struct.unpack_from("<H", blob, optional)[0]
+              if magic == 0x10B:      # PE32
+                  count_at, directories = optional + 92, optional + 96
+              elif magic == 0x20B:    # PE32+
+                  count_at, directories = optional + 108, optional + 112
+              else:
+                  return None
+              if struct.unpack_from("<I", blob, count_at)[0] < 5:
+                  return (0, 0)
+              return struct.unpack_from("<II", blob, directories + 4 * 8)
+
+          def report(name, blob):
+              table = certificate_table(blob)
+              if table is None:
+                  return "%s is not a PE file" % name
+              if not table[1]:
+                  return "%s carries no Authenticode signature" % name
+              print("ok      %s (%d byte certificate table)" % (name, table[1]))
+              return None
+
+          releases, channel, main_exe = sys.argv[1], sys.argv[2], sys.argv[3]
+          with open(os.path.join(releases, "assets.%s.json" % channel), encoding="utf-8") as handle:
+              built = json.load(handle)
+
+          def one(kind):
+              names = [entry["RelativeFileName"] for entry in built if entry["Type"] == kind]
+              if len(names) != 1:
+                  raise SystemExit("expected exactly one %s asset, got %s" % (kind, names))
+              return os.path.join(releases, names[0])
+
+          package, installer = one("Full"), one("Installer")
+
+          failures = []
+          with zipfile.ZipFile(package) as archive:
+              for name in ("lib/app/" + main_exe,
+                           "lib/app/" + os.path.splitext(main_exe)[0] + ".dll"):
+                  failures.append(
+                      report("%s!%s" % (os.path.basename(package), name), archive.read(name)))
+          with open(installer, "rb") as handle:
+              failures.append(report(os.path.basename(installer), handle.read()))
+
+          failures = [failure for failure in failures if failure]
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
 
       # `vpk pack` writes releases.{channel}.json from everything in the output directory, which now
       # also holds the previous release's package - downloaded above only so a delta could be built
@@ -332,9 +601,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Named, rather than "download everything this run produced": the `app` job also uploads the
+      # unsigned Windows binaries, because uploading them is how SignPath receives them. They must
+      # not reach the release - and until this was spelled out they would have, because the
+      # installer would then arrive twice and the duplicate check below would fail the release.
+      #
+      # With signing off there are no such uploads, and these two steps fetch exactly what the one
+      # step before them fetched: the same files, the same basenames, the same `dist`.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: velopack-*
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          name: kicad-plugin-bundle
 
       # One flat directory, because that is what a release is. Two artifacts sharing a file name
       # would silently overwrite each other here and leave the checksum file describing whichever
