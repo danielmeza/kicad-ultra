@@ -50,26 +50,31 @@ that exists. kicad-ultra does that from inside KiCad.
 
 ## Install
 
+Install the plugin from KiCad's **Plugin and Content Manager**, then turn the API on in
+**Preferences → Plugins → Enable IPC API** and restart KiCad.
+
+The plugin package is a few kilobytes: the Python launcher, the icons and the metadata. **The first
+time you run it, it downloads the application** — about 200 MB, most of it the embedded browser —
+from this repository's releases, checks it against a SHA-256 published in the same release, and
+unpacks it into a per-user data directory (`%LOCALAPPDATA%\kicad-ultra`,
+`~/Library/Application Support/kicad-ultra`, or `$XDG_DATA_HOME/kicad-ultra`). Only that first run
+needs the network; the application keeps itself up to date in the background afterwards, installing
+on the next start so an import is never interrupted.
+
 > [!NOTE]
-> A Plugin and Content Manager package that fetches the application for you is being built in
-> [#128](https://github.com/danielmeza/kicad-ultra/issues/128). Until then it is a manual install: the
-> application is a 450 MB self-contained build, 340 MB of it the embedded browser, which is why it
-> does not live inside the plugin package.
+> **No release is published yet**, so the download has nothing to fetch. Until the first tag, build
+> the application yourself — the launcher prefers `plugin/bin` when it exists, so this is also the
+> development workflow:
+>
+> ```sh
+> dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
+>     -c Release -r linux-x64 --self-contained true -o plugin/bin      # or win-x64, osx-x64, osx-arm64
+> ln -s "$PWD/plugin" ~/.local/share/kicad/10.0/3rdparty/plugins/kicad-ultra
+> ```
 
-```sh
-# 1. build the application into the plugin's bin/ (use win-x64, osx-x64 or osx-arm64 elsewhere)
-dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
-    -c Release -r linux-x64 --self-contained true -o plugin/bin
-
-# 2. put plugin/ where KiCad looks — on Linux, for a native install:
-ln -s "$PWD/plugin" ~/.local/share/kicad/10.0/3rdparty/plugins/kicad-ultra
-```
-
-Then **Preferences → Plugins → Enable IPC API** and restart KiCad. The other platforms' directories,
-the Flatpak, and the optional easyeda2kicad are in [Installing](docs/installing.md).
-
-Needs KiCad 10 (9.0 has the IPC API but is untested here) and, to build it, the
-[.NET 10 SDK](https://dotnet.microsoft.com/).
+Every platform's directory, the Flatpak, and the optional easyeda2kicad are in
+[Installing](docs/installing.md). Needs KiCad 10 (9.0 has the IPC API but is untested here), and on
+Linux, FUSE to run the AppImage — `APPIMAGE_EXTRACT_AND_RUN=1` if your system has none.
 
 ## Quick start
 

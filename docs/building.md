@@ -18,9 +18,20 @@ are on for every project, so a nullable warning, an `.editorconfig` violation or
 CVE in a transitive package all stop it. Run the format check too — it catches two things the build
 cannot, and the build catches one it cannot.
 
-**There are no tests yet.** `--test-parser` is the one self-contained harness; `SampleConsole`'s other
-mode talks to a KiCad with a socket path hardcoded for another machine. A CI test step should arrive
-with the first test project.
+**The tests that exist are the plugin bootstrap's**, and CI runs them:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+They cover the launcher that downloads, verifies and unpacks the application: the checksum refusal, a
+resumed download, the archive-entry containment check, and that `wait=False` never blocks KiCad's UI
+thread. Standard library only, no network — each test runs against a local server in its own temp
+tree.
+
+**There is no .NET test project yet.** `--test-parser` is the one self-contained harness on that
+side; `SampleConsole`'s other mode talks to a KiCad with a socket path hardcoded for another machine.
+A CI step for it should arrive with the first test project.
 
 ## Running it during development
 

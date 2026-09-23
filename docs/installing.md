@@ -8,20 +8,44 @@ Two processes, and KiCad starts the first one.
   application and passes KiCad's environment through — the API socket, the token and the open
   project's directory travel that way, and there is no other channel. It uses the standard library
   only.
-- **`plugin/bin/`** is the application: an [Avalonia](https://avaloniaui.net/) desktop app on .NET 10
-  holding the Part Explorer, the embedded browser, the import engine and the MCP server.
+- **The application** is an [Avalonia](https://avaloniaui.net/) desktop app on .NET 10 holding the
+  Part Explorer, the embedded browser, the import engine and the MCP server. It is a 450 MB build,
+  340 MB of it the embedded browser, so it does not travel inside the plugin package.
 
 The KiCad file formats and the IPC client are not in this repository. They come from nuget.org as
 [SExpressions](https://github.com/danielmeza/sexpressions) and
 [KiCadSharp](https://github.com/danielmeza/kicad-sharp).
 
-Until [#128](https://github.com/danielmeza/kicad-ultra/issues/128) lands, both halves are installed by
-hand.
+## From the Plugin and Content Manager
 
-The application is a **450 MB** self-contained build — 340 MB of it the embedded browser — which is
-why it is not inside the plugin package.
+Install **KiCad UltraLibrarian Importer** there, then enable the API (below) and restart KiCad.
 
-## 1. Build and stage the application
+The first run downloads the application for this platform from the project's
+[releases](https://github.com/danielmeza/kicad-ultra/releases), checks it against a SHA-256 published
+in the same release, and unpacks it into a per-user data directory:
+
+| | |
+|---|---|
+| Windows | `%LOCALAPPDATA%\kicad-ultra` |
+| macOS | `~/Library/Application Support/kicad-ultra` |
+| Linux | `$XDG_DATA_HOME/kicad-ultra`, else `~/.local/share/kicad-ultra` |
+
+Not beside the plugin, because the Plugin and Content Manager replaces the plugin's own directory on
+every plugin update, and on a system-wide KiCad it is not user-writable.
+
+Only that first run needs the network. The application then keeps itself up to date from the same
+releases: an update downloads while you work and installs the next time the importer starts. About
+600 MB of free space, and on Linux FUSE to run the AppImage — `APPIMAGE_EXTRACT_AND_RUN=1` if the
+system has none. Deleting that directory makes the next run fetch it again.
+
+> [!NOTE]
+> **No release is published yet**, so there is nothing for the first run to download. Until the first
+> tag, build the application yourself as below. The launcher prefers `plugin/bin` when it exists, so
+> this is also how development works.
+
+## Building it yourself
+
+### 1. Build and stage the application
 
 ```sh
 dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.csproj \
@@ -31,7 +55,7 @@ dotnet publish src/importer/UltraLibrarianImporter.UI/UltraLibrarianImporter.UI.
 Use `win-x64`, `osx-x64` or `osx-arm64` for the other platforms. It needs the
 [.NET 10 SDK](https://dotnet.microsoft.com/); nothing else has to be installed first.
 
-## 2. Put `plugin/` where KiCad looks
+### 2. Put `plugin/` where KiCad looks
 
 Copy it, or symlink it, into KiCad's third-party plugin directory:
 
@@ -45,7 +69,7 @@ Copy it, or symlink it, into KiCad's third-party plugin directory:
 `plugin/requirements.txt` is deliberately empty: the Python side uses the standard library only, so
 nothing is installed into KiCad's interpreter.
 
-## 3. Turn KiCad's API on
+## Turn KiCad's API on
 
 **Preferences → Plugins → Enable IPC API**, then restart KiCad. The action appears as **Import from
 UltraLibrarian** in the schematic and PCB editors, the footprint and symbol editors, and the project
